@@ -1,0 +1,120 @@
+{
+    "keywords": [
+        "Cybersecurity",
+        "Cyber Security",
+        "Cybersécurité",
+        "Penetration Testing",
+        "Pentest",
+        "Ethical Hacking",
+        "tests d'intrusion",
+        "Vulnerability Assessment",
+        "VAPT",
+        "IT Security",
+        "OT Security",
+        "ISMS",
+        "SMSI",
+        "ISO 27001",
+        "PCI DSS",
+        "Phishing",
+        "social engineering",
+        "ingénieurie sociale",
+        "SWIFT CSP",
+        "CSCF",
+        "DORA",
+        "CISO assistance",
+        "assistance RSSI"
+    ],
+    "regions": {
+        "West Africa": [
+            "Senegal",
+            "Cote d'Ivoire",
+            "Nigeria",
+            "Ghana",
+            "Mali",
+            "Burkina Faso",
+            "Niger",
+            "Guinea",
+            "Benin",
+            "Togo"
+        ],
+        "East Africa": [
+            "Kenya",
+            "Ethiopia",
+            "Tanzania",
+            "Uganda",
+            "Rwanda",
+            "Mozambique"
+        ],
+        "Southern Africa": [
+            "South Africa",
+            "Zambia",
+            "Zimbabwe",
+            "Botswana",
+            "Namibia",
+            "Malawi"
+        ],
+        "Central Africa": [
+            "Democratic Republic of Congo",
+            "Cameroon",
+            "Chad",
+            "Congo",
+            "Gabon"
+        ],
+        "North Africa": [
+            "Morocco",
+            "Tunisia",
+            "Egypt",
+            "Algeria",
+            "Libya"
+        ],
+        "Central Asia": [
+            "Kazakhstan",
+            "Uzbekistan",
+            "Kyrgyzstan",
+            "Tajikistan",
+            "Turkmenistan"
+        ],
+        "South Asia": [
+            "India",
+            "Bangladesh",
+            "Nepal",
+            "Sri Lanka",
+            "Pakistan",
+            "Bhutan"
+        ],
+        "Southeast Asia": [
+            "Vietnam",
+            "Cambodia",
+            "Philippines",
+            "Indonesia",
+            "Thailand",
+            "Myanmar",
+            "Laos"
+        ],
+        "Latin America": [
+            "Brazil",
+            "Colombia",
+            "Chile",
+            "Argentina",
+            "Peru",
+            "Ecuador",
+            "Bolivia",
+            "Mexico"
+        ],
+        "Caribbean": [
+            "Jamaica",
+            "Haiti",
+            "Dominican Republic",
+            "Trinidad and Tobago",
+            "Barbados",
+            "Belize"
+        ],
+        "Eastern Europe": [
+            "Ukraine",
+            "Georgia",
+            "Moldova",
+            "Albania",
+            "Kosovo"
+        ]
+    }
+}
