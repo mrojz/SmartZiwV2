@@ -8,7 +8,7 @@ West/Central Africa matching cybersecurity-related terms.
 
 import time
 import requests
-from shared_excel import SEARCH_KEYWORDS, format_date
+from shared_excel import SEARCH_KEYWORDS, get_search_keywords, format_date
 
 # ── DevelopmentAid API config ────────────────────────────────────────────────
 
@@ -149,7 +149,8 @@ def run_devaid_scraper():
     total_raw = 0
     request_count = 0
 
-    for keyword in SEARCH_KEYWORDS:
+    keywords = get_search_keywords()
+    for keyword in keywords:
         print(f"\n[>] Searching: '{keyword}'", flush=True)
         projects, request_count = fetch_keyword(session, keyword, request_count)
         print(f"    Found {len(projects)} tenders", flush=True)

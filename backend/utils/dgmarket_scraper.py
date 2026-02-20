@@ -13,7 +13,7 @@ import re
 import requests
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
-from shared_excel import SEARCH_KEYWORDS, format_date
+from shared_excel import SEARCH_KEYWORDS, get_search_keywords, format_date
 
 load_dotenv()
 
@@ -258,7 +258,8 @@ def run_dgmarket_scraper():
     seen = {}
     total_raw = 0
 
-    for keyword in SEARCH_KEYWORDS:
+    keywords = get_search_keywords()
+    for keyword in keywords:
         print(f"\n[>] Searching: '{keyword}'", flush=True)
         projects = fetch_keyword(session, keyword)
         print(f"    Found {len(projects)} tenders", flush=True)

@@ -13,23 +13,15 @@ import random
 import requests
 from bs4 import BeautifulSoup
 
-from shared_excel import SEARCH_KEYWORDS, format_date, save_to_excel
+from shared_excel import SEARCH_KEYWORDS, GT_REGION_CODES, get_search_keywords, format_date, save_to_excel
 
 
 BASE_URL = "https://www.globaltenders.com/gtsearch"
 RESULTS_PER_PAGE = 10
 MAX_PAGES = 20  # Safety cap per keyword
 
-# Regions: Africa + Latin America
-REGIONS = [
-    "REG0101",  # Central Africa/Middle Africa Region
-    "REG0102",  # East Africa/Eastern Africa Region
-    "REG0103",  # North Africa/Northern Africa Region
-    "REG0105",  # Sub-Saharan Africa Region
-    "REG0106",  # West Africa Region
-    "REG0204",  # South America Region
-    "REG0205",  # Latin America Region
-]
+# Regions come from shared_excel.GT_REGION_CODES (centralized config)
+REGIONS = GT_REGION_CODES
 
 # Notice types: all relevant types
 NOTICE_TYPES = "gpn,pp,spn,rei,ppn,acn,rfc"
@@ -223,7 +215,8 @@ def run_gt_scraper():
     total_raw = 0
     request_count = 0
 
-    for keyword in SEARCH_KEYWORDS:
+    keywords = get_search_keywords()
+    for keyword in keywords:
         print(f"\n[>] Searching: '{keyword}'")
         projects, request_count = fetch_keyword(session, keyword, request_count)
         print(f"    Found {len(projects)} tenders")

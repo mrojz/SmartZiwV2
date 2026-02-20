@@ -510,7 +510,7 @@ def send_powerbi_request(authorization_header, search_keyword="cybersecurity"):
     return None
 
 
-from shared_excel import SEARCH_KEYWORDS, format_date, save_to_excel
+from shared_excel import SEARCH_KEYWORDS, get_search_keywords, format_date, save_to_excel
 
 
 def run_all_searches(authorization_header):
@@ -521,11 +521,12 @@ def run_all_searches(authorization_header):
     print("\n" + "=" * 60)
     print("  Running Multi-Keyword Search")
     print("=" * 60)
-    print(f"  Total keywords: {len(SEARCH_KEYWORDS)}")
+    keywords = get_search_keywords()
+    print(f"  Total keywords: {len(keywords)}")
     print("=" * 60)
     
-    for i, keyword in enumerate(SEARCH_KEYWORDS, 1):
-        print(f"\n[{i}/{len(SEARCH_KEYWORDS)}] Searching for: '{keyword}'")
+    for i, keyword in enumerate(keywords, 1):
+        print(f"\n[{i}/{len(keywords)}] Searching for: '{keyword}'")
         
         response = send_powerbi_request(authorization_header, keyword)
         
