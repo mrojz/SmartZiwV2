@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 
 const DAYS = [
     { value: 'mon', label: 'Monday' },
@@ -18,6 +18,44 @@ const SOURCE_LIST = [
     { key: 'devaid', label: 'DevelopmentAid' },
     { key: 'dgmarket', label: 'DGMarket' },
 ];
+
+function formatCountdown(ms) {
+    if (ms <= 0) return 'any moment now…';
+    const totalSec = Math.floor(ms / 1000);
+    const days = Math.floor(totalSec / 86400);
+    const hours = Math.floor((totalSec % 86400) / 3600);
+    const mins = Math.floor((totalSec % 3600) / 60);
+    const secs = totalSec % 60;
+    const parts = [];
+    if (days > 0) parts.push(`${days}d`);
+    if (hours > 0) parts.push(`${hours}h`);
+    if (mins > 0) parts.push(`${mins}m`);
+    parts.push(`${secs}s`);
+    return parts.join(' ');
+}
+
+function formatDateTime(iso) {
+    if (!iso) return '—';
+    const d = new Date(iso);
+    return d.toLocaleString(undefined, {
+        weekday: 'short',
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+    });
+}
+
+function formatDuration(startIso, endIso) {
+    if (!startIso || !endIso) return '—';
+    const ms = new Date(endIso) - new Date(startIso);
+    const secs = Math.floor(ms / 1000);
+    if (secs < 60) return `${secs}s`;
+    const mins = Math.floor(secs / 60);
+    const remSecs = secs % 60;
+    return `${mins}m ${remSecs}s`;
+}
 
 export default function SchedulePanel({ open, onClose }) {
     const [loading, setLoading] = useState(true);
@@ -42,20 +80,68 @@ export default function SchedulePanel({ open, onClose }) {
     const [nextRun, setNextRun] = useState(null);
     const [saveResult, setSaveResult] = useState(null);
 
+    // Server time & countdown
+    const [serverTime, setServerTime] = useState(null);
+    const [serverOffset, setServerOffset] = useState(0); // ms offset between server and local
+    const [countdown, setCountdown] = useState(null);
+    const timerRef = useRef(null);
+
+    // Sync run history
+    const [logs, setLogs] = useState([]);
+    const [expandedLog, setExpandedLog] = useState(null);
+
+    // Load schedule + server time + logs when panel opens
     useEffect(() => {
         if (!open) return;
         setLoading(true);
         setSaveResult(null);
-        fetch('/api/schedule')
-            .then((r) => r.json())
-            .then((data) => {
-                setNextRun(data.next_run || null);
-                delete data.next_run;
-                setSchedule((prev) => ({ ...prev, ...data }));
+        setExpandedLog(null);
+
+        Promise.all([
+            fetch('/api/schedule').then((r) => r.json()),
+            fetch('/api/server-time').then((r) => r.json()),
+            fetch('/api/schedule/logs').then((r) => r.json()),
+        ])
+            .then(([schedData, timeData, logsData]) => {
+                // Schedule
+                setNextRun(schedData.next_run || null);
+                delete schedData.next_run;
+                setSchedule((prev) => ({ ...prev, ...schedData }));
+
+                // Server time offset
+                const serverMs = new Date(timeData.server_time).getTime();
+                const localMs = Date.now();
+                setServerOffset(serverMs - localMs);
+                setServerTime(serverMs);
+
+                // Logs
+                setLogs(Array.isArray(logsData) ? logsData : []);
             })
             .catch(() => { })
             .finally(() => setLoading(false));
     }, [open]);
+
+    // Live tick: update server time + countdown every second
+    useEffect(() => {
+        if (!open) {
+            if (timerRef.current) clearInterval(timerRef.current);
+            return;
+        }
+
+        timerRef.current = setInterval(() => {
+            const now = Date.now() + serverOffset;
+            setServerTime(now);
+
+            if (nextRun) {
+                const nextMs = new Date(nextRun).getTime();
+                setCountdown(Math.max(0, nextMs - now));
+            } else {
+                setCountdown(null);
+            }
+        }, 1000);
+
+        return () => clearInterval(timerRef.current);
+    }, [open, serverOffset, nextRun]);
 
     if (!open) return null;
 
@@ -93,21 +179,17 @@ export default function SchedulePanel({ open, onClose }) {
         }
     };
 
-    const formatNextRun = (iso) => {
-        if (!iso) return 'Not scheduled';
-        const d = new Date(iso);
-        return d.toLocaleString(undefined, {
-            weekday: 'short',
-            month: 'short',
-            day: 'numeric',
+    const currentServerTimeStr = serverTime
+        ? new Date(serverTime).toLocaleTimeString(undefined, {
             hour: '2-digit',
             minute: '2-digit',
-        });
-    };
+            second: '2-digit',
+        })
+        : '…';
 
     return (
         <div className="sync-overlay" onClick={onClose}>
-            <div className="sync-panel" onClick={(e) => e.stopPropagation()}>
+            <div className="sync-panel schedule-panel-wide" onClick={(e) => e.stopPropagation()}>
                 <div className="sync-header">
                     <h2>📅 Sync Schedule</h2>
                     <button className="sync-close" onClick={onClose}>✕</button>
@@ -121,6 +203,16 @@ export default function SchedulePanel({ open, onClose }) {
                         </div>
                     ) : (
                         <>
+                            {/* Server time bar */}
+                            <div className="schedule-server-time">
+                                <span>🖥️ Server time: <strong>{currentServerTimeStr}</strong></span>
+                                {schedule.enabled && countdown !== null && (
+                                    <span className="schedule-countdown">
+                                        ⏳ Next run in: <strong>{formatCountdown(countdown)}</strong>
+                                    </span>
+                                )}
+                            </div>
+
                             {/* Enable toggle */}
                             <div className="sync-section">
                                 <label className="sync-toggle schedule-enable">
@@ -139,7 +231,7 @@ export default function SchedulePanel({ open, onClose }) {
                             {schedule.enabled && nextRun && (
                                 <div className="schedule-next-run">
                                     <span className="meta-icon">⏰</span>
-                                    Next run: <strong>{formatNextRun(nextRun)}</strong>
+                                    Next run: <strong>{formatDateTime(nextRun)}</strong>
                                 </div>
                             )}
 
@@ -242,6 +334,46 @@ export default function SchedulePanel({ open, onClose }) {
                                     </div>
                                 </div>
                             )}
+
+                            {/* ── Run History ────────────────────────────────── */}
+                            <div className="sync-section schedule-history">
+                                <h3>📋 Run History</h3>
+                                {logs.length === 0 ? (
+                                    <p className="schedule-no-logs">No scheduled runs yet.</p>
+                                ) : (
+                                    <div className="schedule-log-list">
+                                        {logs.map((log, i) => (
+                                            <div key={i} className={`schedule-log-entry ${log.success ? '' : 'failed'}`}>
+                                                <div
+                                                    className="schedule-log-header"
+                                                    onClick={() => setExpandedLog(expandedLog === i ? null : i)}
+                                                >
+                                                    <span className="schedule-log-status">
+                                                        {log.success ? '✅' : '❌'}
+                                                    </span>
+                                                    <span className="schedule-log-date">
+                                                        {formatDateTime(log.started_at)}
+                                                    </span>
+                                                    <span className="schedule-log-duration">
+                                                        {formatDuration(log.started_at, log.finished_at)}
+                                                    </span>
+                                                    <span className="schedule-log-projects">
+                                                        {log.project_count ?? '—'} projects
+                                                    </span>
+                                                    <span className="schedule-log-expand">
+                                                        {expandedLog === i ? '▲' : '▼'}
+                                                    </span>
+                                                </div>
+                                                {expandedLog === i && (
+                                                    <pre className="schedule-log-output">
+                                                        {(log.log_lines || []).join('\n') || '(no output)'}
+                                                    </pre>
+                                                )}
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
                         </>
                     )}
                 </div>

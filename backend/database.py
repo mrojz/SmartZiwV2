@@ -187,6 +187,22 @@ def save_schedule(schedule: dict):
     )
 
 
+# ── Sync Logs ───────────────────────────────────────────────────────────────
+
+
+def save_sync_log(log_entry: dict):
+    """Save a sync run log entry to the sync_logs collection."""
+    db = get_db()
+    db.sync_logs.insert_one(log_entry)
+
+
+def get_sync_logs(limit: int = 20) -> list[dict]:
+    """Return the most recent sync log entries, newest first."""
+    db = get_db()
+    docs = db.sync_logs.find().sort("started_at", -1).limit(limit)
+    return [_strip_id(doc) for doc in docs]
+
+
 # ── Migration helper ────────────────────────────────────────────────────────
 
 
