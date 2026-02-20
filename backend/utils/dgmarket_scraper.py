@@ -49,56 +49,53 @@ SEARCH_PARAMS = {
 
 
 def _init_session() -> requests.Session:
-    """Initialize a fresh DGMarket session dynamically.
+    """Initialize a fresh DGMarket session.
 
-    Flow:
-      1. Visit the homepage to get a JSESSIONID cookie from the server.
-      2. Hit the newSession.do endpoint using that JSESSIONID so the server
-         associates our session with a valid user context.
+    Goes directly to the search page to let the server set session cookies
+    naturally, avoiding duplicate JSESSIONID issues from multi-step flows.
     """
     session = requests.Session()
     session.headers.update(HEADERS)
-    session.max_redirects = 10  # Safety: prevent infinite redirect loops
+    session.max_redirects = 10
 
     print("    [>] Initializing DGMarket session...", flush=True)
 
-    # Step 1: Visit homepage to get fresh JSESSIONID
-    try:
-        home_resp = session.get(BASE_HOST, timeout=30)
-        home_resp.raise_for_status()
-    except requests.RequestException as e:
-        print(f"    [!] Failed to load DGMarket homepage: {e}", flush=True)
-        raise
-
-    jsessionid = session.cookies.get("JSESSIONID", "")
-    if not jsessionid:
-        print("    [!] No JSESSIONID from homepage, trying newSession directly...", flush=True)
-
-    # Step 2: Hit session endpoint to validate/activate the session
-    # Clear the old JSESSIONID first — newSession.do will set a fresh one
-    # and having two JSESSIONID cookies causes a conflict
-    session_param = jsessionid if jsessionid else ""
-    if jsessionid:
-        session.cookies.clear(domain=".dgmarket.com", path="/", name="JSESSIONID")
-        # Also try without domain restriction (some servers set it differently)
-        try:
-            del session.cookies["JSESSIONID"]
-        except KeyError:
-            pass
-
+    # Hit the search page directly — the server will set JSESSIONID on first contact
     try:
         resp = session.get(
-            SESSION_URL,
-            params={"dgsessionid": session_param},
+            SEARCH_URL,
+            params={"sub": "info-communications-in-Africa-10", "status": "live", "keywords": "test"},
             timeout=30,
         )
         resp.raise_for_status()
-    except requests.RequestException as e:
-        print(f"    [!] Session init request failed: {e}", flush=True)
-        raise
+    except requests.exceptions.TooManyRedirects:
+        # If redirects fail, try with a brand new jar
+        print("    [!] Redirect loop on search, trying direct session init...", flush=True)
+        session.cookies.clear()
+        try:
+            resp = session.get(SESSION_URL, timeout=30)
+            resp.raise_for_status()
+        except Exception as e:
+            print(f"    [!] Fallback session init failed: {e}", flush=True)
+            raise
+    except Exception as e:
+        # Handle duplicate cookie errors by keeping only the last JSESSIONID
+        if "multiple cookies" in str(e).lower():
+            print("    [!] Duplicate cookie detected, cleaning up...", flush=True)
+            # Extract the last JSESSIONID value and rebuild
+            jsessionid = None
+            for cookie in session.cookies:
+                if cookie.name == "JSESSIONID":
+                    jsessionid = cookie.value
+            session.cookies.clear()
+            if jsessionid:
+                session.cookies.set("JSESSIONID", jsessionid, domain="appel-d-offre.dgmarket.com")
+        else:
+            print(f"    [!] Session init failed: {e}", flush=True)
+            raise
 
-    final_jsessionid = session.cookies.get("JSESSIONID", "?")
-    print(f"    [+] Session ready (JSESSIONID={final_jsessionid[:12]}...)", flush=True)
+    jsessionid = session.cookies.get("JSESSIONID", "?")
+    print(f"    [+] Session ready (JSESSIONID={jsessionid[:12]}...)", flush=True)
     return session
 
 
