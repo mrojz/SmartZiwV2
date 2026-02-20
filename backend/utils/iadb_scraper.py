@@ -128,9 +128,11 @@ def create_selenium_driver(proxy_port=8001):
     from selenium import webdriver
     from selenium.webdriver.chrome.service import Service
     from selenium.webdriver.chrome.options import Options
-    from webdriver_manager.chrome import ChromeDriverManager
     
     chrome_options = Options()
+    
+    # Headless mode for Docker (no display)
+    chrome_options.add_argument("--headless=new")
     
     # Configure proxy
     chrome_options.add_argument(f"--proxy-server=http://127.0.0.1:{proxy_port}")
@@ -140,13 +142,20 @@ def create_selenium_driver(proxy_port=8001):
     chrome_options.add_argument("--ignore-ssl-errors")
     chrome_options.add_argument("--allow-insecure-localhost")
     
-    # Other options
+    # Required for running as root in Docker
     chrome_options.add_argument("--disable-gpu")
     chrome_options.add_argument("--no-sandbox")
+    chrome_options.add_argument("--disable-dev-shm-usage")
     chrome_options.add_argument("--window-size=1920,1080")
     
+    import os
+    chromedriver_path = os.environ.get("CHROMEDRIVER_PATH", "/usr/bin/chromedriver")
+    chrome_bin = os.environ.get("CHROME_BIN")
+    if chrome_bin:
+        chrome_options.binary_location = chrome_bin
+    
     driver = webdriver.Chrome(
-        service=Service(ChromeDriverManager().install()),
+        service=Service(chromedriver_path),
         options=chrome_options,
     )
     
