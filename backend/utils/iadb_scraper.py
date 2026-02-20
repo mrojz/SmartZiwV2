@@ -37,8 +37,27 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 captured_tokens = []
 token_lock = threading.Lock()
 
+# Store the actual proxy port once mitmproxy starts
+active_proxy_port = None
+proxy_port_lock = threading.Lock()
+
 OUTPUT_FILE = "mwc_token.txt"
 JSON_FILE = "mwc_token.json"
+
+
+def find_free_port(range_start=10000, range_end=60000):
+    """Find a random free port by attempting to bind to it."""
+    import socket
+    import random
+    for _ in range(50):
+        port = random.randint(range_start, range_end)
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.bind(('127.0.0.1', port))
+                return port
+        except OSError:
+            continue
+    raise RuntimeError("Could not find a free port after 50 attempts")
 
 
 class MWCTokenInterceptor:
@@ -98,29 +117,42 @@ def save_tokens():
     print(f"[+] Saved {len(captured_tokens)} token(s) to '{OUTPUT_FILE}' and '{JSON_FILE}'")
 
 
-def run_mitmproxy(port=8001):
-    """Run mitmproxy in a separate thread."""
+def run_mitmproxy(port):
+    """Run mitmproxy in a separate thread. Retries on a new random port if binding fails."""
+    global active_proxy_port
     from mitmproxy import options
     from mitmproxy.tools import dump
-    
-    async def start_proxy():
-        opts = options.Options(listen_port=port, ssl_insecure=True)
-        master = dump.DumpMaster(opts)
-        master.addons.add(MWCTokenInterceptor())
-        
-        print(f"[+] mitmproxy started on port {port}")
-        await master.run()
-    
-    # Create new event loop for this thread
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    
-    try:
-        loop.run_until_complete(start_proxy())
-    except Exception as e:
-        print(f"[!] mitmproxy error: {e}")
-    finally:
-        loop.close()
+
+    max_retries = 10
+    current_port = port
+
+    for attempt in range(max_retries):
+        async def start_proxy(p):
+            opts = options.Options(listen_port=p, ssl_insecure=True)
+            master = dump.DumpMaster(opts)
+            master.addons.add(MWCTokenInterceptor())
+            print(f"[+] mitmproxy started on port {p}")
+            with proxy_port_lock:
+                global active_proxy_port
+                active_proxy_port = p
+            await master.run()
+
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+
+        try:
+            loop.run_until_complete(start_proxy(current_port))
+            break  # clean exit
+        except OSError as e:
+            print(f"[!] Port {current_port} in use, retrying... ({e})")
+            current_port = find_free_port()
+        except Exception as e:
+            print(f"[!] mitmproxy error: {e}")
+            break
+        finally:
+            loop.close()
+    else:
+        print(f"[!] Failed to start mitmproxy after {max_retries} attempts")
 
 
 def create_selenium_driver(proxy_port=8001):
@@ -675,8 +707,9 @@ def parse_powerbi_response(response_data):
 
 def run_iadb_scraper():
     """Run the full IADB scraping pipeline and return a list of project dicts."""
+    global active_proxy_port
     TARGET_URL = "https://www.iadb.org/en/how-we-can-work-together/procurement/procurement-projects/procurement-notices"
-    PROXY_PORT = 8001
+    PROXY_PORT = find_free_port()
 
     print("\n" + "=" * 60)
     print("  IADB Procurement Notices Scraper")
@@ -688,10 +721,15 @@ def run_iadb_scraper():
     proxy_thread.start()
     time.sleep(3)
 
+    # Use the actual port mitmproxy bound to (may differ if retry happened)
+    with proxy_port_lock:
+        actual_port = active_proxy_port or PROXY_PORT
+    print(f"[+] Using proxy port: {actual_port}")
+
     driver = None
     try:
         # 2. Create Selenium driver with proxy
-        driver = create_selenium_driver(PROXY_PORT)
+        driver = create_selenium_driver(actual_port)
 
         # 3. Navigate to the page
         print(f"\n[>] Opening {TARGET_URL}")
