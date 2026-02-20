@@ -80,7 +80,7 @@ def _scheduled_sync_job():
     print(f"[scheduler] Starting scheduled sync: {' '.join(cmd)}")
     sync_state.reset()
     thread = threading.Thread(
-        target=_run_scheduled_sync_subprocess, args=(cmd,), daemon=True
+        target=_run_sync_subprocess, args=(cmd, "scheduled"), daemon=True
     )
     thread.start()
 
@@ -211,30 +211,8 @@ def _save_to_excel(projects: list[dict]):
         print(f"[!] Excel save failed: {e}")
 
 
-def _run_sync_subprocess(cmd: list[str]):
-    """Run the scraper subprocess and stream output line by line."""
-    try:
-        proc = subprocess.Popen(
-            cmd,
-            cwd=str(BASE_DIR),
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            bufsize=1,
-        )
-        for line in iter(proc.stdout.readline, ""):
-            stripped = line.rstrip()
-            if stripped:
-                sync_state.add_line(stripped)
-        proc.wait()
-        sync_state.finish(success=proc.returncode == 0)
-    except Exception as e:
-        sync_state.add_line(f"[!] Error: {e}")
-        sync_state.finish(success=False)
-
-
-def _run_scheduled_sync_subprocess(cmd: list[str]):
-    """Run the scraper for a scheduled sync — captures output and saves a log entry."""
+def _run_sync_subprocess(cmd: list[str], trigger: str = "manual"):
+    """Run the scraper subprocess, stream output, and save a log entry."""
     started_at = datetime.now(timezone.utc).isoformat()
     log_lines = []
     success = False
@@ -269,7 +247,7 @@ def _run_scheduled_sync_subprocess(cmd: list[str]):
             "success": success,
             "project_count": project_count,
             "log_lines": log_lines,
-            "trigger": "scheduled",
+            "trigger": trigger,
         })
 
 

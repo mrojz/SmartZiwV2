@@ -1823,6 +1823,11 @@ body {
   flex-shrink: 0;
 }
 
+.schedule-log-trigger {
+  flex-shrink: 0;
+  font-size: 0.72rem;
+}
+
 .schedule-log-date {
   color: var(--text-primary);
   font-weight: 500;

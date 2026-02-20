@@ -351,6 +351,9 @@ export default function SchedulePanel({ open, onClose }) {
                                                     <span className="schedule-log-status">
                                                         {log.success ? '✅' : '❌'}
                                                     </span>
+                                                    <span className="schedule-log-trigger">
+                                                        {log.trigger === 'scheduled' ? '⚙️' : '👤'}
+                                                    </span>
                                                     <span className="schedule-log-date">
                                                         {formatDateTime(log.started_at)}
                                                     </span>
