@@ -11,7 +11,7 @@ import time
 import requests
 from bs4 import BeautifulSoup
 
-from shared_excel import SEARCH_KEYWORDS, format_date
+from shared_excel import SEARCH_KEYWORDS, get_search_keywords, format_date
 
 BASE_URL = "https://ausschreibungen.giz.de"
 SEARCH_URL = f"{BASE_URL}/Satellite/common/project/search.do?method=showExtendedSearch&fromExternal=true"
@@ -140,8 +140,9 @@ def run_giz_scraper() -> list[dict]:
     seen: dict[tuple, dict] = {}
     total_raw = 0
 
-    for i, keyword in enumerate(SEARCH_KEYWORDS, 1):
-        print(f"\n[{i}/{len(SEARCH_KEYWORDS)}] Searching: '{keyword}'")
+    keywords = get_search_keywords()
+    for i, keyword in enumerate(keywords, 1):
+        print(f"\n[{i}/{len(keywords)}] Searching: '{keyword}'")
         projects = _search_keyword(session, keyword)
         print(f"    Found {len(projects)} notices")
         total_raw += len(projects)
@@ -159,7 +160,7 @@ def run_giz_scraper() -> list[dict]:
                 seen[dedup_key] = project
 
         # Be polite to the server
-        if i < len(SEARCH_KEYWORDS):
+        if i < len(keywords):
             time.sleep(2)
 
     all_projects = list(seen.values())

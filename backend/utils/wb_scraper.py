@@ -16,7 +16,7 @@ import random
 from datetime import date
 import requests
 
-from shared_excel import SEARCH_KEYWORDS, format_date, save_to_excel
+from shared_excel import SEARCH_KEYWORDS, get_search_keywords, format_date, save_to_excel
 
 
 API_URL = "https://search.worldbank.org/api/v2/procnotices"
@@ -250,7 +250,8 @@ def run_wb_scraper():
     seen = {}
     total_raw = 0
 
-    for keyword in SEARCH_KEYWORDS:
+    keywords = get_search_keywords()
+    for keyword in keywords:
         print(f"\n[>] Searching: '{keyword}'")
         notices = fetch_notices(keyword)
         print(f"    Found {len(notices)} notices")

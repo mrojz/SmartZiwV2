@@ -1,5 +1,9 @@
 """
 Shared Excel output and keyword configuration for all scrapers.
+
+Keywords and regions are loaded from the MongoDB database on startup.
+If the database is empty, defaults are seeded automatically.
+Fallback: config.json → hardcoded defaults.
 """
 
 import os
@@ -10,7 +14,7 @@ from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.datavalidation import DataValidation
 
 
-# ── Keywords shared by all scrapers ──────────────────────────────────────────
+# ── Default keywords and regions ─────────────────────────────────────────────
 
 _DEFAULT_KEYWORDS = [
     "Cybersecurity",
@@ -38,20 +42,120 @@ _DEFAULT_KEYWORDS = [
     "assistance RSSI",
 ]
 
+_DEFAULT_REGIONS = {
+    "Central Africa": [
+        "Cameroon", "Central African Republic", "Chad",
+        "Congo", "DR Congo", "Equatorial Guinea", "Gabon",
+    ],
+    "East Africa": [
+        "Burundi", "Comoros", "Djibouti", "Eritrea", "Ethiopia",
+        "Kenya", "Madagascar", "Malawi", "Mauritius", "Mozambique",
+        "Rwanda", "Seychelles", "Somalia", "South Sudan", "Tanzania",
+        "Uganda", "Zambia", "Zimbabwe",
+    ],
+    "North Africa": [
+        "Algeria", "Egypt", "Libya", "Mauritania", "Morocco", "Tunisia",
+    ],
+    "West Africa": [
+        "Benin", "Burkina Faso", "Cape Verde", "Côte d'Ivoire", "Gambia",
+        "Ghana", "Guinea", "Guinea-Bissau", "Liberia", "Mali", "Niger",
+        "Nigeria", "Senegal", "Sierra Leone", "Togo",
+    ],
+    "Southern Africa": [
+        "Angola", "Botswana", "Eswatini", "Lesotho",
+        "Namibia", "South Africa",
+    ],
+    "South America": [
+        "Argentina", "Bolivia", "Brazil", "Chile", "Colombia",
+        "Ecuador", "Guyana", "Paraguay", "Peru", "Suriname",
+        "Uruguay", "Venezuela",
+    ],
+}
 
-def _load_keywords():
-    """Load keywords from config.json, fallback to defaults."""
+# Global Tenders region codes (used by gt_scraper)
+GT_REGION_CODES = [
+    "REG0101",  # Central Africa/Middle Africa Region
+    "REG0102",  # East Africa/Eastern Africa Region
+    "REG0103",  # North Africa/Northern Africa Region
+    "REG0105",  # Sub-Saharan Africa Region
+    "REG0106",  # West Africa Region
+    "REG0204",  # South America Region
+    "REG0205",  # Latin America Region
+]
+
+
+# ── Keyword / region loading from database ──────────────────────────────────
+
+def _load_from_db():
+    """Try to load keywords and regions from the database.
+    Seeds defaults if the DB has no keywords and no regions.
+    Returns (keywords, regions) or (None, None) on failure.
+    """
+    try:
+        from database import get_config, save_config
+        cfg = get_config()
+        keywords = cfg.get("keywords", [])
+        regions = cfg.get("regions", {})
+
+        # If DB is completely empty, seed it with defaults
+        if not keywords and not regions:
+            print("[config] No keywords/regions in DB — seeding defaults...")
+            save_config(_DEFAULT_KEYWORDS, _DEFAULT_REGIONS)
+            return _DEFAULT_KEYWORDS, _DEFAULT_REGIONS
+
+        # If only one is missing, fill from defaults and persist
+        changed = False
+        if not keywords:
+            keywords = list(_DEFAULT_KEYWORDS)
+            changed = True
+        if not regions:
+            regions = dict(_DEFAULT_REGIONS)
+            changed = True
+        if changed:
+            save_config(keywords, regions)
+
+        return keywords, regions
+    except Exception as e:
+        print(f"[config] Could not load from DB: {e}")
+        return None, None
+
+
+def _load_from_json():
+    """Fallback: load keywords from config.json."""
     import json as _json
     config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.json")
     try:
         with open(config_path, "r", encoding="utf-8") as f:
             cfg = _json.load(f)
-        kw = cfg.get("keywords", [])
-        return kw if kw else _DEFAULT_KEYWORDS
+        return cfg.get("keywords", [])
     except (FileNotFoundError, _json.JSONDecodeError):
-        return _DEFAULT_KEYWORDS
+        return []
 
 
+def _load_keywords():
+    """Load keywords: DB → config.json → hardcoded defaults."""
+    db_kw, _ = _load_from_db()
+    if db_kw:
+        return db_kw
+    json_kw = _load_from_json()
+    if json_kw:
+        return json_kw
+    return list(_DEFAULT_KEYWORDS)
+
+
+def get_search_keywords() -> list[str]:
+    """Always return fresh keywords from DB (or defaults)."""
+    db_kw, _ = _load_from_db()
+    return db_kw or list(_DEFAULT_KEYWORDS)
+
+
+def get_search_regions() -> dict:
+    """Always return fresh regions from DB (or defaults)."""
+    _, db_regions = _load_from_db()
+    return db_regions or dict(_DEFAULT_REGIONS)
+
+
+# Module-level constant for backward-compatible imports
 SEARCH_KEYWORDS = _load_keywords()
 
 
