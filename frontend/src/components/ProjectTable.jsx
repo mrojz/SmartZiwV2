@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 
-export default function ProjectTable({ projects, allProjects, onDecisionChange, regions }) {
+export default function ProjectTable({ projects, allProjects, onDecisionChange, onDelete, regions }) {
     const [sortCol, setSortCol] = useState(null);
     const [sortDir, setSortDir] = useState('asc'); // 'asc' or 'desc'
 
@@ -37,6 +37,7 @@ export default function ProjectTable({ projects, allProjects, onDecisionChange, 
         { key: 'matched_keywords', label: 'Keywords', type: 'string' },
         { key: '_decision', label: 'Decision', type: 'none' },
         { key: '_links', label: 'Links', type: 'none' },
+        { key: '_actions', label: '', type: 'none' },
     ];
 
     const parseDate = (str) => {
@@ -171,6 +172,18 @@ export default function ProjectTable({ projects, allProjects, onDecisionChange, 
                                             <a href={p.document_url} target="_blank" rel="noopener noreferrer" title="Document">📄</a>
                                         )}
                                     </div>
+                                </td>
+                                <td>
+                                    <button
+                                        className="decision-btn-sm delete"
+                                        onClick={() => {
+                                            const name = p.project_name || p.project_description || 'this project';
+                                            if (window.confirm(`Delete "${name.slice(0, 60)}"?`)) {
+                                                onDelete?.(realIndex);
+                                            }
+                                        }}
+                                        title="Delete"
+                                    >🗑</button>
                                 </td>
                             </tr>
                         );

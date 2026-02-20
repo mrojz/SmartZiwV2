@@ -19,6 +19,7 @@ services:
       - ./backend/.env
     environment:
       - MONGO_URI=mongodb://admin:${MONGO_PASSWORD:-changeme}@mongo:27017
+      - SYNC_SECRET=${SYNC_SECRET:-procurement-sync-secret-2024}
     depends_on:
       - mongo
 

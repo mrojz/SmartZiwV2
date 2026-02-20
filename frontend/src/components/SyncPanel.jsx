@@ -28,7 +28,7 @@ export default function SyncPanel({ open, onClose, onSyncDone, onSyncStart }) {
 
         try {
             // 1. Start the sync
-            const startRes = await fetch('/api/sync/start', {
+            const startRes = await fetch('/api/sync/manual', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
