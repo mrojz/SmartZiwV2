@@ -75,9 +75,18 @@ def _init_session() -> requests.Session:
         print("    [!] No JSESSIONID from homepage, trying newSession directly...", flush=True)
 
     # Step 2: Hit session endpoint to validate/activate the session
+    # Clear the old JSESSIONID first — newSession.do will set a fresh one
+    # and having two JSESSIONID cookies causes a conflict
+    session_param = jsessionid if jsessionid else ""
+    if jsessionid:
+        session.cookies.clear(domain=".dgmarket.com", path="/", name="JSESSIONID")
+        # Also try without domain restriction (some servers set it differently)
+        try:
+            del session.cookies["JSESSIONID"]
+        except KeyError:
+            pass
+
     try:
-        # Use the JSESSIONID we got from the homepage as the dgsessionid
-        session_param = jsessionid if jsessionid else ""
         resp = session.get(
             SESSION_URL,
             params={"dgsessionid": session_param},
