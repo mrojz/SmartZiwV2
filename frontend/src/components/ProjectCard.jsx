@@ -6,7 +6,7 @@ function sourceClass(source) {
     return '';
 }
 
-export default function ProjectCard({ project, index, onDecisionChange }) {
+export default function ProjectCard({ project, index, onDecisionChange, onDelete }) {
     const {
         project_id,
         project_name,
@@ -105,6 +105,17 @@ export default function ProjectCard({ project, index, onDecisionChange }) {
                         title="Mark as No Go"
                     >
                         ✗ No Go
+                    </button>
+                    <button
+                        className="decision-btn delete"
+                        onClick={() => {
+                            if (window.confirm(`Delete "${displayName.slice(0, 60)}"?`)) {
+                                onDelete?.(index);
+                            }
+                        }}
+                        title="Delete project"
+                    >
+                        🗑
                     </button>
                 </div>
             </div>

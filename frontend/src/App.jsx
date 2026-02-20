@@ -4,6 +4,7 @@ import ProjectCard from './components/ProjectCard';
 import ProjectTable from './components/ProjectTable';
 import SyncPanel from './components/SyncPanel';
 import ConfigPanel from './components/ConfigPanel';
+import SchedulePanel from './components/SchedulePanel';
 
 const API = '/api';
 
@@ -12,6 +13,7 @@ export default function App() {
     const [loading, setLoading] = useState(true);
     const [syncOpen, setSyncOpen] = useState(false);
     const [configOpen, setConfigOpen] = useState(false);
+    const [scheduleOpen, setScheduleOpen] = useState(false);
     const [viewMode, setViewMode] = useState('grid');
     const [regions, setRegions] = useState({});
     const [newProjectIds, setNewProjectIds] = useState(new Set());
@@ -131,6 +133,23 @@ export default function App() {
             console.error('Failed to update decision:', err);
             // Revert on error
             loadProjects();
+        }
+    };
+
+    // Delete project
+    const handleDelete = async (index) => {
+        try {
+            const res = await fetch(`${API}/projects/${index}`, { method: 'DELETE' });
+            if (res.ok) {
+                setProjects((prev) => prev.filter((_, i) => i !== index));
+                setToast({ type: 'success', message: '🗑️ Project deleted' });
+            } else {
+                const err = await res.json();
+                setToast({ type: 'error', message: err.detail || 'Failed to delete' });
+            }
+        } catch (err) {
+            console.error('Failed to delete project:', err);
+            setToast({ type: 'error', message: 'Network error: ' + err.message });
         }
     };
 
@@ -308,6 +327,9 @@ export default function App() {
                             <button className="sync-btn" onClick={() => setConfigOpen(true)}>
                                 ⚙️ Settings
                             </button>
+                            <button className="sync-btn" onClick={() => setScheduleOpen(true)}>
+                                📅 Schedule
+                            </button>
                             <button className="sync-btn" onClick={() => setSyncOpen(true)}>
                                 🔄 Sync
                             </button>
@@ -384,6 +406,7 @@ export default function App() {
                                 project={p}
                                 index={projects.indexOf(p)}
                                 onDecisionChange={handleDecisionChange}
+                                onDelete={handleDelete}
                             />
                         ))}
                     </div>
@@ -392,6 +415,7 @@ export default function App() {
                         projects={filtered}
                         allProjects={projects}
                         onDecisionChange={handleDecisionChange}
+                        onDelete={handleDelete}
                         regions={regions}
                     />
                 )}
@@ -416,6 +440,12 @@ export default function App() {
                         .then((cfg) => setRegions(cfg.regions || {}))
                         .catch(() => { });
                 }}
+            />
+
+            {/* Schedule Panel */}
+            <SchedulePanel
+                open={scheduleOpen}
+                onClose={() => setScheduleOpen(false)}
             />
 
             {/* Toast notification */}

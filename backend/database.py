@@ -111,6 +111,20 @@ def update_project_by_index(index: int, decision: str) -> dict | None:
     return _strip_id(doc)
 
 
+def delete_project_by_index(index: int) -> dict | None:
+    """
+    Delete a project by its position index.
+    Returns the deleted project dict or None if not found.
+    """
+    db = get_db()
+    projects = list(db.projects.find())
+    if index < 0 or index >= len(projects):
+        return None
+    doc = projects[index]
+    db.projects.delete_one({"_id": doc["_id"]})
+    return _strip_id(doc)
+
+
 # ── Config ───────────────────────────────────────────────────────────────────
 
 
@@ -129,6 +143,46 @@ def save_config(keywords: list[str], regions: dict[str, list[str]]):
     db.config.update_one(
         {"_type": "app_config"},
         {"$set": {"keywords": keywords, "regions": regions}},
+        upsert=True,
+    )
+
+
+# ── Schedule ────────────────────────────────────────────────────────────────
+
+
+def get_schedule() -> dict:
+    """Load the sync schedule config."""
+    db = get_db()
+    doc = db.config.find_one({"_type": "sync_schedule"})
+    if doc:
+        doc.pop("_id", None)
+        doc.pop("_type", None)
+        return doc
+    return {
+        "enabled": False,
+        "frequency": "daily",
+        "day_of_week": "mon",
+        "hour": 6,
+        "minute": 0,
+        "sources": {
+            "iadb": True,
+            "worldbank": True,
+            "globaltenders": True,
+            "giz": True,
+            "devaid": True,
+            "dgmarket": True,
+        },
+        "no_ai": False,
+        "include_expired": False,
+    }
+
+
+def save_schedule(schedule: dict):
+    """Save sync schedule config (upsert)."""
+    db = get_db()
+    db.config.update_one(
+        {"_type": "sync_schedule"},
+        {"$set": schedule},
         upsert=True,
     )
 

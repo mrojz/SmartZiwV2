@@ -3,37 +3,127 @@ FastAPI backend for Procurement Watch.
 
 Endpoints:
   GET    /api/projects                  → list all projects
+  DELETE /api/projects/{index}          → delete a project
   PATCH  /api/projects/{index}/decision → update a project's Go/No Go decision
-  POST   /api/sync/start               → start scraper subprocess
+  POST   /api/sync/start               → internal-only: start scraper (requires secret)
+  POST   /api/sync/manual              → user-facing: start scraper from UI
   GET    /api/sync/stream              → SSE stream of scraper progress
   GET    /api/sync/status              → check sync state
   GET    /api/config                   → get keywords + regions config
   PUT    /api/config                   → update config
+  GET    /api/schedule                 → get sync schedule config
+  PUT    /api/schedule                 → update sync schedule config
   GET    /api/download                 → download projects.xlsx
   GET    /api/notifications/stream     → SSE: real-time new-project alerts
 """
 
 import asyncio
 import json
+import os
 import subprocess
 import sys
 import threading
 import time
+import uuid
+from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.triggers.cron import CronTrigger
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 
 from database import get_all_projects, update_project_by_index, upsert_projects
+from database import delete_project_by_index
 from database import get_config as db_get_config
 from database import save_config as db_save_config
+from database import get_schedule as db_get_schedule
+from database import save_schedule as db_save_schedule
 
 BASE_DIR = Path(__file__).resolve().parent
 PROJECTS_XLSX = BASE_DIR / "projects.xlsx"
 
-app = FastAPI(title="Procurement Watch API")
+# Internal sync secret — set via env var or auto-generated
+SYNC_SECRET = os.getenv("SYNC_SECRET", str(uuid.uuid4()))
+
+# ── Scheduler ────────────────────────────────────────────────────────────────
+
+scheduler = BackgroundScheduler()
+SCHEDULER_JOB_ID = "scheduled_sync"
+
+
+def _scheduled_sync_job():
+    """Called by APScheduler — runs sync with the saved source config."""
+    if sync_state.running:
+        print("[scheduler] Sync already running, skipping scheduled run.")
+        return
+
+    schedule = db_get_schedule()
+    sources = schedule.get("sources", {})
+
+    cmd = [sys.executable, "-u", str(BASE_DIR / "main.py")]
+    for src_name, enabled in sources.items():
+        if enabled:
+            flag = f"--{src_name.replace('_', '-')}"
+            cmd.append(flag)
+
+    if schedule.get("no_ai"):
+        cmd.append("--no-ai")
+    if schedule.get("include_expired"):
+        cmd.append("--include-expired")
+
+    print(f"[scheduler] Starting scheduled sync: {' '.join(cmd)}")
+    sync_state.reset()
+    thread = threading.Thread(target=_run_sync_subprocess, args=(cmd,), daemon=True)
+    thread.start()
+
+
+def _configure_scheduler():
+    """Load schedule from DB and configure the APScheduler job."""
+    schedule = db_get_schedule()
+
+    # Remove existing job if any
+    if scheduler.get_job(SCHEDULER_JOB_ID):
+        scheduler.remove_job(SCHEDULER_JOB_ID)
+
+    if not schedule.get("enabled"):
+        print("[scheduler] Scheduled sync is disabled.")
+        return
+
+    hour = schedule.get("hour", 6)
+    minute = schedule.get("minute", 0)
+    frequency = schedule.get("frequency", "daily")
+
+    if frequency == "weekly":
+        day_of_week = schedule.get("day_of_week", "mon")
+        trigger = CronTrigger(day_of_week=day_of_week, hour=hour, minute=minute)
+        print(f"[scheduler] Configured weekly sync: {day_of_week} at {hour:02d}:{minute:02d}")
+    else:
+        trigger = CronTrigger(hour=hour, minute=minute)
+        print(f"[scheduler] Configured daily sync at {hour:02d}:{minute:02d}")
+
+    scheduler.add_job(
+        _scheduled_sync_job,
+        trigger=trigger,
+        id=SCHEDULER_JOB_ID,
+        replace_existing=True,
+    )
+
+
+# ── App lifespan ─────────────────────────────────────────────────────────────
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    _configure_scheduler()
+    scheduler.start()
+    print(f"[startup] Scheduler started. Sync secret: {SYNC_SECRET[:8]}...")
+    yield
+    scheduler.shutdown(wait=False)
+
+
+app = FastAPI(title="Procurement Watch API", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -138,11 +228,51 @@ def _run_sync_subprocess(cmd: list[str]):
         sync_state.finish(success=False)
 
 
+def _start_sync_with_flags(req_dict: dict):
+    """Build the sync command from a dict of flags and start it."""
+    if sync_state.running:
+        return False
+
+    cmd = [sys.executable, "-u", str(BASE_DIR / "main.py")]
+
+    flag_map = {
+        "iadb": "--iadb",
+        "worldbank": "--worldbank",
+        "globaltenders": "--globaltenders",
+        "giz": "--giz",
+        "devaid": "--devaid",
+        "dgmarket": "--dgmarket",
+        "no_ai": "--no-ai",
+        "include_expired": "--include-expired",
+    }
+
+    for key, flag in flag_map.items():
+        if req_dict.get(key):
+            cmd.append(flag)
+
+    sync_state.reset()
+    thread = threading.Thread(target=_run_sync_subprocess, args=(cmd,), daemon=True)
+    thread.start()
+    return True
+
+
 # ── GET /api/projects ────────────────────────────────────────────────────────
 
 @app.get("/api/projects")
 def list_projects():
     return get_all_projects()
+
+
+# ── DELETE /api/projects/{index} ─────────────────────────────────────────────
+
+@app.delete("/api/projects/{index}")
+def delete_project(index: int):
+    result = delete_project_by_index(index)
+    if result is None:
+        raise HTTPException(status_code=404, detail="Project index out of range")
+    # Update Excel export
+    _save_to_excel(get_all_projects())
+    return {"deleted": True, "project": result}
 
 
 # ── Config endpoints ─────────────────────────────────────────────────────────
@@ -163,7 +293,7 @@ def update_config(body: ConfigUpdate):
     return {"status": "saved", "keywords": len(body.keywords), "regions": len(body.regions)}
 
 
-# ── POST /api/sync/start ────────────────────────────────────────────────────
+# ── POST /api/sync/start (INTERNAL ONLY — requires secret) ─────────────────
 
 class SyncRequest(BaseModel):
     iadb: bool = False
@@ -177,33 +307,25 @@ class SyncRequest(BaseModel):
 
 
 @app.post("/api/sync/start")
-def start_sync(req: SyncRequest):
-    """Start a background sync and return immediately."""
-    if sync_state.running:
+def start_sync(req: SyncRequest, request: Request):
+    """Internal-only sync endpoint — requires X-Sync-Secret header."""
+    secret = request.headers.get("X-Sync-Secret", "")
+    if secret != SYNC_SECRET:
+        raise HTTPException(status_code=403, detail="Forbidden: invalid sync secret")
+
+    if not _start_sync_with_flags(req.model_dump()):
         raise HTTPException(status_code=409, detail="Sync already running")
 
-    cmd = [sys.executable, "-u", str(BASE_DIR / "main.py")]
+    return {"status": "started"}
 
-    if req.iadb:
-        cmd.append("--iadb")
-    if req.worldbank:
-        cmd.append("--worldbank")
-    if req.globaltenders:
-        cmd.append("--globaltenders")
-    if req.giz:
-        cmd.append("--giz")
-    if req.devaid:
-        cmd.append("--devaid")
-    if req.dgmarket:
-        cmd.append("--dgmarket")
-    if req.no_ai:
-        cmd.append("--no-ai")
-    if req.include_expired:
-        cmd.append("--include-expired")
 
-    sync_state.reset()
-    thread = threading.Thread(target=_run_sync_subprocess, args=(cmd,), daemon=True)
-    thread.start()
+# ── POST /api/sync/manual (USER-FACING) ─────────────────────────────────────
+
+@app.post("/api/sync/manual")
+def start_sync_manual(req: SyncRequest):
+    """User-facing sync endpoint — no secret required."""
+    if not _start_sync_with_flags(req.model_dump()):
+        raise HTTPException(status_code=409, detail="Sync already running")
 
     return {"status": "started"}
 
@@ -253,6 +375,43 @@ def sync_status():
             "success": sync_state.success,
             "line_count": len(sync_state.lines),
         }
+
+
+# ── Schedule endpoints ──────────────────────────────────────────────────────
+
+class ScheduleUpdate(BaseModel):
+    enabled: bool = False
+    frequency: str = "daily"      # "daily" or "weekly"
+    day_of_week: str = "mon"      # mon, tue, wed, thu, fri, sat, sun
+    hour: int = 6
+    minute: int = 0
+    sources: dict = {}
+    no_ai: bool = False
+    include_expired: bool = False
+
+
+@app.get("/api/schedule")
+def get_schedule():
+    schedule = db_get_schedule()
+    # Include next run time if job is active
+    job = scheduler.get_job(SCHEDULER_JOB_ID)
+    if job and job.next_run_time:
+        schedule["next_run"] = job.next_run_time.isoformat()
+    else:
+        schedule["next_run"] = None
+    return schedule
+
+
+@app.put("/api/schedule")
+def update_schedule(body: ScheduleUpdate):
+    schedule_data = body.model_dump()
+    db_save_schedule(schedule_data)
+    _configure_scheduler()
+
+    job = scheduler.get_job(SCHEDULER_JOB_ID)
+    next_run = job.next_run_time.isoformat() if job and job.next_run_time else None
+
+    return {"status": "saved", "next_run": next_run}
 
 
 # ── PATCH /api/projects/{index}/decision ─────────────────────────────────────

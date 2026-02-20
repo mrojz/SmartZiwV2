@@ -1641,3 +1641,109 @@ body {
 .config-status.error {
   color: var(--accent-rose);
 }
+
+/* ── Delete Button (Card) ─────────────────────────────────────────── */
+.decision-btn.delete {
+  font-size: 0.85rem;
+  padding: 5px 8px;
+}
+
+.decision-btn.delete:hover {
+  background: rgba(244, 63, 94, 0.15);
+  border-color: rgba(244, 63, 94, 0.4);
+  color: var(--accent-rose);
+}
+
+/* ── Delete Button (Table) ────────────────────────────────────────── */
+.decision-btn-sm.delete {
+  font-size: 0.8rem;
+}
+
+.decision-btn-sm.delete:hover {
+  background: rgba(244, 63, 94, 0.15);
+  border-color: rgba(244, 63, 94, 0.4);
+  color: var(--accent-rose);
+}
+
+/* ── Schedule Panel ───────────────────────────────────────────────── */
+.schedule-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 3rem 0;
+  gap: 1rem;
+  color: var(--text-muted);
+}
+
+.schedule-enable {
+  font-size: 0.95rem !important;
+}
+
+.schedule-next-run {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 14px;
+  border-radius: var(--radius-md);
+  background: rgba(59, 130, 246, 0.08);
+  border: 1px solid rgba(59, 130, 246, 0.15);
+  color: var(--accent-blue-light, #93c5fd);
+  font-size: 0.82rem;
+  margin-bottom: 8px;
+}
+
+.schedule-frequency {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.schedule-select {
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-glass);
+  background: var(--bg-glass);
+  color: var(--text-primary);
+  font-size: 0.85rem;
+  font-family: inherit;
+  cursor: pointer;
+  min-width: 120px;
+}
+
+.schedule-select:hover,
+.schedule-select:focus {
+  border-color: var(--border-hover);
+  outline: none;
+}
+
+.schedule-at {
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  font-weight: 500;
+}
+
+.schedule-time {
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-glass);
+  background: var(--bg-glass);
+  color: var(--text-primary);
+  font-size: 0.85rem;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.schedule-time:hover,
+.schedule-time:focus {
+  border-color: var(--border-hover);
+  outline: none;
+}
+
+/* Toast error variant */
+.toast-error {
+  background: rgba(244, 63, 94, 0.15);
+  border: 1px solid rgba(244, 63, 94, 0.35);
+  color: #fda4af;
+}
