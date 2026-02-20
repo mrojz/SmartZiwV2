@@ -9,10 +9,8 @@ Requires a session initialization flow:
 2. GET /tenders/list.do?...keywords=...&status=live  → returns HTML with listings
 """
 
-import os
 import re
 import requests
-from urllib.parse import urlencode
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 from shared_excel import SEARCH_KEYWORDS, format_date
@@ -36,9 +34,6 @@ HEADERS = {
     "Accept-Encoding": "gzip, deflate, br",
 }
 
-# Session ID for dgmarket (loaded from .env)
-DG_SESSION_ID = os.environ.get("DGMARKET_SESSION_ID", "")
-
 # Fixed search params (Info & Communications in Africa, live tenders only)
 SEARCH_PARAMS = {
     "sub": "info-communications-in-Africa-10",
@@ -54,24 +49,47 @@ SEARCH_PARAMS = {
 
 
 def _init_session() -> requests.Session:
-    """Initialize a DGMarket session with required cookies."""
+    """Initialize a fresh DGMarket session dynamically.
+
+    Flow:
+      1. Visit the homepage to get a JSESSIONID cookie from the server.
+      2. Hit the newSession.do endpoint using that JSESSIONID so the server
+         associates our session with a valid user context.
+    """
     session = requests.Session()
     session.headers.update(HEADERS)
+    session.max_redirects = 10  # Safety: prevent infinite redirect loops
 
-    # Hit the session endpoint to get JSESSIONID cookie
     print("    [>] Initializing DGMarket session...", flush=True)
-    resp = session.get(
-        SESSION_URL,
-        params={"dgsessionid": DG_SESSION_ID},
-        timeout=30,
-    )
-    resp.raise_for_status()
 
-    # Ensure digi_session_id cookie is set (sometimes needs to be added manually)
-    session.cookies.set("digi_session_id", DG_SESSION_ID, domain=".dgmarket.com")
-    session.cookies.set("user_id", "5", domain=".dgmarket.com")
+    # Step 1: Visit homepage to get fresh JSESSIONID
+    try:
+        home_resp = session.get(BASE_HOST, timeout=30)
+        home_resp.raise_for_status()
+    except requests.RequestException as e:
+        print(f"    [!] Failed to load DGMarket homepage: {e}", flush=True)
+        raise
 
-    print(f"    [+] Session ready (JSESSIONID={session.cookies.get('JSESSIONID', '?')[:12]}...)", flush=True)
+    jsessionid = session.cookies.get("JSESSIONID", "")
+    if not jsessionid:
+        print("    [!] No JSESSIONID from homepage, trying newSession directly...", flush=True)
+
+    # Step 2: Hit session endpoint to validate/activate the session
+    try:
+        # Use the JSESSIONID we got from the homepage as the dgsessionid
+        session_param = jsessionid if jsessionid else ""
+        resp = session.get(
+            SESSION_URL,
+            params={"dgsessionid": session_param},
+            timeout=30,
+        )
+        resp.raise_for_status()
+    except requests.RequestException as e:
+        print(f"    [!] Session init request failed: {e}", flush=True)
+        raise
+
+    final_jsessionid = session.cookies.get("JSESSIONID", "?")
+    print(f"    [+] Session ready (JSESSIONID={final_jsessionid[:12]}...)", flush=True)
     return session
 
 
@@ -195,8 +213,11 @@ def fetch_keyword(session: requests.Session, keyword: str) -> list[dict]:
     params["keywords"] = keyword
 
     try:
-        resp = session.get(SEARCH_URL, params=params, timeout=30)
+        resp = session.get(SEARCH_URL, params=params, timeout=30, allow_redirects=True)
         resp.raise_for_status()
+    except requests.exceptions.TooManyRedirects:
+        print(f"    [!] Too many redirects — session may have expired, retrying init...", flush=True)
+        return []
     except requests.RequestException as e:
         print(f"    [!] Request error: {e}", flush=True)
         return []

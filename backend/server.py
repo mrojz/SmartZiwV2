@@ -26,6 +26,7 @@ import threading
 import time
 import uuid
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 from pathlib import Path
 
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -41,6 +42,7 @@ from database import get_config as db_get_config
 from database import save_config as db_save_config
 from database import get_schedule as db_get_schedule
 from database import save_schedule as db_save_schedule
+from database import save_sync_log, get_sync_logs
 
 BASE_DIR = Path(__file__).resolve().parent
 PROJECTS_XLSX = BASE_DIR / "projects.xlsx"
@@ -55,7 +57,8 @@ SCHEDULER_JOB_ID = "scheduled_sync"
 
 
 def _scheduled_sync_job():
-    """Called by APScheduler — runs sync with the saved source config."""
+    """Called by APScheduler — runs sync with the saved source config.
+    Captures output and saves it to the sync_logs collection."""
     if sync_state.running:
         print("[scheduler] Sync already running, skipping scheduled run.")
         return
@@ -76,7 +79,9 @@ def _scheduled_sync_job():
 
     print(f"[scheduler] Starting scheduled sync: {' '.join(cmd)}")
     sync_state.reset()
-    thread = threading.Thread(target=_run_sync_subprocess, args=(cmd,), daemon=True)
+    thread = threading.Thread(
+        target=_run_scheduled_sync_subprocess, args=(cmd,), daemon=True
+    )
     thread.start()
 
 
@@ -226,6 +231,46 @@ def _run_sync_subprocess(cmd: list[str]):
     except Exception as e:
         sync_state.add_line(f"[!] Error: {e}")
         sync_state.finish(success=False)
+
+
+def _run_scheduled_sync_subprocess(cmd: list[str]):
+    """Run the scraper for a scheduled sync — captures output and saves a log entry."""
+    started_at = datetime.now(timezone.utc).isoformat()
+    log_lines = []
+    success = False
+    try:
+        proc = subprocess.Popen(
+            cmd,
+            cwd=str(BASE_DIR),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1,
+        )
+        for line in iter(proc.stdout.readline, ""):
+            stripped = line.rstrip()
+            if stripped:
+                sync_state.add_line(stripped)
+                log_lines.append(stripped)
+        proc.wait()
+        success = proc.returncode == 0
+        sync_state.finish(success=success)
+    except Exception as e:
+        msg = f"[!] Error: {e}"
+        sync_state.add_line(msg)
+        log_lines.append(msg)
+        sync_state.finish(success=False)
+    finally:
+        finished_at = datetime.now(timezone.utc).isoformat()
+        project_count = len(get_all_projects())
+        save_sync_log({
+            "started_at": started_at,
+            "finished_at": finished_at,
+            "success": success,
+            "project_count": project_count,
+            "log_lines": log_lines,
+            "trigger": "scheduled",
+        })
 
 
 def _start_sync_with_flags(req_dict: dict):
@@ -412,6 +457,18 @@ def update_schedule(body: ScheduleUpdate):
     next_run = job.next_run_time.isoformat() if job and job.next_run_time else None
 
     return {"status": "saved", "next_run": next_run}
+
+
+@app.get("/api/schedule/logs")
+def schedule_logs():
+    """Return the most recent scheduled sync run logs."""
+    return get_sync_logs(limit=20)
+
+
+@app.get("/api/server-time")
+def server_time():
+    """Return the current server time in ISO format."""
+    return {"server_time": datetime.now(timezone.utc).isoformat()}
 
 
 # ── PATCH /api/projects/{index}/decision ─────────────────────────────────────
