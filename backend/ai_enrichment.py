@@ -1,22 +1,22 @@
 """
 AI Enrichment Pipeline — runs AFTER scraping + AI verification.
 
-Three stages:
-1. Source Detection  — DeepSeek identifies the original funding source
-2. Document Scraping — detail pages visited, docs downloaded
-3. Document Analysis — PDFs/Word docs summarized by DeepSeek
+Two DeepSeek requests per project:
+1. Research  — AI finds original source + document URLs (Google dorking, known portals)
+2. Analysis  — AI analyzes downloaded document text
 
-Only processes new AI-verified projects. Threaded for speed.
+Only processes new AI-verified projects.
 """
 
 import json
 import os
+import re
 import time
 import random
-import threading
+import hashlib
 from pathlib import Path
-from concurrent.futures import ThreadPoolExecutor, as_completed
 
+import requests as req
 from dotenv import load_dotenv
 from openai import OpenAI
 
@@ -29,181 +29,321 @@ DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY", "")
 DEEPSEEK_BASE_URL = os.environ.get("DEEPSEEK_BASE_URL", "https://api.deepseek.com")
 DEEPSEEK_MODEL = "deepseek-chat"
 
-BATCH_SIZE = 5
-MAX_WORKERS = 4
-MAX_TEXT_CHARS = 8000      # Max chars of document text sent to AI
+MAX_TEXT_CHARS = 15000     # Max chars of document text sent to AI
 MAX_RETRIES = 3
+MAX_DOCS_PER_PROJECT = 5
+MAX_FILE_SIZE_MB = 20
+DOWNLOAD_DIR = Path(__file__).resolve().parent / "downloads"
+
+REQUEST_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36"
+    ),
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+}
+
+DOC_EXTENSIONS = {".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx"}
 
 
-# ── 1. SOURCE DETECTION ─────────────────────────────────────────────────────
-
-SOURCE_PROMPT = """You are a procurement intelligence analyst. You analyze tender/project notices scraped from aggregator websites.
-
-Your task: identify the ORIGINAL funding source or donor organization for each project. Aggregator sites (like DGMarket, Global Tenders, DevelopmentAid) just list tenders — the actual source is the funding organization.
-
-Common sources include:
-- World Bank, African Development Bank (AfDB), Asian Development Bank (ADB)
-- European Union (EU), EuropeAid, European Commission
-- UNDP, UNICEF, UN agencies
-- USAID, GIZ, JICA, AFD, DFID/FCDO, SIDA
-- National governments, ministries
-- If the source IS the original (e.g., "World Bank" project from World Bank scraper), return the same source.
-- If you cannot determine the source, return "Unknown"
-
-You will receive a numbered list of projects with their metadata.
-Respond ONLY with a JSON array:
-[{"id": 1, "source": "African Development Bank"}, {"id": 2, "source": "EU"}, ...]
-
-No explanation, just the JSON array."""
+# ── Helpers ──────────────────────────────────────────────────────────────────
 
 
-def _build_source_prompt(projects_batch, start_idx):
-    """Build a numbered list for source detection."""
-    lines = []
-    for i, p in enumerate(projects_batch):
-        idx = start_idx + i + 1
-        title = p.get("project_description", "") or p.get("project_name", "")
-        name = p.get("project_name", "")
-        sponsor = p.get("project_sponsor", "")
-        source = p.get("source", "")
-        donor = p.get("donor", "")
-        lines.append(
-            f"{idx}. [Aggregator: {source}] [Country: {sponsor}] "
-            f"[Donor/Authority: {donor}] Title: {title} | Project: {name}"
-        )
-    return "\n".join(lines)
-
-
-def _detect_source_batch(client, projects_batch, start_idx):
-    """Send a batch to DeepSeek for source detection. Returns list of source strings."""
-    prompt = _build_source_prompt(projects_batch, start_idx)
-    batch_size = len(projects_batch)
-
+def _deepseek_request(client, system_prompt: str, user_prompt: str,
+                      max_tokens: int = 4000, temperature: float = 0.0) -> str | None:
+    """Send a request to DeepSeek and return the raw text content."""
     for attempt in range(MAX_RETRIES):
         try:
-            time.sleep(random.uniform(0.1, 0.5))
-
+            time.sleep(random.uniform(0.2, 0.8))
             response = client.chat.completions.create(
                 model=DEEPSEEK_MODEL,
                 messages=[
-                    {"role": "system", "content": SOURCE_PROMPT},
-                    {"role": "user", "content": prompt},
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt},
                 ],
-                temperature=0.0,
-                max_tokens=2000,
+                temperature=temperature,
+                max_tokens=max_tokens,
             )
+            return response.choices[0].message.content.strip()
 
-            content = response.choices[0].message.content.strip()
-
-            # Handle markdown code blocks
-            if content.startswith("```"):
-                content = content.split("```")[1]
-                if content.startswith("json"):
-                    content = content[4:]
-                content = content.strip()
-
-            results = json.loads(content)
-            lookup = {}
-            for item in results:
-                lookup[item["id"]] = item.get("source", "Unknown")
-
-            sources = []
-            for i in range(batch_size):
-                idx = start_idx + i + 1
-                sources.append(lookup.get(idx, "Unknown"))
-            return sources
-
-        except json.JSONDecodeError as e:
-            print(f"    [!] Source detection JSON error (attempt {attempt + 1}): {e}")
         except Exception as e:
-            print(f"    [!] Source detection API error (attempt {attempt + 1}): {e}")
+            print(f"      [!] DeepSeek API error (attempt {attempt + 1}): {e}")
+            if attempt < MAX_RETRIES - 1:
+                wait = (2 ** attempt) + random.uniform(1, 3)
+                time.sleep(wait)
 
-        if attempt < MAX_RETRIES - 1:
-            wait = (2 ** attempt) + random.uniform(1, 3)
-            time.sleep(wait)
-
-    return ["Unknown"] * batch_size
+    return None
 
 
-def detect_sources(projects):
-    """Detect original funding sources for a list of projects using DeepSeek AI.
+def _parse_json_response(text: str) -> dict | list | None:
+    """Parse JSON from DeepSeek response, handling markdown code blocks."""
+    if not text:
+        return None
 
-    Modifies projects in-place, adding 'original_source' field.
+    content = text.strip()
+
+    # Handle markdown code blocks
+    if content.startswith("```"):
+        content = content.split("```")[1]
+        if content.startswith("json"):
+            content = content[4:]
+        content = content.strip()
+
+    try:
+        return json.loads(content)
+    except json.JSONDecodeError:
+        # Try to find JSON object/array in the response
+        for pattern in [r'\{[\s\S]*\}', r'\[[\s\S]*\]']:
+            match = re.search(pattern, content)
+            if match:
+                try:
+                    return json.loads(match.group())
+                except json.JSONDecodeError:
+                    continue
+        return None
+
+
+def _safe_filename(name: str, max_len: int = 80) -> str:
+    """Sanitize a string for use as a filename."""
+    name = re.sub(r'[<>:"/\\|?*]', "_", name)
+    name = re.sub(r"\s+", "_", name).strip("_")
+    return name[:max_len] if name else "document"
+
+
+def _download_file(url: str, dest_dir: Path, session: req.Session) -> dict | None:
+    """Download a file from a URL. Returns metadata dict or None on failure."""
+    try:
+        resp = session.get(url, headers=REQUEST_HEADERS, timeout=30, stream=True,
+                           allow_redirects=True)
+        resp.raise_for_status()
+
+        # Determine filename
+        cd = resp.headers.get("Content-Disposition", "")
+        if "filename=" in cd:
+            filename = cd.split("filename=")[-1].strip('"').strip("'")
+        else:
+            filename = os.path.basename(url.split("?")[0]) or "document"
+
+        filename = _safe_filename(filename)
+
+        # Ensure it has an extension
+        if not any(filename.lower().endswith(ext) for ext in DOC_EXTENSIONS):
+            ct = resp.headers.get("Content-Type", "").lower()
+            if "pdf" in ct:
+                filename += ".pdf"
+            elif "word" in ct or "docx" in ct:
+                filename += ".docx"
+            elif "excel" in ct or "spreadsheet" in ct:
+                filename += ".xlsx"
+
+        # Check size
+        cl = resp.headers.get("Content-Length")
+        if cl and int(cl) > MAX_FILE_SIZE_MB * 1024 * 1024:
+            print(f"      [!] Skipping {filename}: too large ({int(cl) // 1024 // 1024}MB)")
+            return None
+
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        filepath = dest_dir / filename
+
+        if filepath.exists():
+            return {
+                "filename": filename,
+                "path": str(filepath),
+                "url": url,
+                "size": filepath.stat().st_size,
+            }
+
+        total = 0
+        with open(filepath, "wb") as f:
+            for chunk in resp.iter_content(chunk_size=8192):
+                total += len(chunk)
+                if total > MAX_FILE_SIZE_MB * 1024 * 1024:
+                    f.close()
+                    filepath.unlink(missing_ok=True)
+                    print(f"      [!] Aborted {filename}: exceeded {MAX_FILE_SIZE_MB}MB")
+                    return None
+                f.write(chunk)
+
+        return {
+            "filename": filename,
+            "path": str(filepath),
+            "url": url,
+            "size": total,
+        }
+
+    except Exception as e:
+        print(f"      [!] Download failed ({url[:80]}): {e}")
+        return None
+
+
+# ── STAGE 1: AI RESEARCH (source + document discovery) ──────────────────────
+
+RESEARCH_PROMPT = """You are a procurement intelligence analyst with expertise in international development tenders and public procurement.
+
+You will receive details about a project/tender scraped from an aggregator website. Your tasks:
+
+1. **Identify the ORIGINAL funding source** — aggregator sites (DGMarket, Global Tenders, DevelopmentAid, etc.) just list tenders. Find the actual donor/funding organization (e.g., World Bank, AfDB, EU, UNDP, USAID, GIZ, ADB, etc.). If the source IS the original, return it as-is.
+
+2. **Find document URLs** — Use your knowledge of procurement portals and Google dorking techniques to suggest REAL, downloadable URLs where project documents (Terms of Reference, RFP, bid documents, procurement notices) can be found. Think about:
+   - The original source's document portal (e.g., World Bank's documents.worldbank.org)
+   - Direct links to PDFs on official sites
+   - Google dork patterns: `site:worldbank.org filetype:pdf "PROJECT_NAME"`
+   - Known procurement document repositories
+   - The project's detail page URL if available
+
+Return ONLY a JSON object:
+{
+    "original_source": "Name of the original funding organization",
+    "original_source_url": "URL of the original project page if known, or null",
+    "document_urls": [
+        {"url": "https://...", "title": "Document title", "type": "pdf"},
+        {"url": "https://...", "title": "Document title", "type": "docx"}
+    ],
+    "search_queries": [
+        "Google dork query to find more documents"
+    ]
+}
+
+Rules:
+- Only suggest URLs you are confident exist based on known portal URL patterns
+- Prefer official procurement portals over random sites
+- Maximum 5 document URLs
+- Include the project's own detail page / document links if available
+- If you can't find documents, return an empty array for document_urls
+- search_queries should be 1-3 Google dork queries that could help find documents
+- No explanation, just the JSON object."""
+
+
+def _research_project(client, project: dict) -> dict | None:
+    """Ask DeepSeek to research a project: find original source + document URLs."""
+    title = project.get("project_description", "") or project.get("project_name", "")
+    name = project.get("project_name", "")
+    sponsor = project.get("project_sponsor", "")
+    source = project.get("source", "")
+    donor = project.get("donor", "")
+    project_url = project.get("project_url", "")
+    document_url = project.get("document_url", "")
+    project_id = project.get("project_id", "")
+
+    user_prompt = f"""Project details:
+- Title: {title}
+- Project Name: {name}
+- Project ID: {project_id}
+- Country: {sponsor}
+- Aggregator Source: {source}
+- Donor/Authority: {donor}
+- Project URL: {project_url}
+- Document URL: {document_url}"""
+
+    content = _deepseek_request(client, RESEARCH_PROMPT, user_prompt, max_tokens=3000)
+    return _parse_json_response(content)
+
+
+def research_projects(projects):
+    """Stage 1: Ask DeepSeek to research each project for source + documents.
+
+    Modifies projects in-place, adding:
+    - 'original_source' (str)
+    - '_document_urls' (list — temporary, used for download stage)
+    - '_search_queries' (list — temporary)
     """
     if not projects:
         return
 
     print("\n" + "=" * 60)
-    print("  AI Source Detection (DeepSeek)")
+    print("  AI Project Research (DeepSeek)")
     print("=" * 60)
-    print(f"  Projects to analyze: {len(projects)}")
+    print(f"  Projects to research: {len(projects)}")
 
     client = OpenAI(api_key=DEEPSEEK_API_KEY, base_url=DEEPSEEK_BASE_URL)
 
-    # Prepare batches
-    batches = []
-    for batch_start in range(0, len(projects), BATCH_SIZE):
-        batch = projects[batch_start : batch_start + BATCH_SIZE]
-        batch_num = batch_start // BATCH_SIZE + 1
-        batches.append((batch_num, batch_start, batch))
-
-    total_batches = len(batches)
-    lock = threading.Lock()
-    completed = 0
-
-    def process_batch(batch_info):
-        nonlocal completed
-        batch_num, batch_start, batch = batch_info
-        sources = _detect_source_batch(client, batch, batch_start)
-
-        for project, source in zip(batch, sources):
-            project["original_source"] = source
-
-        with lock:
-            completed += 1
-            print(f"    [Batch {batch_num}/{total_batches}] done ({completed}/{total_batches})")
-
-    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
-        futures = {executor.submit(process_batch, b): b for b in batches}
-        for future in as_completed(futures):
-            try:
-                future.result()
-            except Exception as e:
-                batch_info = futures[future]
-                print(f"    [!] Source batch {batch_info[0]} failed: {e}")
-
-    # Count results
-    detected = sum(1 for p in projects if p.get("original_source") and p["original_source"] != "Unknown")
-    print(f"\n[+] Source detection complete: {detected}/{len(projects)} identified")
-
-
-# ── 2. DOCUMENT SCRAPING ────────────────────────────────────────────────────
-
-def scrape_documents(projects):
-    """Visit detail pages and download documents for each project.
-
-    Modifies projects in-place, adding 'documents' list field.
-    Uses threads but with per-site rate limiting.
-    """
-    if not projects:
-        return
-
-    from utils.doc_scraper import scrape_and_download_docs
-
-    print("\n" + "=" * 60)
-    print("  Document Scraping & Download")
-    print("=" * 60)
-    print(f"  Projects to process: {len(projects)}")
-
-    import requests as req
-    session = req.Session()
-
-    total_docs = 0
+    researched = 0
     for i, project in enumerate(projects, 1):
         title = (project.get("project_description", "") or project.get("project_name", ""))[:60]
         print(f"\n  [{i}/{len(projects)}] {title}...")
 
-        docs = scrape_and_download_docs(project, session)
+        result = _research_project(client, project)
+
+        if result:
+            project["original_source"] = result.get("original_source", "Unknown")
+            project["original_source_url"] = result.get("original_source_url")
+            project["_document_urls"] = result.get("document_urls", [])[:MAX_DOCS_PER_PROJECT]
+            project["_search_queries"] = result.get("search_queries", [])
+
+            src = project["original_source"]
+            doc_count = len(project["_document_urls"])
+            print(f"      ✅ Source: {src} | {doc_count} document URL(s) suggested")
+            researched += 1
+        else:
+            project["original_source"] = "Unknown"
+            project["_document_urls"] = []
+            project["_search_queries"] = []
+            print(f"      ❌ Research failed")
+
+        # Rate limit between projects
+        if i < len(projects):
+            time.sleep(0.5)
+
+    print(f"\n[+] Research complete: {researched}/{len(projects)} projects researched")
+
+
+# ── STAGE 2: DOWNLOAD DOCUMENTS ─────────────────────────────────────────────
+
+
+def download_documents(projects):
+    """Stage 2: Download documents from URLs that DeepSeek found.
+
+    Modifies projects in-place, adding:
+    - 'documents' (list of metadata dicts for DB)
+    - '_doc_paths' (list of local file paths — temporary, for analysis)
+    """
+    projects_with_urls = [p for p in projects if p.get("_document_urls")]
+    if not projects_with_urls:
+        print("\n[i] No document URLs to download")
+        return
+
+    print("\n" + "=" * 60)
+    print("  Document Download")
+    print("=" * 60)
+    print(f"  Projects with document URLs: {len(projects_with_urls)}")
+
+    session = req.Session()
+    total_downloaded = 0
+
+    for i, project in enumerate(projects_with_urls, 1):
+        title = (project.get("project_description", "") or project.get("project_name", ""))[:60]
+        print(f"\n  [{i}/{len(projects_with_urls)}] {title}")
+
+        project_id = project.get("project_id", "") or hashlib.md5(
+            project.get("project_name", "").encode()
+        ).hexdigest()[:12]
+        dest_dir = DOWNLOAD_DIR / _safe_filename(str(project_id))
+
+        downloaded = []
+        doc_paths = []
+
+        for doc_info in project.get("_document_urls", []):
+            url = doc_info.get("url", "")
+            doc_title = doc_info.get("title", "")
+
+            if not url:
+                continue
+
+            print(f"      📥 {doc_title or url[:60]}...")
+            result = _download_file(url, dest_dir, session)
+
+            if result:
+                result["title"] = doc_title
+                ext = Path(result["filename"]).suffix.lower()
+                result["extension"] = ext
+                downloaded.append(result)
+                doc_paths.append(result["path"])
+                print(f"         ✅ Downloaded: {result['filename']}")
+            else:
+                print(f"         — Failed or skipped")
+
+            time.sleep(0.3)
+
         project["documents"] = [
             {
                 "filename": d["filename"],
@@ -212,26 +352,20 @@ def scrape_documents(projects):
                 "title": d.get("title", ""),
                 "extension": d.get("extension", ""),
             }
-            for d in docs
+            for d in downloaded
         ]
-        total_docs += len(docs)
+        project["_doc_paths"] = doc_paths
+        total_downloaded += len(downloaded)
 
-        if docs:
-            # Store local paths separately (not in DB, just for analysis step)
-            project["_doc_paths"] = [d["path"] for d in docs]
-            print(f"      ✅ {len(docs)} document(s) downloaded")
+        if downloaded:
+            print(f"      📎 {len(downloaded)} document(s) downloaded")
         else:
-            project["_doc_paths"] = []
-            print(f"      — No documents found")
+            print(f"      — No documents downloaded")
 
-        # Rate limit between projects
-        if i < len(projects):
-            time.sleep(1)
-
-    print(f"\n[+] Document scraping complete: {total_docs} documents from {len(projects)} projects")
+    print(f"\n[+] Download complete: {total_downloaded} documents from {len(projects_with_urls)} projects")
 
 
-# ── 3. DOCUMENT ANALYSIS ────────────────────────────────────────────────────
+# ── STAGE 3: DOCUMENT ANALYSIS ──────────────────────────────────────────────
 
 DOC_ANALYSIS_PROMPT = """You are a procurement document analyst. You will receive the text content of a procurement document (PDF or Word).
 
@@ -258,7 +392,7 @@ def _extract_text_from_pdf(filepath: str) -> str:
         import pdfplumber
         text_parts = []
         with pdfplumber.open(filepath) as pdf:
-            for page in pdf.pages[:30]:  # Limit to 30 pages
+            for page in pdf.pages[:50]:  # Up to 50 pages
                 page_text = page.extract_text()
                 if page_text:
                     text_parts.append(page_text)
@@ -296,57 +430,14 @@ def _extract_text(filepath: str) -> str:
     elif ext in (".docx", ".doc"):
         return _extract_text_from_docx(filepath)
     else:
-        # Unsupported format for text extraction
         return ""
 
 
-def _analyze_document_text(client, text: str, doc_title: str) -> dict | None:
-    """Send document text to DeepSeek for analysis."""
-    for attempt in range(MAX_RETRIES):
-        try:
-            time.sleep(random.uniform(0.2, 0.8))
-
-            user_prompt = f"Document title: {doc_title}\n\n---\n\n{text}"
-
-            response = client.chat.completions.create(
-                model=DEEPSEEK_MODEL,
-                messages=[
-                    {"role": "system", "content": DOC_ANALYSIS_PROMPT},
-                    {"role": "user", "content": user_prompt},
-                ],
-                temperature=0.0,
-                max_tokens=4000,
-            )
-
-            content = response.choices[0].message.content.strip()
-
-            # Handle markdown code blocks
-            if content.startswith("```"):
-                content = content.split("```")[1]
-                if content.startswith("json"):
-                    content = content[4:]
-                content = content.strip()
-
-            return json.loads(content)
-
-        except json.JSONDecodeError as e:
-            print(f"      [!] Doc analysis JSON error (attempt {attempt + 1}): {e}")
-        except Exception as e:
-            print(f"      [!] Doc analysis API error (attempt {attempt + 1}): {e}")
-
-        if attempt < MAX_RETRIES - 1:
-            wait = (2 ** attempt) + random.uniform(1, 3)
-            time.sleep(wait)
-
-    return None
-
-
 def analyze_documents(projects):
-    """Analyze downloaded documents using DeepSeek AI.
+    """Stage 3: Analyze downloaded documents using DeepSeek AI.
 
     Modifies projects in-place, adding 'doc_analysis' field.
     """
-    # Filter to projects that have downloaded docs
     projects_with_docs = [p for p in projects if p.get("_doc_paths")]
     if not projects_with_docs:
         print("\n[i] No documents to analyze")
@@ -374,7 +465,10 @@ def analyze_documents(projects):
                 print(f"      — Insufficient text extracted, skipping")
                 continue
 
-            analysis = _analyze_document_text(client, text, doc_name)
+            user_prompt = f"Document title: {doc_name}\n\n---\n\n{text}"
+            content = _deepseek_request(client, DOC_ANALYSIS_PROMPT, user_prompt)
+            analysis = _parse_json_response(content)
+
             if analysis:
                 analysis["document"] = doc_name
                 all_analyses.append(analysis)
@@ -383,7 +477,6 @@ def analyze_documents(projects):
                 print(f"      ❌ Analysis failed")
 
         if all_analyses:
-            # Merge analyses if multiple docs
             if len(all_analyses) == 1:
                 project["doc_analysis"] = all_analyses[0]
             else:
@@ -393,8 +486,16 @@ def analyze_documents(projects):
                 }
             analyzed += 1
 
-        # Clean up temporary field
+        # Clean up temporary fields
         project.pop("_doc_paths", None)
+        project.pop("_document_urls", None)
+        project.pop("_search_queries", None)
+
+    # Also clean up for projects without docs
+    for p in projects:
+        p.pop("_doc_paths", None)
+        p.pop("_document_urls", None)
+        p.pop("_search_queries", None)
 
     print(f"\n[+] Document analysis complete: {analyzed}/{len(projects_with_docs)} projects analyzed")
 
@@ -402,7 +503,7 @@ def analyze_documents(projects):
 # ── MAIN PIPELINE ────────────────────────────────────────────────────────────
 
 
-def run_enrichment(projects, skip_source=False, skip_docs=False, skip_analysis=False):
+def run_enrichment(projects, skip_research=False, skip_download=False, skip_analysis=False):
     """Run the full enrichment pipeline on a list of projects.
 
     This should be called AFTER AI verification, with only verified projects.
@@ -417,16 +518,16 @@ def run_enrichment(projects, skip_source=False, skip_docs=False, skip_analysis=F
     print("#" * 60)
     print(f"  Projects: {len(projects)}")
 
-    # Stage 1: Source Detection
-    if not skip_source:
-        detect_sources(projects)
+    # Stage 1: AI Research (find source + document URLs)
+    if not skip_research:
+        research_projects(projects)
 
-    # Stage 2: Document Scraping
-    if not skip_docs:
-        scrape_documents(projects)
+    # Stage 2: Download documents found by AI
+    if not skip_download:
+        download_documents(projects)
 
-    # Stage 3: Document Analysis (only if we downloaded docs)
-    if not skip_docs and not skip_analysis:
+    # Stage 3: Analyze downloaded documents
+    if not skip_download and not skip_analysis:
         analyze_documents(projects)
 
     print("\n" + "#" * 60)
