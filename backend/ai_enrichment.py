@@ -193,133 +193,7 @@ def _download_file(url: str, dest_dir: Path, session: req.Session) -> dict | Non
         return None
 
 
-# ── STAGE 1: AI RESEARCH (source + document discovery) ──────────────────────
-
-RESEARCH_PROMPT = """You are a procurement intelligence analyst with expertise in international development tenders and public procurement.
-
-You will receive details about a project/tender scraped from an aggregator website. Your tasks:
-
-1. **Identify the ORIGINAL funding source** — aggregator sites (DGMarket, Global Tenders, DevelopmentAid, etc.) just list tenders. Find the actual donor/funding organization (e.g., World Bank, AfDB, EU, UNDP, USAID, GIZ, ADB, etc.). If the source IS the original, return it as-is.
-
-2. **Find document URLs** — Use your knowledge of procurement portals and Google dorking techniques to suggest REAL, downloadable URLs where project documents (Terms of Reference, RFP, bid documents, procurement notices) can be found. Think about:
-   - The original source's document portal (e.g., World Bank's documents.worldbank.org)
-   - Direct links to PDFs on official sites
-   - Google dork patterns: `site:worldbank.org filetype:pdf "PROJECT_NAME"`
-   - Known procurement document repositories
-   - The project's detail page URL if available
-
-Return ONLY a JSON object:
-{
-    "original_source": "Name of the original funding organization",
-    "original_source_url": "URL of the original project page if known, or null",
-    "document_urls": [
-        {"url": "https://...", "title": "Document title", "type": "pdf"},
-        {"url": "https://...", "title": "Document title", "type": "docx"}
-    ],
-    "search_queries": [
-        "Google dork query to find more documents"
-    ]
-}
-
-Rules:
-- Only suggest URLs you are confident exist based on known portal URL patterns
-- Prefer official procurement portals over random sites
-- Maximum 5 document URLs
-- Include the project's own detail page / document links if available
-- If you can't find documents, return an empty array for document_urls
-- search_queries should be 1-3 Google dork queries that could help find documents
-- No explanation, just the JSON object."""
-
-
-def _research_project(client, project: dict) -> dict | None:
-    """Ask DeepSeek to research a project: find original source + document URLs."""
-    title = project.get("project_description", "") or project.get("project_name", "")
-    name = project.get("project_name", "")
-    sponsor = project.get("project_sponsor", "")
-    source = project.get("source", "")
-    donor = project.get("donor", "")
-    project_url = project.get("project_url", "")
-    document_url = project.get("document_url", "")
-    project_id = project.get("project_id", "")
-
-    user_prompt = f"""Project details:
-- Title: {title}
-- Project Name: {name}
-- Project ID: {project_id}
-- Country: {sponsor}
-- Aggregator Source: {source}
-- Donor/Authority: {donor}
-- Project URL: {project_url}
-- Document URL: {document_url}"""
-
-    content = _deepseek_request(client, RESEARCH_PROMPT, user_prompt, max_tokens=3000,
-                                label="Research")
-    return _parse_json_response(content)
-
-
-def research_projects(projects):
-    """Stage 1: Ask DeepSeek to research each project for source + documents.
-
-    Modifies projects in-place, adding:
-    - 'original_source' (str)
-    - '_document_urls' (list — temporary, used for download stage)
-    - '_search_queries' (list — temporary)
-    """
-    if not projects:
-        return
-
-    print("\n" + "=" * 60)
-    print("  AI Project Research (DeepSeek)")
-    print("=" * 60)
-    print(f"  Projects to research: {len(projects)}")
-
-    client = OpenAI(api_key=DEEPSEEK_API_KEY, base_url=DEEPSEEK_BASE_URL)
-
-    researched = 0
-    for i, project in enumerate(projects, 1):
-        title = (project.get("project_description", "") or project.get("project_name", ""))[:60]
-        print(f"\n  [{i}/{len(projects)}] {title}...")
-
-        result = _research_project(client, project)
-
-        if result:
-            project["original_source"] = result.get("original_source", "Unknown")
-            project["original_source_url"] = result.get("original_source_url")
-            project["_document_urls"] = result.get("document_urls", [])[:MAX_DOCS_PER_PROJECT]
-            project["_search_queries"] = result.get("search_queries", [])
-
-            src = project["original_source"]
-            doc_count = len(project["_document_urls"])
-            print(f"      ✅ Source: {src} | {doc_count} document URL(s) suggested")
-
-            # Log discovered document URLs
-            if project["_document_urls"]:
-                print(f"      📎 Document URLs found:")
-                for di, doc_url in enumerate(project["_document_urls"], 1):
-                    print(f"         {di}. {doc_url.get('title', 'N/A')[:60]}")
-                    print(f"            URL: {doc_url.get('url', 'N/A')}")
-
-            # Log search queries
-            if project["_search_queries"]:
-                print(f"      🔍 Suggested Google dork queries:")
-                for sq in project["_search_queries"]:
-                    print(f"         • {sq}")
-
-            researched += 1
-        else:
-            project["original_source"] = "Unknown"
-            project["_document_urls"] = []
-            project["_search_queries"] = []
-            print(f"      ❌ Research failed")
-
-        # Rate limit between projects
-        if i < len(projects):
-            time.sleep(0.5)
-
-    print(f"\n[+] Research complete: {researched}/{len(projects)} projects researched")
-
-
-# ── STAGE 2: DOWNLOAD DOCUMENTS ─────────────────────────────────────────────
+# ── STAGE 1: DOWNLOAD DOCUMENTS ─────────────────────────────────────────────
 
 
 def download_documents(projects):
@@ -548,8 +422,8 @@ def analyze_documents(projects):
 # ── MAIN PIPELINE ────────────────────────────────────────────────────────────
 
 
-def run_enrichment(projects, skip_research=False, skip_download=False, skip_analysis=False):
-    """Run the full enrichment pipeline on a list of projects.
+def run_enrichment(projects, skip_download=False, skip_analysis=False):
+    """Run the enrichment pipeline on a list of projects.
 
     This should be called AFTER AI verification, with only verified projects.
     Modifies projects in-place.
@@ -563,15 +437,11 @@ def run_enrichment(projects, skip_research=False, skip_download=False, skip_anal
     print("#" * 60)
     print(f"  Projects: {len(projects)}")
 
-    # Stage 1: AI Research (find source + document URLs)
-    if not skip_research:
-        research_projects(projects)
-
-    # Stage 2: Download documents found by AI
+    # Stage 1: Download documents
     if not skip_download:
         download_documents(projects)
 
-    # Stage 3: Analyze downloaded documents
+    # Stage 2: Analyze downloaded documents
     if not skip_download and not skip_analysis:
         analyze_documents(projects)
 

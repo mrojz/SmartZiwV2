@@ -234,8 +234,8 @@ def main():
     else:
         print("[i] AI verification skipped (--no-ai flag)", flush=True)
 
-    # ── 8. AI Enrichment (research, document download, analysis) ─────────
-    enrichment_stats = {"sources_detected": 0, "docs_downloaded": 0, "docs_analyzed": 0}
+    # ── 8. AI Enrichment (document download + analysis) ─────────────────
+    enrichment_stats = {"docs_downloaded": 0, "docs_analyzed": 0}
 
     if not args.no_enrich and not args.no_ai:
         enrichable = [p for p in new_projects if p.get("ai_verified") == "Yes"]
@@ -245,9 +245,6 @@ def main():
             print(f"[⏳] AI enrichment: processing {len(enrichable)} verified projects...", flush=True)
             run_enrichment(enrichable)
 
-            enrichment_stats["sources_detected"] = sum(
-                1 for p in enrichable if p.get("original_source") and p["original_source"] != "Unknown"
-            )
             enrichment_stats["docs_downloaded"] = sum(
                 len(p.get("documents", [])) for p in enrichable
             )
@@ -255,8 +252,8 @@ def main():
                 1 for p in enrichable if p.get("doc_analysis")
             )
             print(
-                f"[✅] Enrichment: {enrichment_stats['sources_detected']} sources, "
-                f"{enrichment_stats['docs_downloaded']} docs, "
+                f"[✅] Enrichment: "
+                f"{enrichment_stats['docs_downloaded']} docs downloaded, "
                 f"{enrichment_stats['docs_analyzed']} analyzed",
                 flush=True,
             )
