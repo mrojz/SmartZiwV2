@@ -234,7 +234,7 @@ def main():
     else:
         print("[i] AI verification skipped (--no-ai flag)", flush=True)
 
-    # ── 8. AI Enrichment (source detection, doc scraping, doc analysis) ────
+    # ── 8. AI Enrichment (research, document download, analysis) ─────────
     enrichment_stats = {"sources_detected": 0, "docs_downloaded": 0, "docs_analyzed": 0}
 
     if not args.no_enrich and not args.no_ai:
