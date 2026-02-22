@@ -7,6 +7,7 @@ Collections:
 """
 
 import os
+from datetime import datetime, timezone
 from pymongo import MongoClient, ASCENDING
 
 MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017")
@@ -57,7 +58,9 @@ def insert_projects(projects: list[dict]) -> int:
     inserted = 0
     for p in projects:
         try:
-            db.projects.insert_one(p.copy())
+            doc = p.copy()
+            doc.setdefault("scraped_at", datetime.now(timezone.utc).isoformat())
+            db.projects.insert_one(doc)
             inserted += 1
         except Exception:
             # Duplicate key — skip
@@ -75,10 +78,15 @@ def upsert_projects(projects: list[dict]) -> dict:
     db = get_db()
     inserted = 0
     updated = 0
+    now = datetime.now(timezone.utc).isoformat()
     for p in projects:
         key = {"project_id": p.get("project_id", ""), "project_name": p.get("project_name", "")}
         doc = {k: v for k, v in p.items() if k != "_id"}
-        result = db.projects.update_one(key, {"$set": doc}, upsert=True)
+        result = db.projects.update_one(
+            key,
+            {"$set": doc, "$setOnInsert": {"scraped_at": now}},
+            upsert=True,
+        )
         if result.upserted_id:
             inserted += 1
         elif result.modified_count > 0:

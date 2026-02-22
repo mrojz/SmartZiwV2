@@ -14,12 +14,87 @@ Usage:
 """
 
 import argparse
+import io
+import json
+import sys
+import time
+import contextlib
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from database import get_all_projects, upsert_projects
 from shared_excel import save_to_excel, is_expired
 
 
 OUTPUT_XLSX = "projects.xlsx"
+
+# ── Scraper definitions ───────────────────────────────────────────────────────
+
+SCRAPERS = {
+    "iadb": {
+        "label": "IADB",
+        "import": "from utils.iadb_scraper import run_iadb_scraper",
+        "func": "run_iadb_scraper",
+    },
+    "worldbank": {
+        "label": "World Bank",
+        "import": "from utils.wb_scraper import run_wb_scraper",
+        "func": "run_wb_scraper",
+    },
+    "globaltenders": {
+        "label": "Global Tenders",
+        "import": "from utils.gt_scraper import run_gt_scraper",
+        "func": "run_gt_scraper",
+    },
+    "giz": {
+        "label": "GIZ",
+        "import": "from utils.giz_scraper import run_giz_scraper",
+        "func": "run_giz_scraper",
+    },
+    "devaid": {
+        "label": "DevelopmentAid",
+        "import": "from utils.devaid_scraper import run_devaid_scraper",
+        "func": "run_devaid_scraper",
+    },
+    "dgmarket": {
+        "label": "DGMarket",
+        "import": "from utils.dgmarket_scraper import run_dgmarket_scraper",
+        "func": "run_dgmarket_scraper",
+    },
+}
+
+
+def _run_single_scraper(key: str, info: dict) -> dict:
+    """Run one scraper, capturing its stdout/stderr separately.
+    
+    Returns a dict with: key, label, projects, output, error, duration.
+    """
+    label = info["label"]
+    buf = io.StringIO()
+    projects = []
+    error = None
+    start = time.time()
+
+    try:
+        # Import the scraper function
+        exec(info["import"])
+        func = eval(info["func"])
+
+        # Capture all print output from this scraper
+        with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
+            projects = func()
+    except Exception as e:
+        error = str(e)
+        buf.write(f"\n[!] {label} scraper error: {e}\n")
+
+    duration = round(time.time() - start, 1)
+    return {
+        "key": key,
+        "label": label,
+        "projects": projects or [],
+        "output": buf.getvalue(),
+        "error": error,
+        "duration": duration,
+    }
 
 
 def main():
@@ -36,14 +111,12 @@ def main():
     parser.add_argument("--include-expired", action="store_true", help="Include projects with past due dates")
     args = parser.parse_args()
 
-    # If no source flag is set, run all
+    # Determine which scrapers to run
     any_source = args.iadb or args.worldbank or args.globaltenders or args.giz or args.devaid or args.dgmarket
-    run_iadb = args.iadb or not any_source
-    run_wb = args.worldbank or not any_source
-    run_gt = args.globaltenders or not any_source
-    run_giz = args.giz or not any_source
-    run_devaid = args.devaid or not any_source
-    run_dgmarket = args.dgmarket or not any_source
+    to_run = {}
+    for key, info in SCRAPERS.items():
+        if getattr(args, key, False) or not any_source:
+            to_run[key] = info
 
     # ── 1. Load existing projects from MongoDB ────────────────────────────
     existing_rows = get_all_projects()
@@ -51,64 +124,38 @@ def main():
         (str(p.get("project_id", "")), str(p.get("project_name", "")))
         for p in existing_rows
     }
-    print(f"[i] Existing projects in DB: {len(existing_rows)}")
+    print(f"[i] Existing projects in DB: {len(existing_rows)}", flush=True)
+    print(f"[i] Running {len(to_run)} scrapers in parallel: {', '.join(info['label'] for info in to_run.values())}", flush=True)
 
-    # ── 2. Scrape from sources ────────────────────────────────────────────
+    # ── 2. Run scrapers in parallel threads ───────────────────────────────
+    results = {}
+    scraper_logs = {}
     scraped = []
 
-    if run_iadb:
-        try:
-            from utils.iadb_scraper import run_iadb_scraper
-            iadb_projects = run_iadb_scraper()
-            print(f"\n[+] IADB returned {len(iadb_projects)} projects")
-            scraped.extend(iadb_projects)
-        except Exception as e:
-            print(f"\n[!] IADB scraper error: {e}")
+    for key in to_run:
+        print(f"[⏳] {to_run[key]['label']}: starting...", flush=True)
 
-    if run_wb:
-        try:
-            from utils.wb_scraper import run_wb_scraper
-            wb_projects = run_wb_scraper()
-            print(f"\n[+] World Bank returned {len(wb_projects)} projects")
-            scraped.extend(wb_projects)
-        except Exception as e:
-            print(f"\n[!] World Bank scraper error: {e}")
+    with ThreadPoolExecutor(max_workers=len(to_run)) as pool:
+        futures = {
+            pool.submit(_run_single_scraper, key, info): key
+            for key, info in to_run.items()
+        }
 
-    if run_gt:
-        try:
-            from utils.gt_scraper import run_gt_scraper
-            gt_projects = run_gt_scraper()
-            print(f"\n[+] Global Tenders returned {len(gt_projects)} projects")
-            scraped.extend(gt_projects)
-        except Exception as e:
-            print(f"\n[!] Global Tenders scraper error: {e}")
+        for future in as_completed(futures):
+            key = futures[future]
+            result = future.result()
+            results[key] = result
+            scraper_logs[key] = result["output"]
 
-    if run_giz:
-        try:
-            from utils.giz_scraper import run_giz_scraper
-            giz_projects = run_giz_scraper()
-            print(f"\n[+] GIZ returned {len(giz_projects)} projects")
-            scraped.extend(giz_projects)
-        except Exception as e:
-            print(f"\n[!] GIZ scraper error: {e}")
+            count = len(result["projects"])
+            duration = result["duration"]
 
-    if run_devaid:
-        try:
-            from utils.devaid_scraper import run_devaid_scraper
-            devaid_projects = run_devaid_scraper()
-            print(f"\n[+] DevelopmentAid returned {len(devaid_projects)} projects")
-            scraped.extend(devaid_projects)
-        except Exception as e:
-            print(f"\n[!] DevelopmentAid scraper error: {e}")
+            if result["error"]:
+                print(f"[❌] {result['label']}: failed ({duration}s) — {result['error']}", flush=True)
+            else:
+                print(f"[✅] {result['label']}: {count} projects ({duration}s)", flush=True)
 
-    if run_dgmarket:
-        try:
-            from utils.dgmarket_scraper import run_dgmarket_scraper
-            dgmarket_projects = run_dgmarket_scraper()
-            print(f"\n[+] DGMarket returned {len(dgmarket_projects)} projects")
-            scraped.extend(dgmarket_projects)
-        except Exception as e:
-            print(f"\n[!] DGMarket scraper error: {e}")
+            scraped.extend(result["projects"])
 
     # ── 3. Deduplicate scraped results ────────────────────────────────────
     seen = {}
@@ -128,7 +175,7 @@ def main():
             seen[key] = p
 
     all_scraped = list(seen.values())
-    print(f"\n[+] Total unique scraped projects: {len(all_scraped)}")
+    print(f"[i] Total unique scraped: {len(all_scraped)}", flush=True)
 
     # ── 4. Find NEW projects (not already in DB) ─────────────────────────
     new_projects = []
@@ -137,7 +184,7 @@ def main():
         if key not in existing_keys:
             new_projects.append(p)
 
-    print(f"[+] New projects (not in DB): {len(new_projects)}")
+    print(f"[i] New projects: {len(new_projects)}", flush=True)
 
     # ── 5. Enrich new WB projects with detail API ─────────────────────────
     if new_projects:
@@ -154,49 +201,75 @@ def main():
         new_projects = [p for p in new_projects if not is_expired(p)]
         expired = before - len(new_projects)
         if expired:
-            print(f"[+] Filtered out {expired} expired projects")
-        print(f"[+] New projects after filtering: {len(new_projects)}")
+            print(f"[i] Filtered out {expired} expired projects", flush=True)
     elif args.include_expired:
-        print("[i] Expiry filter disabled (--include-expired)")
+        print("[i] Expiry filter disabled (--include-expired)", flush=True)
 
     # ── 7. AI Cybersecurity Verification ──────────────────────────────────
+    ai_verified_count = 0
+    ai_rejected_count = 0
+
     if not args.no_ai:
         from ai_filter import filter_cybersecurity_projects
+
+        print("[⏳] AI verification: starting...", flush=True)
 
         # Verify new projects
         if new_projects:
             new_projects = filter_cybersecurity_projects(new_projects)
+            ai_verified_count += sum(1 for p in new_projects if p.get("ai_verified") == "Yes")
+            ai_rejected_count += sum(1 for p in new_projects if p.get("ai_verified") == "No")
 
         # Also verify existing projects that haven't been AI-checked yet
         unverified = [r for r in existing_rows if not r.get("ai_verified")]
         if unverified:
-            print(f"\n[i] Found {len(unverified)} existing unverified projects — running AI check")
+            print(f"[i] Re-verifying {len(unverified)} existing unverified projects", flush=True)
             filter_cybersecurity_projects(unverified)
-            # Save updated AI verification results back to DB
             upsert_projects(unverified)
+            ai_verified_count += sum(1 for p in unverified if p.get("ai_verified") == "Yes")
+            ai_rejected_count += sum(1 for p in unverified if p.get("ai_verified") == "No")
+
+        print(f"[✅] AI verification: {ai_verified_count} validated, {ai_rejected_count} rejected", flush=True)
     else:
-        print("[i] AI verification skipped (--no-ai flag)")
+        print("[i] AI verification skipped (--no-ai flag)", flush=True)
 
     # ── 8. Save new projects to MongoDB ───────────────────────────────────
     if not new_projects and not any(not r.get("ai_verified") for r in existing_rows):
-        print("[i] No new projects found. Database unchanged.")
-        print("[+] Done.")
-        return
-
-    if new_projects:
+        print("[i] No new projects found. Database unchanged.", flush=True)
+    elif new_projects:
         result = upsert_projects(new_projects)
-        print(f"\n[+] Saved to MongoDB: {result['inserted']} inserted, {result['updated']} updated")
+        print(f"[✅] Saved: {result['inserted']} inserted, {result['updated']} updated", flush=True)
 
     # Also generate Excel export
     all_projects = get_all_projects()
-
-    print("\n" + "=" * 60)
-    print(f"  Existing: {len(existing_rows)}  |  New: {len(new_projects)}  |  Total: {len(all_projects)}")
-    print("=" * 60)
-
     save_to_excel(all_projects, filename=OUTPUT_XLSX)
-    print(f"[+] Excel exported to '{OUTPUT_XLSX}'")
-    print("[+] Done.")
+
+    # ── 9. Print structured summary (for server.py to parse) ──────────────
+    summary = {
+        "total_scraped": len(all_scraped),
+        "new_projects": len(new_projects),
+        "total_projects": len(all_projects),
+        "ai_verified": ai_verified_count,
+        "ai_rejected": ai_rejected_count,
+        "scrapers": {},
+    }
+    for key, result in results.items():
+        summary["scrapers"][key] = {
+            "label": result["label"],
+            "count": len(result["projects"]),
+            "error": result["error"],
+            "duration": result["duration"],
+        }
+
+    # Output summary as a special tagged JSON line for server.py to parse
+    print(f"__SUMMARY__{json.dumps(summary)}__END__", flush=True)
+
+    # Output per-scraper logs as tagged JSON for server.py to capture
+    for key, log_text in scraper_logs.items():
+        encoded = json.dumps({"key": key, "label": results[key]["label"], "output": log_text})
+        print(f"__SCRAPER_LOG__{encoded}__END__", flush=True)
+
+    print("[+] Done.", flush=True)
 
 
 if __name__ == "__main__":

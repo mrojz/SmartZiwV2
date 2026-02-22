@@ -161,10 +161,12 @@ class SyncState:
     """Tracks background sync progress."""
     def __init__(self):
         self.running = False
-        self.lines: list[str] = []
+        self.lines: list[str] = []          # summary-only lines for SSE
         self.finished = False
         self.success = False
         self.project_count_before = 0
+        self.summary: dict = {}             # parsed JSON summary from main.py
+        self.scraper_logs: dict = {}        # per-scraper full output logs
         self.lock = threading.Lock()
 
     def reset(self):
@@ -173,6 +175,8 @@ class SyncState:
             self.lines = []
             self.finished = False
             self.success = False
+            self.summary = {}
+            self.scraper_logs = {}
             # Snapshot current count before sync
             self.project_count_before = len(get_all_projects())
 
@@ -212,9 +216,15 @@ def _save_to_excel(projects: list[dict]):
 
 
 def _run_sync_subprocess(cmd: list[str], trigger: str = "manual"):
-    """Run the scraper subprocess, stream output, and save a log entry."""
+    """Run the scraper subprocess, stream output, and save a log entry.
+
+    Parses structured output from main.py:
+    - Regular lines → streamed to SSE (summary-only status lines)
+    - __SUMMARY__{json}__END__ → parsed and stored
+    - __SCRAPER_LOG__{json}__END__ → parsed and stored per-scraper
+    """
     started_at = datetime.now(timezone.utc).isoformat()
-    log_lines = []
+    all_log_lines = []      # full raw output for master log
     success = False
     try:
         proc = subprocess.Popen(
@@ -227,27 +237,64 @@ def _run_sync_subprocess(cmd: list[str], trigger: str = "manual"):
         )
         for line in iter(proc.stdout.readline, ""):
             stripped = line.rstrip()
-            if stripped:
+            if not stripped:
+                continue
+
+            all_log_lines.append(stripped)
+
+            # Parse tagged structured data from main.py
+            if stripped.startswith("__SUMMARY__") and stripped.endswith("__END__"):
+                json_str = stripped[len("__SUMMARY__"):-len("__END__")]
+                try:
+                    sync_state.summary = json.loads(json_str)
+                except json.JSONDecodeError:
+                    pass
+            elif stripped.startswith("__SCRAPER_LOG__") and stripped.endswith("__END__"):
+                json_str = stripped[len("__SCRAPER_LOG__"):-len("__END__")]
+                try:
+                    log_data = json.loads(json_str)
+                    key = log_data.get("key", "unknown")
+                    with sync_state.lock:
+                        sync_state.scraper_logs[key] = {
+                            "label": log_data.get("label", key),
+                            "output": log_data.get("output", ""),
+                        }
+                except json.JSONDecodeError:
+                    pass
+            else:
+                # Regular status line → stream to SSE
                 sync_state.add_line(stripped)
-                log_lines.append(stripped)
+
         proc.wait()
         success = proc.returncode == 0
         sync_state.finish(success=success)
     except Exception as e:
         msg = f"[!] Error: {e}"
         sync_state.add_line(msg)
-        log_lines.append(msg)
+        all_log_lines.append(msg)
         sync_state.finish(success=False)
     finally:
         finished_at = datetime.now(timezone.utc).isoformat()
         project_count = len(get_all_projects())
+
+        # Build per-scraper log entries for storage
+        scraper_details = {}
+        with sync_state.lock:
+            for key, log_info in sync_state.scraper_logs.items():
+                scraper_details[key] = {
+                    "label": log_info["label"],
+                    "output": log_info["output"].split("\n") if log_info["output"] else [],
+                }
+
         save_sync_log({
             "started_at": started_at,
             "finished_at": finished_at,
             "success": success,
             "project_count": project_count,
-            "log_lines": log_lines,
+            "log_lines": all_log_lines,
             "trigger": trigger,
+            "summary": sync_state.summary,
+            "scraper_logs": scraper_details,
         })
 
 
@@ -373,7 +420,15 @@ async def stream_sync():
 
             if finished:
                 projects = get_all_projects()
-                yield f"data: {json.dumps({'type': 'done', 'success': success, 'project_count': len(projects)})}\n\n"
+                done_data = {
+                    'type': 'done',
+                    'success': success,
+                    'project_count': len(projects),
+                }
+                # Include parsed summary if available
+                if sync_state.summary:
+                    done_data['summary'] = sync_state.summary
+                yield f"data: {json.dumps(done_data)}\n\n"
                 break
 
             await asyncio.sleep(0.3)
@@ -397,7 +452,18 @@ def sync_status():
             "finished": sync_state.finished,
             "success": sync_state.success,
             "line_count": len(sync_state.lines),
+            "summary": sync_state.summary,
         }
+
+
+@app.get("/api/schedule/logs/{index}/scrapers")
+def get_scraper_logs(index: int):
+    """Get per-scraper logs for a specific run."""
+    logs = list(db.sync_logs.find({}, {"_id": 0}).sort("started_at", -1))
+    if index < 0 or index >= len(logs):
+        raise HTTPException(status_code=404, detail="Log not found")
+    log = logs[index]
+    return log.get("scraper_logs", {})
 
 
 # ── Schedule endpoints ──────────────────────────────────────────────────────
@@ -470,15 +536,43 @@ def update_decision(index: int, body: DecisionUpdate):
     return {"index": index, "decision": body.decision}
 
 
-# ── GET /api/download ────────────────────────────────────────────────────────
+# ── GET/POST /api/download ───────────────────────────────────────────────────
 
 @app.get("/api/download")
 def download_excel():
-    """Download the current projects.xlsx file."""
+    """Download ALL projects as Excel (fallback)."""
     projects = get_all_projects()
     if not projects:
         raise HTTPException(status_code=404, detail="No projects to download")
     _save_to_excel(projects)
+
+    return FileResponse(
+        path=str(PROJECTS_XLSX),
+        filename="projects.xlsx",
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+
+
+@app.post("/api/download")
+def download_filtered_excel(body: dict):
+    """Download only the filtered projects as Excel.
+
+    Body: { "indices": [0, 2, 5, ...] }  — indices into the full project list.
+    """
+    all_projects = get_all_projects()
+    if not all_projects:
+        raise HTTPException(status_code=404, detail="No projects to download")
+
+    indices = body.get("indices", [])
+    if indices:
+        selected = [all_projects[i] for i in indices if 0 <= i < len(all_projects)]
+    else:
+        selected = all_projects
+
+    if not selected:
+        raise HTTPException(status_code=404, detail="No matching projects")
+
+    _save_to_excel(selected)
 
     return FileResponse(
         path=str(PROJECTS_XLSX),
