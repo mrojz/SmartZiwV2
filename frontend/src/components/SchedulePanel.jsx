@@ -89,10 +89,25 @@ export default function SchedulePanel({ open, onClose }) {
     // Sync run history
     const [logs, setLogs] = useState([]);
     const [expandedLog, setExpandedLog] = useState(null);
+    const [scraperLogData, setScraperLogData] = useState({});
+    const [scraperLogTab, setScraperLogTab] = useState('summary');
 
-    // Load schedule + server time + logs when panel opens
+    // Ongoing scrape tracking
+    const [syncRunning, setSyncRunning] = useState(false);
+    const [liveLogs, setLiveLogs] = useState([]);
+    const liveLogEndRef = useRef(null);
+    const sseRef = useRef(null);
+
+    // Load schedule + server time + logs + sync status when panel opens
     useEffect(() => {
-        if (!open) return;
+        if (!open) {
+            // Clean up SSE on close
+            if (sseRef.current) {
+                sseRef.current.close();
+                sseRef.current = null;
+            }
+            return;
+        }
         setLoading(true);
         setSaveResult(null);
         setExpandedLog(null);
@@ -101,8 +116,9 @@ export default function SchedulePanel({ open, onClose }) {
             fetch('/api/schedule').then((r) => r.json()),
             fetch('/api/server-time').then((r) => r.json()),
             fetch('/api/schedule/logs').then((r) => r.json()),
+            fetch('/api/sync/status').then((r) => r.json()),
         ])
-            .then(([schedData, timeData, logsData]) => {
+            .then(([schedData, timeData, logsData, statusData]) => {
                 // Schedule
                 setNextRun(schedData.next_run || null);
                 delete schedData.next_run;
@@ -116,6 +132,39 @@ export default function SchedulePanel({ open, onClose }) {
 
                 // Logs
                 setLogs(Array.isArray(logsData) ? logsData : []);
+
+                // If sync is currently running, connect to SSE stream
+                if (statusData.running) {
+                    setSyncRunning(true);
+                    setLiveLogs([]);
+                    const es = new EventSource('/api/sync/stream');
+                    sseRef.current = es;
+
+                    es.onmessage = (event) => {
+                        const data = JSON.parse(event.data);
+                        if (data.type === 'log') {
+                            setLiveLogs((prev) => [...prev, data.message]);
+                        } else if (data.type === 'done') {
+                            setSyncRunning(false);
+                            es.close();
+                            sseRef.current = null;
+                            // Refresh logs
+                            fetch('/api/schedule/logs')
+                                .then((r) => r.json())
+                                .then((fresh) => setLogs(Array.isArray(fresh) ? fresh : []))
+                                .catch(() => { });
+                        }
+                    };
+
+                    es.onerror = () => {
+                        setSyncRunning(false);
+                        es.close();
+                        sseRef.current = null;
+                    };
+                } else {
+                    setSyncRunning(false);
+                    setLiveLogs([]);
+                }
             })
             .catch(() => { })
             .finally(() => setLoading(false));
@@ -203,6 +252,22 @@ export default function SchedulePanel({ open, onClose }) {
                         </div>
                     ) : (
                         <>
+                            {/* Ongoing scrape banner */}
+                            {syncRunning && (
+                                <div className="schedule-ongoing">
+                                    <div className="schedule-ongoing-header">
+                                        <span className="btn-spinner" />
+                                        Sync in progress…
+                                    </div>
+                                    <pre className="schedule-ongoing-output">
+                                        {liveLogs.length > 0
+                                            ? liveLogs.slice(-30).join('\n')
+                                            : 'Waiting for output…'}
+                                        <div ref={liveLogEndRef} />
+                                    </pre>
+                                </div>
+                            )}
+
                             {/* Server time bar */}
                             <div className="schedule-server-time">
                                 <span>🖥️ Server time: <strong>{currentServerTimeStr}</strong></span>
@@ -346,7 +411,21 @@ export default function SchedulePanel({ open, onClose }) {
                                             <div key={i} className={`schedule-log-entry ${log.success ? '' : 'failed'}`}>
                                                 <div
                                                     className="schedule-log-header"
-                                                    onClick={() => setExpandedLog(expandedLog === i ? null : i)}
+                                                    onClick={() => {
+                                                        if (expandedLog === i) {
+                                                            setExpandedLog(null);
+                                                        } else {
+                                                            setExpandedLog(i);
+                                                            setScraperLogTab('summary');
+                                                            // Fetch per-scraper logs if not cached
+                                                            if (!scraperLogData[i]) {
+                                                                fetch(`/api/schedule/logs/${i}/scrapers`)
+                                                                    .then((r) => r.json())
+                                                                    .then((data) => setScraperLogData((prev) => ({ ...prev, [i]: data })))
+                                                                    .catch(() => { });
+                                                            }
+                                                        }
+                                                    }}
                                                 >
                                                     <span className="schedule-log-status">
                                                         {log.success ? '✅' : '❌'}
@@ -368,9 +447,30 @@ export default function SchedulePanel({ open, onClose }) {
                                                     </span>
                                                 </div>
                                                 {expandedLog === i && (
-                                                    <pre className="schedule-log-output">
-                                                        {(log.log_lines || []).join('\n') || '(no output)'}
-                                                    </pre>
+                                                    <div>
+                                                        <div className="schedule-log-tabs">
+                                                            <button
+                                                                className={`schedule-log-tab ${scraperLogTab === 'summary' ? 'active' : ''}`}
+                                                                onClick={() => setScraperLogTab('summary')}
+                                                            >
+                                                                Summary
+                                                            </button>
+                                                            {scraperLogData[i] && Object.entries(scraperLogData[i]).map(([key, s]) => (
+                                                                <button
+                                                                    key={key}
+                                                                    className={`schedule-log-tab ${scraperLogTab === key ? 'active' : ''}`}
+                                                                    onClick={() => setScraperLogTab(key)}
+                                                                >
+                                                                    {s.label || key}
+                                                                </button>
+                                                            ))}
+                                                        </div>
+                                                        <pre className="schedule-log-output">
+                                                            {scraperLogTab === 'summary'
+                                                                ? (log.log_lines || []).join('\n') || '(no output)'
+                                                                : (scraperLogData[i]?.[scraperLogTab]?.output || []).join('\n') || '(no output)'}
+                                                        </pre>
+                                                    </div>
                                                 )}
                                             </div>
                                         ))}

@@ -20,6 +20,15 @@ export default function App() {
     const [showNewOnly, setShowNewOnly] = useState(false);
     const [toast, setToast] = useState(null);
     const preSyncIdsRef = useRef(new Set());
+    const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'dark');
+
+    // Theme effect
+    useEffect(() => {
+        document.documentElement.setAttribute('data-theme', theme);
+        localStorage.setItem('theme', theme);
+    }, [theme]);
+
+    const toggleTheme = () => setTheme((t) => (t === 'dark' ? 'light' : 'dark'));
 
     // filter state
     const [chips, setChips] = useState([]);       // [{field, value}, ...]
@@ -321,9 +330,35 @@ export default function App() {
                             </div>
                         </div>
                         <div className="header-buttons">
-                            <a className="download-btn" href="/api/download" download>
-                                📥 Excel
-                            </a>
+                            <button
+                                className="theme-toggle"
+                                onClick={toggleTheme}
+                                title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+                            >
+                                {theme === 'dark' ? '☀️' : '🌙'}
+                            </button>
+                            <button className="download-btn" onClick={async () => {
+                                const indices = filtered.map((p) => projects.indexOf(p)).filter((i) => i >= 0);
+                                try {
+                                    const res = await fetch('/api/download', {
+                                        method: 'POST',
+                                        headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify({ indices }),
+                                    });
+                                    if (!res.ok) throw new Error('Download failed');
+                                    const blob = await res.blob();
+                                    const url = URL.createObjectURL(blob);
+                                    const a = document.createElement('a');
+                                    a.href = url;
+                                    a.download = 'projects.xlsx';
+                                    a.click();
+                                    URL.revokeObjectURL(url);
+                                } catch (e) {
+                                    setToast({ type: 'error', message: 'Export failed' });
+                                }
+                            }}>
+                                📥 Excel ({filtered.length})
+                            </button>
                             <button className="sync-btn" onClick={() => setConfigOpen(true)}>
                                 ⚙️ Settings
                             </button>

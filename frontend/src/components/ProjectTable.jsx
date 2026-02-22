@@ -1,8 +1,20 @@
 import { useState, useMemo } from 'react';
 
+const ROWS_PER_PAGE_OPTIONS = [25, 50, 100];
+
 export default function ProjectTable({ projects, allProjects, onDecisionChange, onDelete, regions }) {
     const [sortCol, setSortCol] = useState(null);
     const [sortDir, setSortDir] = useState('asc'); // 'asc' or 'desc'
+    const [page, setPage] = useState(0);
+    const [rowsPerPage, setRowsPerPage] = useState(25);
+
+    // Reset to first page when projects change (e.g. filters applied)
+    const projectsKey = projects.length;
+    const [prevKey, setPrevKey] = useState(projectsKey);
+    if (projectsKey !== prevKey) {
+        setPage(0);
+        setPrevKey(projectsKey);
+    }
 
     // Build reverse lookup: country → region name
     const countryToRegion = useMemo(() => {
@@ -35,6 +47,7 @@ export default function ProjectTable({ projects, allProjects, onDecisionChange, 
         { key: 'project_end_date', label: 'End', type: 'date' },
         { key: 'ai_verified', label: 'AI', type: 'string' },
         { key: 'matched_keywords', label: 'Keywords', type: 'string' },
+        { key: 'scraped_at', label: 'Scraped', type: 'date' },
         { key: '_decision', label: 'Decision', type: 'none' },
         { key: '_links', label: 'Links', type: 'none' },
         { key: '_actions', label: '', type: 'none' },
@@ -81,6 +94,12 @@ export default function ProjectTable({ projects, allProjects, onDecisionChange, 
         });
     }, [projects, sortCol, sortDir, countryToRegion]);
 
+    // Pagination
+    const totalPages = Math.ceil(sorted.length / rowsPerPage);
+    const pageData = sorted.slice(page * rowsPerPage, (page + 1) * rowsPerPage);
+    const startItem = sorted.length === 0 ? 0 : page * rowsPerPage + 1;
+    const endItem = Math.min((page + 1) * rowsPerPage, sorted.length);
+
     const handleSort = (colKey) => {
         const col = columns.find((c) => c.key === colKey);
         if (!col || col.type === 'none') return;
@@ -119,7 +138,7 @@ export default function ProjectTable({ projects, allProjects, onDecisionChange, 
                     </tr>
                 </thead>
                 <tbody>
-                    {sorted.map((p, i) => {
+                    {pageData.map((p, i) => {
                         const realIndex = allProjects.indexOf(p);
                         const isVerified = p.ai_verified === 'Yes';
                         return (
@@ -147,6 +166,11 @@ export default function ProjectTable({ projects, allProjects, onDecisionChange, 
                                         ? p.matched_keywords.split(',').map((k) => k.trim()).filter(Boolean).slice(0, 3).map((kw) => (
                                             <span key={kw} className="keyword-tag">{kw}</span>
                                         ))
+                                        : '—'}
+                                </td>
+                                <td className="td-date">
+                                    {p.scraped_at
+                                        ? new Date(p.scraped_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
                                         : '—'}
                                 </td>
                                 <td>
@@ -190,6 +214,62 @@ export default function ProjectTable({ projects, allProjects, onDecisionChange, 
                     })}
                 </tbody>
             </table>
+
+            {/* Pagination controls */}
+            {sorted.length > 0 && (
+                <div className="pagination-bar">
+                    <div className="pagination-info">
+                        Showing <strong>{startItem}–{endItem}</strong> of <strong>{sorted.length}</strong>
+                    </div>
+
+                    <div className="pagination-controls">
+                        <button
+                            className="pagination-btn"
+                            disabled={page === 0}
+                            onClick={() => setPage(0)}
+                            title="First page"
+                        >«</button>
+                        <button
+                            className="pagination-btn"
+                            disabled={page === 0}
+                            onClick={() => setPage(page - 1)}
+                            title="Previous page"
+                        >‹</button>
+
+                        <span className="pagination-pages">
+                            Page <strong>{page + 1}</strong> of <strong>{totalPages}</strong>
+                        </span>
+
+                        <button
+                            className="pagination-btn"
+                            disabled={page >= totalPages - 1}
+                            onClick={() => setPage(page + 1)}
+                            title="Next page"
+                        >›</button>
+                        <button
+                            className="pagination-btn"
+                            disabled={page >= totalPages - 1}
+                            onClick={() => setPage(totalPages - 1)}
+                            title="Last page"
+                        >»</button>
+                    </div>
+
+                    <div className="pagination-size">
+                        <label>Rows:&nbsp;</label>
+                        <select
+                            value={rowsPerPage}
+                            onChange={(e) => {
+                                setRowsPerPage(Number(e.target.value));
+                                setPage(0);
+                            }}
+                        >
+                            {ROWS_PER_PAGE_OPTIONS.map((n) => (
+                                <option key={n} value={n}>{n}</option>
+                            ))}
+                        </select>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

@@ -64,6 +64,7 @@ export default function SyncPanel({ open, onClose, onSyncDone, onSyncStart }) {
                         success: data.success,
                         message: data.success ? 'Sync completed successfully' : 'Sync finished with errors',
                         project_count: data.project_count,
+                        summary: data.summary || null,
                     });
                     setSyncing(false);
                     eventSource.close();
@@ -146,10 +147,10 @@ export default function SyncPanel({ open, onClose, onSyncDone, onSyncStart }) {
                         )}
                     </button>
 
-                    {/* Live log output */}
+                    {/* Live status output */}
                     {(logs.length > 0 || syncing) && (
                         <div className="sync-logs">
-                            <h3>Live Output</h3>
+                            <h3>Live Status</h3>
                             <pre className="sync-output">
                                 {logs.map((line, i) => (
                                     <div key={i}>{line}</div>
@@ -164,10 +165,46 @@ export default function SyncPanel({ open, onClose, onSyncDone, onSyncStart }) {
                         <div className={`sync-result ${result.success ? 'success' : 'error'}`}>
                             <div className="sync-result-header">
                                 <span>{result.success ? '✅' : '⚠️'} {result.message}</span>
-                                {result.project_count != null && (
-                                    <span className="sync-count">{result.project_count} projects</span>
-                                )}
                             </div>
+                            {result.summary && (
+                                <div className="sync-summary">
+                                    <div className="sync-summary-row">
+                                        <span>📊 Total scraped:</span>
+                                        <strong>{result.summary.total_scraped}</strong>
+                                    </div>
+                                    <div className="sync-summary-row">
+                                        <span>⬆️ New projects:</span>
+                                        <strong>{result.summary.new_projects}</strong>
+                                    </div>
+                                    <div className="sync-summary-row">
+                                        <span>✅ AI validated:</span>
+                                        <strong>{result.summary.ai_verified}</strong>
+                                    </div>
+                                    <div className="sync-summary-row">
+                                        <span>❌ AI rejected:</span>
+                                        <strong>{result.summary.ai_rejected}</strong>
+                                    </div>
+                                    <div className="sync-summary-row">
+                                        <span>🗄️ Total in DB:</span>
+                                        <strong>{result.summary.total_projects}</strong>
+                                    </div>
+                                    {result.summary.scrapers && (
+                                        <div className="sync-scrapers-grid">
+                                            {Object.entries(result.summary.scrapers).map(([key, s]) => (
+                                                <div key={key} className={`sync-scraper-chip ${s.error ? 'failed' : 'ok'}`}>
+                                                    <span>{s.error ? '❌' : '✅'} {s.label}</span>
+                                                    <span className="chip-count">{s.count} · {s.duration}s</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                            {!result.summary && result.project_count != null && (
+                                <div className="sync-result-header">
+                                    <span className="sync-count">{result.project_count} projects</span>
+                                </div>
+                            )}
                         </div>
                     )}
                 </div>
