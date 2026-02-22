@@ -313,6 +313,7 @@ def _start_sync_with_flags(req_dict: dict):
         "devaid": "--devaid",
         "dgmarket": "--dgmarket",
         "no_ai": "--no-ai",
+        "no_enrich": "--no-enrich",
         "include_expired": "--include-expired",
     }
 
@@ -345,6 +346,22 @@ def delete_project(index: int):
     return {"deleted": True, "project": result}
 
 
+# ── GET /api/documents/{project_id}/{filename} ────────────────────────────
+
+DOWNLOADS_DIR = BASE_DIR / "downloads"
+
+
+@app.get("/api/documents/{project_id}/{filename}")
+def download_document(project_id: str, filename: str):
+    """Serve a downloaded document file."""
+    safe_pid = project_id.replace("..", "").replace("/", "").replace("\\", "")
+    safe_fname = filename.replace("..", "").replace("/", "").replace("\\", "")
+    filepath = DOWNLOADS_DIR / safe_pid / safe_fname
+    if not filepath.exists():
+        raise HTTPException(status_code=404, detail="Document not found")
+    return FileResponse(filepath, filename=safe_fname)
+
+
 # ── Config endpoints ─────────────────────────────────────────────────────────
 
 @app.get("/api/config")
@@ -373,6 +390,7 @@ class SyncRequest(BaseModel):
     devaid: bool = False
     dgmarket: bool = False
     no_ai: bool = False
+    no_enrich: bool = False
     include_expired: bool = False
 
 

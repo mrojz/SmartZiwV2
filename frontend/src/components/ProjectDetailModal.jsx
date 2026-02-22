@@ -26,6 +26,7 @@ function extIcon(ext) {
     if (e.includes('ppt')) return '📙';
     return '📄';
 }
+const API = '/api';
 
 export default function ProjectDetailModal({ project, onClose, onDecisionChange, index }) {
     const [activeTab, setActiveTab] = useState('overview');
@@ -62,9 +63,9 @@ export default function ProjectDetailModal({ project, onClose, onDecisionChange,
 
     const tabs = [
         { key: 'overview', label: 'Overview', icon: '📋' },
+        { key: 'documents', label: 'Documents', icon: '📎', count: hasDocuments ? documents.length : 0 },
+        { key: 'analysis', label: 'AI Analysis', icon: '🤖' },
     ];
-    if (hasDocuments) tabs.push({ key: 'documents', label: 'Documents', icon: '📎', count: documents.length });
-    if (hasAnalysis) tabs.push({ key: 'analysis', label: 'AI Analysis', icon: '🤖' });
 
     const handleDecision = (value) => {
         const next = decision === value ? '' : value;
@@ -106,21 +107,19 @@ export default function ProjectDetailModal({ project, onClose, onDecisionChange,
                     <span className="modal-id">ID: {project_id}</span>
                 </div>
 
-                {/* Tabs */}
-                {tabs.length > 1 && (
-                    <div className="modal-tabs">
-                        {tabs.map((tab) => (
-                            <button
-                                key={tab.key}
-                                className={`modal-tab ${activeTab === tab.key ? 'active' : ''}`}
-                                onClick={() => setActiveTab(tab.key)}
-                            >
-                                {tab.icon} {tab.label}
-                                {tab.count != null && <span className="tab-count">{tab.count}</span>}
-                            </button>
-                        ))}
-                    </div>
-                )}
+                {/* Tabs — always shown */}
+                <div className="modal-tabs">
+                    {tabs.map((tab) => (
+                        <button
+                            key={tab.key}
+                            className={`modal-tab ${activeTab === tab.key ? 'active' : ''}`}
+                            onClick={() => setActiveTab(tab.key)}
+                        >
+                            {tab.icon} {tab.label}
+                            {tab.count != null && <span className="tab-count">{tab.count}</span>}
+                        </button>
+                    ))}
+                </div>
 
                 {/* Body */}
                 <div className="modal-body">
@@ -227,148 +226,176 @@ export default function ProjectDetailModal({ project, onClose, onDecisionChange,
                     )}
 
                     {/* ── Documents Tab ── */}
-                    {activeTab === 'documents' && hasDocuments && (
+                    {activeTab === 'documents' && (
                         <div className="modal-documents">
-                            <div className="modal-section">
-                                <h4>Downloaded Documents ({documents.length})</h4>
-                                <div className="doc-list">
-                                    {documents.map((doc, i) => (
-                                        <div key={i} className="doc-item">
-                                            <span className="doc-icon">{extIcon(doc.extension)}</span>
-                                            <div className="doc-info">
-                                                <span className="doc-name">{doc.title || doc.filename}</span>
-                                                <span className="doc-meta">
-                                                    {doc.extension?.toUpperCase().replace('.', '')}
-                                                    {doc.size ? ` · ${formatFileSize(doc.size)}` : ''}
-                                                </span>
+                            {hasDocuments ? (
+                                <div className="modal-section">
+                                    <h4>Downloaded Documents ({documents.length})</h4>
+                                    <div className="doc-list">
+                                        {documents.map((doc, i) => (
+                                            <div key={i} className="doc-item">
+                                                <span className="doc-icon">{extIcon(doc.extension)}</span>
+                                                <div className="doc-info">
+                                                    <span className="doc-name">{doc.title || doc.filename}</span>
+                                                    <span className="doc-meta">
+                                                        {doc.extension?.toUpperCase().replace('.', '')}
+                                                        {doc.size ? ` · ${formatFileSize(doc.size)}` : ''}
+                                                    </span>
+                                                </div>
+                                                <div className="doc-actions">
+                                                    {doc.filename && (
+                                                        <a
+                                                            className="doc-download"
+                                                            href={`${API}/documents/${encodeURIComponent(project_id)}/${encodeURIComponent(doc.filename)}`}
+                                                            download
+                                                            title="Download file"
+                                                        >
+                                                            ⬇
+                                                        </a>
+                                                    )}
+                                                    {doc.url && (
+                                                        <a
+                                                            className="doc-download"
+                                                            href={doc.url}
+                                                            target="_blank"
+                                                            rel="noopener noreferrer"
+                                                            title="Open original source"
+                                                        >
+                                                            ↗
+                                                        </a>
+                                                    )}
+                                                </div>
                                             </div>
-                                            {doc.url && (
-                                                <a
-                                                    className="doc-download"
-                                                    href={doc.url}
-                                                    target="_blank"
-                                                    rel="noopener noreferrer"
-                                                    title="Open original"
-                                                >
-                                                    ↗
-                                                </a>
-                                            )}
-                                        </div>
-                                    ))}
+                                        ))}
+                                    </div>
                                 </div>
-                            </div>
+                            ) : (
+                                <div className="modal-empty-state">
+                                    <span className="empty-icon">📂</span>
+                                    <h4>No Documents Scraped</h4>
+                                    <p>No documents were found or downloaded for this project. Documents are scraped automatically during sync for AI-verified projects.</p>
+                                </div>
+                            )}
                         </div>
                     )}
 
                     {/* ── AI Analysis Tab ── */}
-                    {activeTab === 'analysis' && hasAnalysis && (
+                    {activeTab === 'analysis' && (
                         <div className="modal-analysis">
-                            {analyses.map((analysis, aIdx) => (
-                                <div key={aIdx} className="analysis-block">
-                                    {analysis.document && analyses.length > 1 && (
-                                        <h4 className="analysis-doc-title">{extIcon('.pdf')} {analysis.document}</h4>
-                                    )}
+                            {hasAnalysis ? (
+                                analyses.map((analysis, aIdx) => (
+                                    <div key={aIdx} className="analysis-block">
+                                        {analysis.document && analyses.length > 1 && (
+                                            <h4 className="analysis-doc-title">{extIcon('.pdf')} {analysis.document}</h4>
+                                        )}
 
-                                    {analysis.summary && (
-                                        <div className="modal-section">
-                                            <h4>📝 Summary</h4>
-                                            <p className="analysis-text">{analysis.summary}</p>
-                                        </div>
-                                    )}
-
-                                    {analysis.requirements?.length > 0 && (
-                                        <div className="modal-section">
-                                            <h4>📋 Requirements</h4>
-                                            <ul className="analysis-list">
-                                                {analysis.requirements.map((r, i) => (
-                                                    <li key={i}>{r}</li>
-                                                ))}
-                                            </ul>
-                                        </div>
-                                    )}
-
-                                    {analysis.phases?.length > 0 && (
-                                        <div className="modal-section">
-                                            <h4>📊 Phases</h4>
-                                            <ul className="analysis-list">
-                                                {analysis.phases.map((ph, i) => (
-                                                    <li key={i}>{ph}</li>
-                                                ))}
-                                            </ul>
-                                        </div>
-                                    )}
-
-                                    {analysis.deliverables?.length > 0 && (
-                                        <div className="modal-section">
-                                            <h4>📦 Deliverables</h4>
-                                            <ul className="analysis-list">
-                                                {analysis.deliverables.map((d, i) => (
-                                                    <li key={i}>{d}</li>
-                                                ))}
-                                            </ul>
-                                        </div>
-                                    )}
-
-                                    {analysis.skills_required?.length > 0 && (
-                                        <div className="modal-section">
-                                            <h4>🎯 Skills Required</h4>
-                                            <div className="modal-keywords">
-                                                {analysis.skills_required.map((s, i) => (
-                                                    <span key={i} className="keyword-tag skill">{s}</span>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    )}
-
-                                    {analysis.evaluation_criteria?.length > 0 && (
-                                        <div className="modal-section">
-                                            <h4>⚖️ Evaluation Criteria</h4>
-                                            <ul className="analysis-list">
-                                                {analysis.evaluation_criteria.map((c, i) => (
-                                                    <li key={i}>{c}</li>
-                                                ))}
-                                            </ul>
-                                        </div>
-                                    )}
-
-                                    <div className="analysis-extras">
-                                        {analysis.budget && (
-                                            <div className="analysis-extra-item">
-                                                <span className="extra-label">💰 Budget</span>
-                                                <span className="extra-value">{analysis.budget}</span>
+                                        {analysis.summary && (
+                                            <div className="modal-section">
+                                                <h4>📝 Summary</h4>
+                                                <p className="analysis-text">{analysis.summary}</p>
                                             </div>
                                         )}
-                                        {analysis.eligibility && (
-                                            <div className="analysis-extra-item">
-                                                <span className="extra-label">✅ Eligibility</span>
-                                                <span className="extra-value">{analysis.eligibility}</span>
+
+                                        {analysis.requirements?.length > 0 && (
+                                            <div className="modal-section">
+                                                <h4>📋 Requirements</h4>
+                                                <ul className="analysis-list">
+                                                    {analysis.requirements.map((r, i) => (
+                                                        <li key={i}>{r}</li>
+                                                    ))}
+                                                </ul>
                                             </div>
                                         )}
-                                        {analysis.key_dates && (
-                                            <>
-                                                {analysis.key_dates.submission_deadline && (
-                                                    <div className="analysis-extra-item">
-                                                        <span className="extra-label">📅 Submission Deadline</span>
-                                                        <span className="extra-value">{analysis.key_dates.submission_deadline}</span>
-                                                    </div>
-                                                )}
-                                                {analysis.key_dates.project_start && (
-                                                    <div className="analysis-extra-item">
-                                                        <span className="extra-label">🚀 Project Start</span>
-                                                        <span className="extra-value">{analysis.key_dates.project_start}</span>
-                                                    </div>
-                                                )}
-                                                {analysis.key_dates.project_end && (
-                                                    <div className="analysis-extra-item">
-                                                        <span className="extra-label">🏁 Project End</span>
-                                                        <span className="extra-value">{analysis.key_dates.project_end}</span>
-                                                    </div>
-                                                )}
-                                            </>
+
+                                        {analysis.phases?.length > 0 && (
+                                            <div className="modal-section">
+                                                <h4>📊 Phases</h4>
+                                                <ul className="analysis-list">
+                                                    {analysis.phases.map((ph, i) => (
+                                                        <li key={i}>{ph}</li>
+                                                    ))}
+                                                </ul>
+                                            </div>
                                         )}
+
+                                        {analysis.deliverables?.length > 0 && (
+                                            <div className="modal-section">
+                                                <h4>📦 Deliverables</h4>
+                                                <ul className="analysis-list">
+                                                    {analysis.deliverables.map((d, i) => (
+                                                        <li key={i}>{d}</li>
+                                                    ))}
+                                                </ul>
+                                            </div>
+                                        )}
+
+                                        {analysis.skills_required?.length > 0 && (
+                                            <div className="modal-section">
+                                                <h4>🎯 Skills Required</h4>
+                                                <div className="modal-keywords">
+                                                    {analysis.skills_required.map((s, i) => (
+                                                        <span key={i} className="keyword-tag skill">{s}</span>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {analysis.evaluation_criteria?.length > 0 && (
+                                            <div className="modal-section">
+                                                <h4>⚖️ Evaluation Criteria</h4>
+                                                <ul className="analysis-list">
+                                                    {analysis.evaluation_criteria.map((c, i) => (
+                                                        <li key={i}>{c}</li>
+                                                    ))}
+                                                </ul>
+                                            </div>
+                                        )}
+
+                                        <div className="analysis-extras">
+                                            {analysis.budget && (
+                                                <div className="analysis-extra-item">
+                                                    <span className="extra-label">💰 Budget</span>
+                                                    <span className="extra-value">{analysis.budget}</span>
+                                                </div>
+                                            )}
+                                            {analysis.eligibility && (
+                                                <div className="analysis-extra-item">
+                                                    <span className="extra-label">✅ Eligibility</span>
+                                                    <span className="extra-value">{analysis.eligibility}</span>
+                                                </div>
+                                            )}
+                                            {analysis.key_dates && (
+                                                <>
+                                                    {analysis.key_dates.submission_deadline && (
+                                                        <div className="analysis-extra-item">
+                                                            <span className="extra-label">📅 Submission Deadline</span>
+                                                            <span className="extra-value">{analysis.key_dates.submission_deadline}</span>
+                                                        </div>
+                                                    )}
+                                                    {analysis.key_dates.project_start && (
+                                                        <div className="analysis-extra-item">
+                                                            <span className="extra-label">🚀 Project Start</span>
+                                                            <span className="extra-value">{analysis.key_dates.project_start}</span>
+                                                        </div>
+                                                    )}
+                                                    {analysis.key_dates.project_end && (
+                                                        <div className="analysis-extra-item">
+                                                            <span className="extra-label">🏁 Project End</span>
+                                                            <span className="extra-value">{analysis.key_dates.project_end}</span>
+                                                        </div>
+                                                    )}
+                                                </>
+                                            )}
+                                        </div>
                                     </div>
+                                ))
+                            ) : (
+                                <div className="modal-empty-state">
+                                    <span className="empty-icon">🤖</span>
+                                    <h4>No AI Analysis Available</h4>
+                                    <p>This project has not been analyzed yet. AI analysis runs automatically during sync for projects with downloaded documents.</p>
                                 </div>
-                            ))}
+                            )}
                         </div>
                     )}
                 </div>
