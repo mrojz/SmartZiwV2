@@ -50,8 +50,18 @@ DOC_EXTENSIONS = {".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx"}
 
 
 def _deepseek_request(client, system_prompt: str, user_prompt: str,
-                      max_tokens: int = 4000, temperature: float = 0.0) -> str | None:
+                      max_tokens: int = 4000, temperature: float = 0.0,
+                      label: str = "") -> str | None:
     """Send a request to DeepSeek and return the raw text content."""
+    tag = f"[{label}] " if label else ""
+
+    print(f"\n      {tag}─── PROMPT TO DEEPSEEK ───")
+    print(f"      {tag}System: {system_prompt[:200]}...")
+    print(f"      {tag}User:")
+    for line in user_prompt.split("\n"):
+        print(f"      {tag}  {line}")
+    print(f"      {tag}──────────────────────────")
+
     for attempt in range(MAX_RETRIES):
         try:
             time.sleep(random.uniform(0.2, 0.8))
@@ -64,10 +74,17 @@ def _deepseek_request(client, system_prompt: str, user_prompt: str,
                 temperature=temperature,
                 max_tokens=max_tokens,
             )
-            return response.choices[0].message.content.strip()
+            content = response.choices[0].message.content.strip()
+
+            print(f"\n      {tag}─── AI RESPONSE ───")
+            for line in content.split("\n"):
+                print(f"      {tag}  {line}")
+            print(f"      {tag}────────────────────")
+
+            return content
 
         except Exception as e:
-            print(f"      [!] DeepSeek API error (attempt {attempt + 1}): {e}")
+            print(f"      {tag}[!] DeepSeek API error (attempt {attempt + 1}): {e}")
             if attempt < MAX_RETRIES - 1:
                 wait = (2 ** attempt) + random.uniform(1, 3)
                 time.sleep(wait)
@@ -235,7 +252,8 @@ def _research_project(client, project: dict) -> dict | None:
 - Project URL: {project_url}
 - Document URL: {document_url}"""
 
-    content = _deepseek_request(client, RESEARCH_PROMPT, user_prompt, max_tokens=3000)
+    content = _deepseek_request(client, RESEARCH_PROMPT, user_prompt, max_tokens=3000,
+                                label="Research")
     return _parse_json_response(content)
 
 
@@ -273,6 +291,20 @@ def research_projects(projects):
             src = project["original_source"]
             doc_count = len(project["_document_urls"])
             print(f"      ✅ Source: {src} | {doc_count} document URL(s) suggested")
+
+            # Log discovered document URLs
+            if project["_document_urls"]:
+                print(f"      📎 Document URLs found:")
+                for di, doc_url in enumerate(project["_document_urls"], 1):
+                    print(f"         {di}. {doc_url.get('title', 'N/A')[:60]}")
+                    print(f"            URL: {doc_url.get('url', 'N/A')}")
+
+            # Log search queries
+            if project["_search_queries"]:
+                print(f"      🔍 Suggested Google dork queries:")
+                for sq in project["_search_queries"]:
+                    print(f"         • {sq}")
+
             researched += 1
         else:
             project["original_source"] = "Unknown"
@@ -465,14 +497,27 @@ def analyze_documents(projects):
                 print(f"      — Insufficient text extracted, skipping")
                 continue
 
+            # Log extracted text preview
+            preview = text[:300].replace("\n", " ")
+            print(f"      📝 Extracted text preview: {preview}...")
+
             user_prompt = f"Document title: {doc_name}\n\n---\n\n{text}"
-            content = _deepseek_request(client, DOC_ANALYSIS_PROMPT, user_prompt)
+            content = _deepseek_request(client, DOC_ANALYSIS_PROMPT, user_prompt,
+                                        label="DocAnalysis")
             analysis = _parse_json_response(content)
 
             if analysis:
                 analysis["document"] = doc_name
                 all_analyses.append(analysis)
                 print(f"      ✅ Analysis complete")
+
+                # Log parsed analysis summary
+                if analysis.get("summary"):
+                    print(f"         Summary: {analysis['summary'][:150]}...")
+                if analysis.get("requirements"):
+                    print(f"         Requirements: {len(analysis['requirements'])} items")
+                if analysis.get("budget"):
+                    print(f"         Budget: {analysis['budget']}")
             else:
                 print(f"      ❌ Analysis failed")
 
