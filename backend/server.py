@@ -506,7 +506,7 @@ def update_schedule(body: ScheduleUpdate):
 @app.get("/api/schedule/logs")
 def schedule_logs():
     """Return the most recent scheduled sync run logs."""
-    return get_sync_logs(limit=20)
+    return get_sync_logs(limit=5)
 
 
 @app.get("/api/server-time")
