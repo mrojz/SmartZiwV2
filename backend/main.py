@@ -108,6 +108,7 @@ def main():
     parser.add_argument("--devaid", action="store_true", help="Run only the DevelopmentAid scraper")
     parser.add_argument("--dgmarket", action="store_true", help="Run only the DGMarket scraper")
     parser.add_argument("--no-ai", action="store_true", help="Skip AI cybersecurity verification")
+    parser.add_argument("--no-enrich", action="store_true", help="Skip AI enrichment (source detection, doc analysis)")
     parser.add_argument("--include-expired", action="store_true", help="Include projects with past due dates")
     args = parser.parse_args()
 
@@ -233,7 +234,38 @@ def main():
     else:
         print("[i] AI verification skipped (--no-ai flag)", flush=True)
 
-    # ── 8. Save new projects to MongoDB ───────────────────────────────────
+    # ── 8. AI Enrichment (source detection, doc scraping, doc analysis) ────
+    enrichment_stats = {"sources_detected": 0, "docs_downloaded": 0, "docs_analyzed": 0}
+
+    if not args.no_enrich and not args.no_ai:
+        enrichable = [p for p in new_projects if p.get("ai_verified") == "Yes"]
+        if enrichable:
+            from ai_enrichment import run_enrichment
+
+            print(f"[⏳] AI enrichment: processing {len(enrichable)} verified projects...", flush=True)
+            run_enrichment(enrichable)
+
+            enrichment_stats["sources_detected"] = sum(
+                1 for p in enrichable if p.get("original_source") and p["original_source"] != "Unknown"
+            )
+            enrichment_stats["docs_downloaded"] = sum(
+                len(p.get("documents", [])) for p in enrichable
+            )
+            enrichment_stats["docs_analyzed"] = sum(
+                1 for p in enrichable if p.get("doc_analysis")
+            )
+            print(
+                f"[✅] Enrichment: {enrichment_stats['sources_detected']} sources, "
+                f"{enrichment_stats['docs_downloaded']} docs, "
+                f"{enrichment_stats['docs_analyzed']} analyzed",
+                flush=True,
+            )
+        else:
+            print("[i] No verified projects to enrich", flush=True)
+    elif args.no_enrich:
+        print("[i] AI enrichment skipped (--no-enrich flag)", flush=True)
+
+    # ── 9. Save new projects to MongoDB ───────────────────────────────────
     if not new_projects and not any(not r.get("ai_verified") for r in existing_rows):
         print("[i] No new projects found. Database unchanged.", flush=True)
     elif new_projects:
@@ -244,13 +276,14 @@ def main():
     all_projects = get_all_projects()
     save_to_excel(all_projects, filename=OUTPUT_XLSX)
 
-    # ── 9. Print structured summary (for server.py to parse) ──────────────
+    # ── 10. Print structured summary (for server.py to parse) ─────────────
     summary = {
         "total_scraped": len(all_scraped),
         "new_projects": len(new_projects),
         "total_projects": len(all_projects),
         "ai_verified": ai_verified_count,
         "ai_rejected": ai_rejected_count,
+        "enrichment": enrichment_stats,
         "scrapers": {},
     }
     for key, result in results.items():
