@@ -190,7 +190,7 @@ def fetch_keyword(session, keyword, request_count):
     """
     # Rate limit: wait ~30s between requests to stay under 2/min
     if request_count > 0:
-        wait = random.uniform(32, 45)
+        wait = random.uniform(20, 35)
         print(f"    [~] Throttle: waiting {wait:.0f}s (rate limit protection)...")
         time.sleep(wait)
     
