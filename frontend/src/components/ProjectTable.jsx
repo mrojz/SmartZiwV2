@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import ProjectDetailModal from './ProjectDetailModal';
 
 const ROWS_PER_PAGE_OPTIONS = [25, 50, 100];
 
@@ -7,6 +8,8 @@ export default function ProjectTable({ projects, allProjects, onDecisionChange, 
     const [sortDir, setSortDir] = useState('asc'); // 'asc' or 'desc'
     const [page, setPage] = useState(0);
     const [rowsPerPage, setRowsPerPage] = useState(25);
+    const [selectedProject, setSelectedProject] = useState(null);
+    const [selectedIndex, setSelectedIndex] = useState(-1);
 
     // Reset to first page when projects change (e.g. filters applied)
     const projectsKey = projects.length;
@@ -142,7 +145,11 @@ export default function ProjectTable({ projects, allProjects, onDecisionChange, 
                         const realIndex = allProjects.indexOf(p);
                         const isVerified = p.ai_verified === 'Yes';
                         return (
-                            <tr key={`${p.project_id}-${i}`} className={p.decision === 'No Go' ? 'row-nogo' : ''}>
+                            <tr
+                                key={`${p.project_id}-${i}`}
+                                className={`clickable-row ${p.decision === 'No Go' ? 'row-nogo' : ''}`}
+                                onClick={() => { setSelectedProject(p); setSelectedIndex(realIndex); }}
+                            >
                                 <td className="td-id">{p.project_id}</td>
                                 <td className="td-name">
                                     <span title={p.project_name || p.project_description || '—'}>{p.project_name || p.project_description || '—'}</span>
@@ -174,7 +181,7 @@ export default function ProjectTable({ projects, allProjects, onDecisionChange, 
                                         : '—'}
                                 </td>
                                 <td>
-                                    <div className="table-decisions">
+                                    <div className="table-decisions" onClick={(e) => e.stopPropagation()}>
                                         <button
                                             className={`decision-btn-sm go ${p.decision === 'Go' ? 'active' : ''}`}
                                             onClick={() => onDecisionChange(realIndex, p.decision === 'Go' ? '' : 'Go')}
@@ -188,7 +195,7 @@ export default function ProjectTable({ projects, allProjects, onDecisionChange, 
                                     </div>
                                 </td>
                                 <td>
-                                    <div className="table-links">
+                                    <div className="table-links" onClick={(e) => e.stopPropagation()}>
                                         {p.project_url && (
                                             <a href={p.project_url} target="_blank" rel="noopener noreferrer" title="Project">🔗</a>
                                         )}
@@ -200,7 +207,8 @@ export default function ProjectTable({ projects, allProjects, onDecisionChange, 
                                 <td>
                                     <button
                                         className="decision-btn-sm delete"
-                                        onClick={() => {
+                                        onClick={(e) => {
+                                            e.stopPropagation();
                                             const name = p.project_name || p.project_description || 'this project';
                                             if (window.confirm(`Delete "${name.slice(0, 60)}"?`)) {
                                                 onDelete?.(realIndex);
@@ -269,6 +277,15 @@ export default function ProjectTable({ projects, allProjects, onDecisionChange, 
                         </select>
                     </div>
                 </div>
+            )}
+
+            {selectedProject && (
+                <ProjectDetailModal
+                    project={selectedProject}
+                    index={selectedIndex}
+                    onClose={() => setSelectedProject(null)}
+                    onDecisionChange={(idx, dec) => { onDecisionChange(idx, dec); setSelectedProject(prev => prev ? { ...prev, decision: dec } : null); }}
+                />
             )}
         </div>
     );
