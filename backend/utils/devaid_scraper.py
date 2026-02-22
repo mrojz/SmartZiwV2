@@ -70,7 +70,7 @@ def _build_payload(keyword: str, page: int = 1, page_size: int = 50) -> dict:
     filt["keyword"] = {"searchedText": keyword, "searchedFields": []}
     return {
         "filter": filt,
-        "sort": "relevance.desc",
+        "sort": "deadline.desc",
         "pageSize": page_size,
         "pageNr": page,
     }
