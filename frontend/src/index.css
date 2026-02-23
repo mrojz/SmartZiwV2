@@ -692,6 +692,7 @@ body {
   width: 100%;
   border-collapse: collapse;
   font-size: 0.82rem;
+  table-layout: fixed;
 }
 
 .projects-table thead {
@@ -703,7 +704,7 @@ body {
 .projects-table th {
   background: rgba(17, 24, 39, 0.95);
   backdrop-filter: blur(8px);
-  padding: 10px 14px;
+  padding: 10px 8px;
   text-align: left;
   font-size: 0.72rem;
   font-weight: 600;
@@ -712,7 +713,70 @@ body {
   letter-spacing: 0.06em;
   border-bottom: 1px solid var(--border-glass);
   white-space: nowrap;
+  overflow: hidden;
 }
+
+/* Column widths */
+.projects-table th:nth-child(1) {
+  width: 7%;
+}
+
+/* ID */
+.projects-table th:nth-child(2) {
+  width: 20%;
+}
+
+/* Name */
+.projects-table th:nth-child(3) {
+  width: 7%;
+}
+
+/* Source */
+.projects-table th:nth-child(4) {
+  width: 10%;
+}
+
+/* Sponsor */
+.projects-table th:nth-child(5) {
+  width: 7%;
+}
+
+/* Region */
+.projects-table th:nth-child(6) {
+  width: 7%;
+}
+
+/* Start */
+.projects-table th:nth-child(7) {
+  width: 7%;
+}
+
+/* End */
+.projects-table th:nth-child(8) {
+  width: 3%;
+}
+
+/* AI */
+.projects-table th:nth-child(9) {
+  width: 13%;
+}
+
+/* Keywords */
+.projects-table th:nth-child(10) {
+  width: 8%;
+}
+
+/* Scraped */
+.projects-table th:nth-child(11) {
+  width: 6%;
+}
+
+/* Decision */
+.projects-table th:nth-child(12) {
+  width: 5%;
+}
+
+/* Links */
 
 .projects-table th.sortable-th {
   cursor: pointer;
@@ -733,14 +797,28 @@ body {
   opacity: 1;
 }
 
+.td-id,
+.td-name,
+.td-sponsor,
+.td-keywords,
 .td-region {
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.td-region {
   font-size: 0.78rem;
   color: var(--accent-purple);
 }
 
+.td-date {
+  white-space: nowrap;
+  font-size: 0.78rem;
+}
+
 .projects-table td {
-  padding: 10px 14px;
+  padding: 10px 8px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.03);
   color: var(--text-secondary);
   vertical-align: middle;
