@@ -1,10 +1,4 @@
-import SmartSearch from './SmartSearch';
-
 export default function FilterBar({
-  chips,
-  onChipsChange,
-  freeText,
-  onFreeTextChange,
   source,
   onSourceChange,
   verified,
@@ -16,75 +10,73 @@ export default function FilterBar({
   region,
   onRegionChange,
   regions,
+  status,
+  onStatusChange,
   onClear,
-  projects,
 }) {
-  const hasFilters = chips.length > 0 || freeText || source || verified || keyword || region;
+  const hasFilters = source || verified || keyword || region || status;
+  const activeCount = [source, verified, keyword, region, status].filter(Boolean).length;
 
   return (
     <div className="filter-bar">
       <div className="filter-inner">
-        {/* Smart search with autocomplete */}
-        <SmartSearch
-          chips={chips}
-          onChipsChange={onChipsChange}
-          freeText={freeText}
-          onFreeTextChange={onFreeTextChange}
-          projects={projects}
-          regions={regions}
-        />
-
-        {/* Source */}
         <select
-          className="filter-select"
+          className="filter-select filter-select-compact"
           value={source}
           onChange={(e) => onSourceChange(e.target.value)}
         >
-          <option value="">All Sources</option>
+          <option value="">Source</option>
           {sources.map((s) => (
             <option key={s} value={s}>{s}</option>
           ))}
         </select>
 
-        {/* Region */}
         <select
-          className="filter-select"
+          className="filter-select filter-select-compact"
           value={region}
           onChange={(e) => onRegionChange(e.target.value)}
         >
-          <option value="">All Regions</option>
+          <option value="">Region</option>
           {Object.keys(regions || {}).sort().map((r) => (
             <option key={r} value={r}>{r}</option>
           ))}
         </select>
 
-        {/* AI Verified */}
         <select
-          className="filter-select"
+          className="filter-select filter-select-compact"
           value={verified}
           onChange={(e) => onVerifiedChange(e.target.value)}
         >
-          <option value="">AI Verified: All</option>
-          <option value="Yes">✅ Verified</option>
-          <option value="No">❌ Not Verified</option>
+          <option value="">AI Status</option>
+          <option value="Yes">Verified</option>
+          <option value="No">Not Verified</option>
         </select>
 
-        {/* Keywords */}
         <select
-          className="filter-select"
+          className="filter-select filter-select-compact"
+          value={status}
+          onChange={(e) => onStatusChange(e.target.value)}
+        >
+          <option value="">Decision</option>
+          <option value="Go">Go</option>
+          <option value="No Go">No Go</option>
+          <option value="Undecided">Undecided</option>
+        </select>
+
+        <select
+          className="filter-select filter-select-compact"
           value={keyword}
           onChange={(e) => onKeywordChange(e.target.value)}
         >
-          <option value="">All Keywords</option>
+          <option value="">Keyword</option>
           {keywords.map((kw) => (
             <option key={kw} value={kw}>{kw}</option>
           ))}
         </select>
 
-        {/* Clear */}
         {hasFilters && (
           <button className="clear-btn" onClick={onClear}>
-            ✕ Clear
+            Clear{activeCount > 0 ? ` (${activeCount})` : ''}
           </button>
         )}
       </div>

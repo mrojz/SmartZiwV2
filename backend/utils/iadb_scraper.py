@@ -157,13 +157,16 @@ def run_mitmproxy(port):
 
 def create_selenium_driver(proxy_port=8001):
     """Create a Selenium Chrome driver configured to use mitmproxy."""
+    import platform
     from selenium import webdriver
     from selenium.webdriver.chrome.service import Service
     from selenium.webdriver.chrome.options import Options
     
     chrome_options = Options()
     
-    # Headless mode for Docker (no display)
+    is_windows = platform.system() == "Windows"
+    
+    # Headless mode
     chrome_options.add_argument("--headless=new")
     
     # Configure proxy
@@ -181,15 +184,20 @@ def create_selenium_driver(proxy_port=8001):
     chrome_options.add_argument("--window-size=1920,1080")
     
     import os
-    chromedriver_path = os.environ.get("CHROMEDRIVER_PATH", "/usr/bin/chromedriver")
     chrome_bin = os.environ.get("CHROME_BIN")
     if chrome_bin:
         chrome_options.binary_location = chrome_bin
     
-    driver = webdriver.Chrome(
-        service=Service(chromedriver_path),
-        options=chrome_options,
-    )
+    if is_windows:
+        # On Windows, let Selenium's driver manager auto-discover chromedriver
+        driver = webdriver.Chrome(options=chrome_options)
+    else:
+        # On Linux/Docker, use explicit chromedriver path
+        chromedriver_path = os.environ.get("CHROMEDRIVER_PATH", "/usr/bin/chromedriver")
+        driver = webdriver.Chrome(
+            service=Service(chromedriver_path),
+            options=chrome_options,
+        )
     
     print("[+] Chrome driver created with proxy settings")
     return driver

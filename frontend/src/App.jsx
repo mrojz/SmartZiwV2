@@ -1,6 +1,4 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import FilterBar from './components/FilterBar';
-import ProjectCard from './components/ProjectCard';
 import ProjectTable from './components/ProjectTable';
 import SyncPanel from './components/SyncPanel';
 import ConfigPanel from './components/ConfigPanel';
@@ -14,13 +12,13 @@ export default function App() {
     const [syncOpen, setSyncOpen] = useState(false);
     const [configOpen, setConfigOpen] = useState(false);
     const [scheduleOpen, setScheduleOpen] = useState(false);
-    const [viewMode, setViewMode] = useState('grid');
+
     const [regions, setRegions] = useState({});
     const [newProjectIds, setNewProjectIds] = useState(new Set());
     const [showNewOnly, setShowNewOnly] = useState(false);
     const [toast, setToast] = useState(null);
     const preSyncIdsRef = useRef(new Set());
-    const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'dark');
+    const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'light');
 
     // Theme effect
     useEffect(() => {
@@ -37,6 +35,11 @@ export default function App() {
     const [verified, setVerified] = useState('');
     const [keyword, setKeyword] = useState('');
     const [region, setRegion] = useState('');
+    const [status, setStatus] = useState('');
+    const [startDateFrom, setStartDateFrom] = useState('');
+    const [startDateTo, setStartDateTo] = useState('');
+    const [endDateFrom, setEndDateFrom] = useState('');
+    const [endDateTo, setEndDateTo] = useState('');
 
     const loadProjects = useCallback(async () => {
         try {
@@ -269,6 +272,36 @@ export default function App() {
                 const sponsor = (p.project_sponsor || '').toLowerCase();
                 if (!countries.some((c) => sponsor.includes(c))) return false;
             }
+            // Status (decision) filter
+            if (status) {
+                if (status === 'Undecided') {
+                    if (p.decision) return false;
+                } else if (p.decision !== status) {
+                    return false;
+                }
+            }
+            // Start date range filter
+            if (startDateFrom || startDateTo) {
+                const raw = p.project_start_date;
+                if (!raw) return false;
+                let d; const parts = raw.split('/');
+                if (parts.length === 3) d = new Date(parts[2], parts[0] - 1, parts[1]);
+                else d = new Date(raw);
+                if (isNaN(d)) return false;
+                if (startDateFrom && d < new Date(startDateFrom)) return false;
+                if (startDateTo && d > new Date(startDateTo + 'T23:59:59')) return false;
+            }
+            // End date range filter
+            if (endDateFrom || endDateTo) {
+                const raw = p.project_end_date;
+                if (!raw) return false;
+                let d; const parts = raw.split('/');
+                if (parts.length === 3) d = new Date(parts[2], parts[0] - 1, parts[1]);
+                else d = new Date(raw);
+                if (isNaN(d)) return false;
+                if (endDateFrom && d < new Date(endDateFrom)) return false;
+                if (endDateTo && d > new Date(endDateTo + 'T23:59:59')) return false;
+            }
             return true;
         });
 
@@ -277,7 +310,7 @@ export default function App() {
             return result.filter((p) => newProjectIds.has(`${p.project_id}__${p.project_name}`));
         }
         return result;
-    }, [projects, chips, freeText, source, verified, keyword, region, regions, getRegion, showNewOnly, newProjectIds]);
+    }, [projects, chips, freeText, source, verified, keyword, region, regions, getRegion, status, startDateFrom, startDateTo, endDateFrom, endDateTo, showNewOnly, newProjectIds]);
 
     const verifiedCount = useMemo(
         () => projects.filter((p) => p.ai_verified === 'Yes').length,
@@ -291,6 +324,11 @@ export default function App() {
         setVerified('');
         setKeyword('');
         setRegion('');
+        setStatus('');
+        setStartDateFrom('');
+        setStartDateTo('');
+        setEndDateFrom('');
+        setEndDateTo('');
         setShowNewOnly(false);
     };
 
@@ -313,30 +351,16 @@ export default function App() {
                     <div className="header-title">
                         <img className="logo-img" src="/forvis-mazars-logo.svg" alt="Forvis Mazars" />
                         <h1>Procurement Watch</h1>
+                        <div className="header-counters">
+                            <span className="counter-item"><strong>{projects.length}</strong> total</span>
+                            <span className="counter-sep">·</span>
+                            <span className="counter-item"><strong>{verifiedCount}</strong> verified</span>
+                            <span className="counter-sep">·</span>
+                            <span className="counter-item"><strong>{sources.length}</strong> sources</span>
+                        </div>
                     </div>
                     <div className="header-actions">
-                        <div className="header-stats">
-                            <div className="stat-item">
-                                <div className="stat-value">{projects.length}</div>
-                                <div className="stat-label">Total</div>
-                            </div>
-                            <div className="stat-item">
-                                <div className="stat-value">{verifiedCount}</div>
-                                <div className="stat-label">AI Verified</div>
-                            </div>
-                            <div className="stat-item">
-                                <div className="stat-value">{sources.length}</div>
-                                <div className="stat-label">Sources</div>
-                            </div>
-                        </div>
                         <div className="header-buttons">
-                            <button
-                                className="theme-toggle"
-                                onClick={toggleTheme}
-                                title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
-                            >
-                                {theme === 'dark' ? '☀️' : '🌙'}
-                            </button>
                             <button className="download-btn" onClick={async () => {
                                 const indices = filtered.map((p) => projects.indexOf(p)).filter((i) => i >= 0);
                                 try {
@@ -359,40 +383,30 @@ export default function App() {
                             }}>
                                 📥 Excel ({filtered.length})
                             </button>
-                            <button className="sync-btn" onClick={() => setConfigOpen(true)}>
-                                ⚙️ Settings
-                            </button>
-                            <button className="sync-btn" onClick={() => setScheduleOpen(true)}>
+                            <button className="header-secondary-btn" onClick={() => setScheduleOpen(true)}>
                                 📅 Schedule
                             </button>
-                            <button className="sync-btn" onClick={() => setSyncOpen(true)}>
+                            <button className="sync-btn primary" onClick={() => setSyncOpen(true)}>
                                 🔄 Sync
+                            </button>
+                        </div>
+                        <div className="header-icon-buttons">
+                            <button
+                                className="header-icon-btn"
+                                onClick={() => setConfigOpen(true)}
+                                title="Settings"
+                            >⚙️</button>
+                            <button
+                                className="header-icon-btn"
+                                onClick={toggleTheme}
+                                title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+                            >
+                                {theme === 'dark' ? '☀️' : '🌙'}
                             </button>
                         </div>
                     </div>
                 </div>
             </header>
-
-            {/* Filters */}
-            <FilterBar
-                chips={chips}
-                onChipsChange={setChips}
-                freeText={freeText}
-                onFreeTextChange={setFreeText}
-                source={source}
-                onSourceChange={setSource}
-                verified={verified}
-                onVerifiedChange={setVerified}
-                keyword={keyword}
-                onKeywordChange={setKeyword}
-                keywords={keywords}
-                sources={sources}
-                region={region}
-                onRegionChange={setRegion}
-                regions={regions}
-                onClear={clearFilters}
-                projects={projects}
-            />
 
             {/* Content */}
             <main className="main-content">
@@ -409,51 +423,38 @@ export default function App() {
                             </button>
                         )}
                     </span>
-                    <div className="view-toggle">
-                        <button
-                            className={`toggle-btn ${viewMode === 'grid' ? 'active' : ''}`}
-                            onClick={() => setViewMode('grid')}
-                            title="Grid view"
-                        >
-                            ▦
-                        </button>
-                        <button
-                            className={`toggle-btn ${viewMode === 'table' ? 'active' : ''}`}
-                            onClick={() => setViewMode('table')}
-                            title="Table view"
-                        >
-                            ☰
-                        </button>
-                    </div>
                 </div>
 
-                {filtered.length === 0 ? (
-                    <div className="empty-state">
-                        <div className="empty-icon">📭</div>
-                        <h3>No projects found</h3>
-                        <p>Try adjusting your search or filters to find what you're looking for.</p>
-                    </div>
-                ) : viewMode === 'grid' ? (
-                    <div className="projects-grid">
-                        {filtered.map((p, i) => (
-                            <ProjectCard
-                                key={`${p.project_id}-${i}`}
-                                project={p}
-                                index={projects.indexOf(p)}
-                                onDecisionChange={handleDecisionChange}
-                                onDelete={handleDelete}
-                            />
-                        ))}
-                    </div>
-                ) : (
-                    <ProjectTable
-                        projects={filtered}
-                        allProjects={projects}
-                        onDecisionChange={handleDecisionChange}
-                        onDelete={handleDelete}
-                        regions={regions}
-                    />
-                )}
+                <ProjectTable
+                    projects={filtered}
+                    allProjects={projects}
+                    onDecisionChange={handleDecisionChange}
+                    onDelete={handleDelete}
+                    regions={regions}
+                    chips={chips}
+                    onChipsChange={setChips}
+                    freeText={freeText}
+                    onFreeTextChange={setFreeText}
+                    source={source}
+                    onSourceChange={setSource}
+                    verified={verified}
+                    onVerifiedChange={setVerified}
+                    keyword={keyword}
+                    onKeywordChange={setKeyword}
+                    keywords={keywords}
+                    sources={sources}
+                    status={status}
+                    onStatusChange={setStatus}
+                    startDateFrom={startDateFrom}
+                    onStartDateFromChange={setStartDateFrom}
+                    startDateTo={startDateTo}
+                    onStartDateToChange={setStartDateTo}
+                    endDateFrom={endDateFrom}
+                    onEndDateFromChange={setEndDateFrom}
+                    endDateTo={endDateTo}
+                    onEndDateToChange={setEndDateTo}
+                    onClearFilters={clearFilters}
+                />
             </main>
 
             {/* Sync Panel */}

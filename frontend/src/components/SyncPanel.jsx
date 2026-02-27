@@ -7,6 +7,7 @@ export default function SyncPanel({ open, onClose, onSyncDone, onSyncStart }) {
     const [giz, setGiz] = useState(true);
     const [devaid, setDevaid] = useState(true);
     const [dgmarket, setDgmarket] = useState(true);
+    const [africagateway, setAfricagateway] = useState(true);
     const [noAi, setNoAi] = useState(false);
     const [includeExpired, setIncludeExpired] = useState(false);
     const [syncing, setSyncing] = useState(false);
@@ -38,6 +39,7 @@ export default function SyncPanel({ open, onClose, onSyncDone, onSyncStart }) {
                     giz,
                     devaid,
                     dgmarket,
+                    africagateway,
                     no_ai: noAi,
                     include_expired: includeExpired,
                 }),
@@ -118,6 +120,10 @@ export default function SyncPanel({ open, onClose, onSyncDone, onSyncStart }) {
                             <input type="checkbox" checked={dgmarket} onChange={(e) => setDgmarket(e.target.checked)} disabled={syncing} />
                             <span className="toggle-label">DGMarket</span>
                         </label>
+                        <label className="sync-toggle">
+                            <input type="checkbox" checked={africagateway} onChange={(e) => setAfricagateway(e.target.checked)} disabled={syncing} />
+                            <span className="toggle-label">Africa Gateway</span>
+                        </label>
                     </div>
 
                     <div className="sync-section">
@@ -135,7 +141,7 @@ export default function SyncPanel({ open, onClose, onSyncDone, onSyncStart }) {
                     <button
                         className={`sync-run-btn ${syncing ? 'syncing' : ''}`}
                         onClick={handleSync}
-                        disabled={syncing || (!iadb && !worldbank && !globaltenders && !giz && !devaid && !dgmarket)}
+                        disabled={syncing || (!iadb && !worldbank && !globaltenders && !giz && !devaid && !dgmarket && !africagateway)}
                     >
                         {syncing ? (
                             <>

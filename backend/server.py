@@ -312,6 +312,7 @@ def _start_sync_with_flags(req_dict: dict):
         "giz": "--giz",
         "devaid": "--devaid",
         "dgmarket": "--dgmarket",
+        "africagateway": "--africagateway",
         "no_ai": "--no-ai",
         "no_enrich": "--no-enrich",
         "include_expired": "--include-expired",
@@ -389,6 +390,7 @@ class SyncRequest(BaseModel):
     giz: bool = False
     devaid: bool = False
     dgmarket: bool = False
+    africagateway: bool = False
     no_ai: bool = False
     no_enrich: bool = False
     include_expired: bool = False

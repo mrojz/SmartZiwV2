@@ -60,6 +60,11 @@ SCRAPERS = {
         "import": "from utils.dgmarket_scraper import run_dgmarket_scraper",
         "func": "run_dgmarket_scraper",
     },
+    "africagateway": {
+        "label": "Africa Gateway",
+        "import": "from utils.ag_scraper import run_ag_scraper",
+        "func": "run_ag_scraper",
+    },
 }
 
 
@@ -74,13 +79,36 @@ def _run_single_scraper(key: str, info: dict) -> dict:
     error = None
     start = time.time()
 
+    # Tee writer: captures output to buffer AND prints to real stdout for live SSE
+    real_stdout = sys.__stdout__
+    class TeeWriter:
+        def write(self, s):
+            buf.write(s)
+            try:
+                real_stdout.write(s)
+                real_stdout.flush()
+            except (UnicodeEncodeError, OSError):
+                real_stdout.write(s.encode('ascii', 'replace').decode('ascii'))
+                real_stdout.flush()
+        def flush(self):
+            real_stdout.flush()
+        def isatty(self):
+            return False
+        def fileno(self):
+            return real_stdout.fileno()
+        @property
+        def encoding(self):
+            return getattr(real_stdout, 'encoding', 'utf-8')
+
     try:
         # Import the scraper function
-        exec(info["import"])
-        func = eval(info["func"])
+        ns = {}
+        exec(info["import"], ns)
+        func = ns[info["func"]]
 
-        # Capture all print output from this scraper
-        with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
+        # Capture output to both buffer and real stdout
+        tee = TeeWriter()
+        with contextlib.redirect_stdout(tee), contextlib.redirect_stderr(tee):
             projects = func()
     except Exception as e:
         error = str(e)
@@ -107,13 +135,14 @@ def main():
     parser.add_argument("--giz", action="store_true", help="Run only the GIZ scraper")
     parser.add_argument("--devaid", action="store_true", help="Run only the DevelopmentAid scraper")
     parser.add_argument("--dgmarket", action="store_true", help="Run only the DGMarket scraper")
+    parser.add_argument("--africagateway", action="store_true", help="Run only the Africa Gateway scraper")
     parser.add_argument("--no-ai", action="store_true", help="Skip AI cybersecurity verification")
     parser.add_argument("--no-enrich", action="store_true", help="Skip AI enrichment (source detection, doc analysis)")
     parser.add_argument("--include-expired", action="store_true", help="Include projects with past due dates")
     args = parser.parse_args()
 
     # Determine which scrapers to run
-    any_source = args.iadb or args.worldbank or args.globaltenders or args.giz or args.devaid or args.dgmarket
+    any_source = args.iadb or args.worldbank or args.globaltenders or args.giz or args.devaid or args.dgmarket or args.africagateway
     to_run = {}
     for key, info in SCRAPERS.items():
         if getattr(args, key, False) or not any_source:
@@ -134,7 +163,7 @@ def main():
     scraped = []
 
     for key in to_run:
-        print(f"[⏳] {to_run[key]['label']}: starting...", flush=True)
+        print(f"[..] {to_run[key]['label']}: starting...", flush=True)
 
     with ThreadPoolExecutor(max_workers=len(to_run)) as pool:
         futures = {
@@ -152,9 +181,9 @@ def main():
             duration = result["duration"]
 
             if result["error"]:
-                print(f"[❌] {result['label']}: failed ({duration}s) — {result['error']}", flush=True)
+                print(f"[!!] {result['label']}: failed ({duration}s) — {result['error']}", flush=True)
             else:
-                print(f"[✅] {result['label']}: {count} projects ({duration}s)", flush=True)
+                print(f"[OK] {result['label']}: {count} projects ({duration}s)", flush=True)
 
             scraped.extend(result["projects"])
 
@@ -213,7 +242,7 @@ def main():
     if not args.no_ai:
         from ai_filter import filter_cybersecurity_projects
 
-        print("[⏳] AI verification: starting...", flush=True)
+        print("[..] AI verification: starting...", flush=True)
 
         # Verify new projects
         if new_projects:
@@ -230,7 +259,7 @@ def main():
             ai_verified_count += sum(1 for p in unverified if p.get("ai_verified") == "Yes")
             ai_rejected_count += sum(1 for p in unverified if p.get("ai_verified") == "No")
 
-        print(f"[✅] AI verification: {ai_verified_count} validated, {ai_rejected_count} rejected", flush=True)
+        print(f"[OK] AI verification: {ai_verified_count} validated, {ai_rejected_count} rejected", flush=True)
     else:
         print("[i] AI verification skipped (--no-ai flag)", flush=True)
 
@@ -242,7 +271,7 @@ def main():
         if enrichable:
             from ai_enrichment import run_enrichment
 
-            print(f"[⏳] AI enrichment: processing {len(enrichable)} verified projects...", flush=True)
+            print(f"[..] AI enrichment: processing {len(enrichable)} verified projects...", flush=True)
             run_enrichment(enrichable)
 
             enrichment_stats["docs_downloaded"] = sum(
@@ -252,7 +281,7 @@ def main():
                 1 for p in enrichable if p.get("doc_analysis")
             )
             print(
-                f"[✅] Enrichment: "
+                f"[OK] Enrichment: "
                 f"{enrichment_stats['docs_downloaded']} docs downloaded, "
                 f"{enrichment_stats['docs_analyzed']} analyzed",
                 flush=True,
@@ -267,7 +296,7 @@ def main():
         print("[i] No new projects found. Database unchanged.", flush=True)
     elif new_projects:
         result = upsert_projects(new_projects)
-        print(f"[✅] Saved: {result['inserted']} inserted, {result['updated']} updated", flush=True)
+        print(f"[OK] Saved: {result['inserted']} inserted, {result['updated']} updated", flush=True)
 
     # Also generate Excel export
     all_projects = get_all_projects()
