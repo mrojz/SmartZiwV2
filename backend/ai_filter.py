@@ -15,7 +15,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from dotenv import load_dotenv
 from openai import OpenAI
 
-load_dotenv()
+load_dotenv(override=False)
 
 
 # ── Configuration ────────────────────────────────────────────────────────────
