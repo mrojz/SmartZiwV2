@@ -1,11 +1,11 @@
 services:
   # ── MongoDB ──────────────────────────────────────────────
   mongo:
-    image: mongo:7
+    image: mongo:4.4
     container_name: procurement-mongo
     environment:
       MONGO_INITDB_ROOT_USERNAME: admin
-      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD:-changeme}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD:-s0yIf0rtPcDRr1TUnVxN}
     volumes:
       - mongo_data:/data/db
     restart: unless-stopped
@@ -19,7 +19,7 @@ services:
     env_file:
       - ./backend/.env
     environment:
-      - MONGO_URI=mongodb://admin:${MONGO_PASSWORD:-changeme}@mongo:27017
+      - MONGO_URI=mongodb://admin:${MONGO_PASSWORD:-s0yIf0rtPcDRr1TUnVxN}@mongo:27017
       - SYNC_SECRET=${SYNC_SECRET:-procurement-sync-secret-2024}
     depends_on:
       - mongo
