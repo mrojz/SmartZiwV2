@@ -8,6 +8,7 @@ services:
       MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD:-changeme}
     volumes:
       - mongo_data:/data/db
+    restart: unless-stopped
 
   # ── FastAPI Backend ──────────────────────────────────────
   backend:
@@ -22,6 +23,7 @@ services:
       - SYNC_SECRET=${SYNC_SECRET:-procurement-sync-secret-2024}
     depends_on:
       - mongo
+    restart: unless-stopped
 
   # ── Vite + React Frontend (production build + Nginx) ───
   frontend:
@@ -31,6 +33,7 @@ services:
       - "80:80"
     depends_on:
       - backend
+    restart: unless-stopped
 
 volumes:
   mongo_data:
