@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import ClockTimePicker from './ClockTimePicker';
 
 const DAYS = [
     { value: 'mon', label: 'Monday' },
@@ -17,7 +18,68 @@ const SOURCE_LIST = [
     { key: 'giz', label: 'GIZ' },
     { key: 'devaid', label: 'DevelopmentAid' },
     { key: 'dgmarket', label: 'DGMarket' },
+    { key: 'africagateway', label: 'Africa Gateway' },
 ];
+
+const TIMEZONES = [
+    { value: -12, label: 'UTC-12' },
+    { value: -11, label: 'UTC-11' },
+    { value: -10, label: 'UTC-10' },
+    { value: -9, label: 'UTC-9' },
+    { value: -8, label: 'UTC-8' },
+    { value: -7, label: 'UTC-7' },
+    { value: -6, label: 'UTC-6' },
+    { value: -5, label: 'UTC-5' },
+    { value: -4, label: 'UTC-4' },
+    { value: -3, label: 'UTC-3' },
+    { value: -2, label: 'UTC-2' },
+    { value: -1, label: 'UTC-1' },
+    { value: 0, label: 'UTC+0 (GMT)' },
+    { value: 1, label: 'UTC+1 (CET)' },
+    { value: 2, label: 'UTC+2' },
+    { value: 3, label: 'UTC+3' },
+    { value: 4, label: 'UTC+4' },
+    { value: 5, label: 'UTC+5' },
+    { value: 5.5, label: 'UTC+5:30 (IST)' },
+    { value: 6, label: 'UTC+6' },
+    { value: 7, label: 'UTC+7' },
+    { value: 8, label: 'UTC+8' },
+    { value: 9, label: 'UTC+9' },
+    { value: 10, label: 'UTC+10' },
+    { value: 11, label: 'UTC+11' },
+    { value: 12, label: 'UTC+12' },
+    { value: 13, label: 'UTC+13' },
+    { value: 14, label: 'UTC+14' },
+];
+
+function computeTimeUntil(hour, minute, frequency, dayOfWeek) {
+    const now = new Date();
+    const target = new Date(now);
+    target.setHours(hour, minute, 0, 0);
+
+    if (frequency === 'weekly') {
+        const dayMap = { mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6, sun: 0 };
+        const targetDay = dayMap[dayOfWeek] ?? 1;
+        const currentDay = now.getDay();
+        let daysUntil = targetDay - currentDay;
+        if (daysUntil < 0 || (daysUntil === 0 && target <= now)) daysUntil += 7;
+        target.setDate(target.getDate() + daysUntil);
+    } else {
+        // Daily: if time has passed today, move to tomorrow
+        if (target <= now) target.setDate(target.getDate() + 1);
+    }
+
+    const diffMs = target - now;
+    const totalMins = Math.floor(diffMs / 60000);
+    const hours = Math.floor(totalMins / 60);
+    const mins = totalMins % 60;
+
+    if (hours === 0 && mins === 0) return 'less than a minute';
+    const parts = [];
+    if (hours > 0) parts.push(`${hours}h`);
+    if (mins > 0) parts.push(`${mins}m`);
+    return parts.join(' ');
+}
 
 function formatCountdown(ms) {
     if (ms <= 0) return 'any moment now…';
@@ -44,6 +106,7 @@ function formatDateTime(iso) {
         hour: '2-digit',
         minute: '2-digit',
         second: '2-digit',
+        hour12: false,
     });
 }
 
@@ -76,6 +139,7 @@ export default function SchedulePanel({ open, onClose }) {
         },
         no_ai: false,
         include_expired: false,
+        timezone: 1, // default UTC+1 (CET)
     });
     const [nextRun, setNextRun] = useState(null);
     const [saveResult, setSaveResult] = useState(null);
@@ -97,6 +161,7 @@ export default function SchedulePanel({ open, onClose }) {
     const [liveLogs, setLiveLogs] = useState([]);
     const liveLogEndRef = useRef(null);
     const sseRef = useRef(null);
+    const [showClock, setShowClock] = useState(false);
 
     // Load schedule + server time + logs + sync status when panel opens
     useEffect(() => {
@@ -233,8 +298,12 @@ export default function SchedulePanel({ open, onClose }) {
             hour: '2-digit',
             minute: '2-digit',
             second: '2-digit',
+            hour12: false,
         })
         : '…';
+
+    const tzLabel = TIMEZONES.find((tz) => tz.value === schedule.timezone)?.label || `UTC+${schedule.timezone}`;
+    const timeUntilStr = computeTimeUntil(schedule.hour, schedule.minute, schedule.frequency, schedule.day_of_week);
 
     return (
         <div className="sync-overlay" onClick={onClose}>
@@ -327,16 +396,42 @@ export default function SchedulePanel({ open, onClose }) {
 
                                     <span className="schedule-at">at</span>
 
-                                    <input
-                                        type="time"
-                                        value={`${String(schedule.hour).padStart(2, '0')}:${String(schedule.minute).padStart(2, '0')}`}
-                                        onChange={(e) => {
-                                            const [h, m] = e.target.value.split(':').map(Number);
-                                            update('hour', h);
-                                            update('minute', m);
-                                        }}
-                                        className="schedule-time"
-                                    />
+                                    <button
+                                        type="button"
+                                        className="schedule-time-trigger"
+                                        onClick={() => setShowClock(true)}
+                                    >
+                                        <span className="trigger-icon">🕓</span>
+                                        {String(schedule.hour).padStart(2, '0')}:{String(schedule.minute).padStart(2, '0')}
+                                    </button>
+
+                                    {showClock && (
+                                        <ClockTimePicker
+                                            hour={schedule.hour}
+                                            minute={schedule.minute}
+                                            onConfirm={(h, m) => {
+                                                update('hour', h);
+                                                update('minute', m);
+                                                setShowClock(false);
+                                            }}
+                                            onCancel={() => setShowClock(false)}
+                                        />
+                                    )}
+
+                                    <select
+                                        value={schedule.timezone}
+                                        onChange={(e) => update('timezone', Number(e.target.value))}
+                                        className="schedule-select schedule-tz-select"
+                                    >
+                                        {TIMEZONES.map((tz) => (
+                                            <option key={tz.value} value={tz.value}>{tz.label}</option>
+                                        ))}
+                                    </select>
+                                </div>
+
+                                {/* Time until execution preview */}
+                                <div className="schedule-time-preview">
+                                    ⏱ Runs in <strong>{timeUntilStr}</strong> <span className="schedule-tz-note">({tzLabel})</span>
                                 </div>
                             </div>
 

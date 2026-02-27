@@ -42,6 +42,7 @@ SEARCH_PARAMS = {
     "updated": "all",
     "cpv_only_p": "0",
     "status": "live",
+    "d-446978-s": "p",
 }
 
 
@@ -66,30 +67,38 @@ def _init_session() -> requests.Session:
             SEARCH_URL,
             params={"sub": "info-communications-in-Africa-10", "status": "live", "keywords": "test"},
             timeout=30,
+            allow_redirects=False,  # Handle redirects manually to avoid cookie duplication
         )
-        resp.raise_for_status()
+
+        # Follow redirects manually, deduplicating cookies between hops
+        redirect_count = 0
+        while resp.is_redirect and redirect_count < 10:
+            redirect_count += 1
+            location = resp.headers.get("Location", "")
+            if not location:
+                break
+            if location.startswith("/"):
+                from urllib.parse import urljoin
+                location = urljoin(SEARCH_URL, location)
+            # Deduplicate JSESSIONID before following redirect
+            _dedup_jsessionid(session)
+            resp = session.get(location, timeout=30, allow_redirects=False)
+
+        _dedup_jsessionid(session)
+
     except requests.exceptions.TooManyRedirects:
-        # If redirects fail, try with a brand new jar
         print("    [!] Redirect loop on search, trying direct session init...", flush=True)
         session.cookies.clear()
         try:
             resp = session.get(SESSION_URL, timeout=30)
-            resp.raise_for_status()
+            _dedup_jsessionid(session)
         except Exception as e:
             print(f"    [!] Fallback session init failed: {e}", flush=True)
             raise
     except Exception as e:
-        # Handle duplicate cookie errors by keeping only the last JSESSIONID
         if "multiple cookies" in str(e).lower():
             print("    [!] Duplicate cookie detected, cleaning up...", flush=True)
-            # Extract the last JSESSIONID value and rebuild
-            jsessionid = None
-            for cookie in session.cookies:
-                if cookie.name == "JSESSIONID":
-                    jsessionid = cookie.value
-            session.cookies.clear()
-            if jsessionid:
-                session.cookies.set("JSESSIONID", jsessionid, domain="appel-d-offre.dgmarket.com")
+            _dedup_jsessionid(session)
         else:
             print(f"    [!] Session init failed: {e}", flush=True)
             raise
@@ -97,6 +106,22 @@ def _init_session() -> requests.Session:
     jsessionid = session.cookies.get("JSESSIONID", "?")
     print(f"    [+] Session ready (JSESSIONID={jsessionid[:12]}...)", flush=True)
     return session
+
+
+def _dedup_jsessionid(session: requests.Session):
+    """Keep only the last JSESSIONID cookie, removing duplicates."""
+    jsessionid = None
+    domain = None
+    for cookie in session.cookies:
+        if cookie.name == "JSESSIONID":
+            jsessionid = cookie.value
+            domain = cookie.domain
+    if jsessionid:
+        # Remove all JSESSIONID cookies and set the last one
+        to_remove = [c for c in session.cookies if c.name == "JSESSIONID"]
+        if len(to_remove) > 1:
+            session.cookies.clear()
+            session.cookies.set("JSESSIONID", jsessionid, domain=domain or "appel-d-offre.dgmarket.com")
 
 
 # ── HTML parsing ─────────────────────────────────────────────────────────────

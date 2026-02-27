@@ -8,6 +8,7 @@ function sourceClass(source) {
     if (s.includes('giz')) return 'giz';
     if (s.includes('development')) return 'devaid';
     if (s.includes('dgmarket')) return 'dgm';
+    if (s.includes('africa')) return 'ag';
     return '';
 }
 
