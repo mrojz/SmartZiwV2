@@ -15,7 +15,7 @@ from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 from shared_excel import SEARCH_KEYWORDS, get_search_keywords, format_date
 
-load_dotenv()
+load_dotenv(override=False)
 
 # ── Config ───────────────────────────────────────────────────────────────────
 

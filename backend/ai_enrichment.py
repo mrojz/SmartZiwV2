@@ -20,7 +20,7 @@ import requests as req
 from dotenv import load_dotenv
 from openai import OpenAI
 
-load_dotenv()
+load_dotenv(override=False)
 
 
 # ── Configuration ────────────────────────────────────────────────────────────

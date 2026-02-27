@@ -17,6 +17,9 @@ Endpoints:
   GET    /api/notifications/stream     → SSE: real-time new-project alerts
 """
 
+from dotenv import load_dotenv
+load_dotenv(override=False)  # .env for local dev; Docker env vars take precedence
+
 import asyncio
 import json
 import os
