@@ -1,255 +1,248 @@
-/* ── Badges ── */
 .badge {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--sp-1);
-    padding: 2px var(--sp-2);
-    border-radius: var(--radius-pill);
-    font-size: .65rem;
-    font-weight: 600;
-    letter-spacing: .02em;
-    text-transform: uppercase;
-    white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  padding: 3px var(--sp-2);
+  border-radius: var(--radius-pill);
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  white-space: nowrap;
 }
 
-/* ── Source Badge Color Tokens (Light) ── */
 :root {
-    --src-iadb-bg: #eff6ff;
-    --src-iadb-text: #1e40af;
-    --src-iadb-border: #bfdbfe;
+  --src-iadb-bg: #eaf2ff;
+  --src-iadb-text: #1f5dcf;
+  --src-iadb-border: #a7c9ff;
 
-    --src-wb-bg: #eef2ff;
-    --src-wb-text: #3730a3;
-    --src-wb-border: #c7d2fe;
+  --src-wb-bg: #eef0ff;
+  --src-wb-text: #3c3ea8;
+  --src-wb-border: #bcc1ff;
 
-    --src-gt-bg: #f0fdfa;
-    --src-gt-text: #115e59;
-    --src-gt-border: #99f6e4;
+  --src-gt-bg: #e9faf7;
+  --src-gt-text: #116a60;
+  --src-gt-border: #9fe9db;
 
-    --src-giz-bg: #fff7ed;
-    --src-giz-text: #9a3412;
-    --src-giz-border: #fed7aa;
+  --src-giz-bg: #fff5ec;
+  --src-giz-text: #9b4d17;
+  --src-giz-border: #f7cfa6;
 
-    --src-devaid-bg: #faf5ff;
-    --src-devaid-text: #6b21a8;
-    --src-devaid-border: #d8b4fe;
+  --src-devaid-bg: #f6efff;
+  --src-devaid-text: #7333a5;
+  --src-devaid-border: #d7b9f6;
 
-    --src-dgm-bg: #fff1f2;
-    --src-dgm-text: #9f1239;
-    --src-dgm-border: #fecdd3;
+  --src-dgm-bg: #fff0f4;
+  --src-dgm-text: #a0264e;
+  --src-dgm-border: #f8bfd0;
 
-    --src-ag-bg: #fffbeb;
-    --src-ag-text: #92400e;
-    --src-ag-border: #fde68a;
+  --src-ag-bg: #fff9ea;
+  --src-ag-text: #966018;
+  --src-ag-border: #f2dea7;
 }
 
-/* ── Source Badge Color Tokens (Dark) ── */
-[data-theme="dark"] {
-    --src-iadb-bg: rgba(37, 99, 235, .12);
-    --src-iadb-text: #93bbfd;
-    --src-iadb-border: rgba(37, 99, 235, .3);
+[data-theme='dark'] {
+  --src-iadb-bg: rgba(71, 149, 255, 0.15);
+  --src-iadb-text: #9fc7ff;
+  --src-iadb-border: rgba(71, 149, 255, 0.42);
 
-    --src-wb-bg: rgba(79, 70, 229, .12);
-    --src-wb-text: #a5b4fc;
-    --src-wb-border: rgba(79, 70, 229, .3);
+  --src-wb-bg: rgba(110, 101, 255, 0.16);
+  --src-wb-text: #c0bcff;
+  --src-wb-border: rgba(110, 101, 255, 0.44);
 
-    --src-gt-bg: rgba(20, 184, 166, .12);
-    --src-gt-text: #5eead4;
-    --src-gt-border: rgba(20, 184, 166, .3);
+  --src-gt-bg: rgba(17, 188, 157, 0.15);
+  --src-gt-text: #85efd8;
+  --src-gt-border: rgba(17, 188, 157, 0.4);
 
-    --src-giz-bg: rgba(234, 88, 12, .12);
-    --src-giz-text: #fdba74;
-    --src-giz-border: rgba(234, 88, 12, .3);
+  --src-giz-bg: rgba(245, 147, 73, 0.16);
+  --src-giz-text: #ffd0a4;
+  --src-giz-border: rgba(245, 147, 73, 0.42);
 
-    --src-devaid-bg: rgba(147, 51, 234, .12);
-    --src-devaid-text: #c084fc;
-    --src-devaid-border: rgba(147, 51, 234, .3);
+  --src-devaid-bg: rgba(162, 95, 255, 0.16);
+  --src-devaid-text: #d9bbff;
+  --src-devaid-border: rgba(162, 95, 255, 0.42);
 
-    --src-dgm-bg: rgba(225, 29, 72, .12);
-    --src-dgm-text: #fda4af;
-    --src-dgm-border: rgba(225, 29, 72, .3);
+  --src-dgm-bg: rgba(245, 88, 131, 0.16);
+  --src-dgm-text: #ffb5cc;
+  --src-dgm-border: rgba(245, 88, 131, 0.42);
 
-    --src-ag-bg: rgba(245, 158, 11, .12);
-    --src-ag-text: #fbbf24;
-    --src-ag-border: rgba(245, 158, 11, .3);
+  --src-ag-bg: rgba(245, 189, 88, 0.16);
+  --src-ag-text: #ffd68d;
+  --src-ag-border: rgba(245, 189, 88, 0.42);
 }
 
-/* ── Source Badge Base ── */
 .badge-source {
-    border: 1px solid var(--border-light);
-    background: var(--bg-muted);
-    color: var(--text-muted);
+  border: 1px solid var(--border-light);
+  background: linear-gradient(160deg, var(--bg-surface), var(--bg-muted));
+  color: var(--text-secondary);
 }
 
-/* ── Per-Source Colors ── */
 .badge-source.iadb {
-    background: var(--src-iadb-bg);
-    color: var(--src-iadb-text);
-    border-color: var(--src-iadb-border);
+  background: var(--src-iadb-bg);
+  color: var(--src-iadb-text);
+  border-color: var(--src-iadb-border);
 }
 
 .badge-source.wb {
-    background: var(--src-wb-bg);
-    color: var(--src-wb-text);
-    border-color: var(--src-wb-border);
+  background: var(--src-wb-bg);
+  color: var(--src-wb-text);
+  border-color: var(--src-wb-border);
 }
 
 .badge-source.gt {
-    background: var(--src-gt-bg);
-    color: var(--src-gt-text);
-    border-color: var(--src-gt-border);
+  background: var(--src-gt-bg);
+  color: var(--src-gt-text);
+  border-color: var(--src-gt-border);
 }
 
 .badge-source.giz {
-    background: var(--src-giz-bg);
-    color: var(--src-giz-text);
-    border-color: var(--src-giz-border);
+  background: var(--src-giz-bg);
+  color: var(--src-giz-text);
+  border-color: var(--src-giz-border);
 }
 
 .badge-source.devaid {
-    background: var(--src-devaid-bg);
-    color: var(--src-devaid-text);
-    border-color: var(--src-devaid-border);
+  background: var(--src-devaid-bg);
+  color: var(--src-devaid-text);
+  border-color: var(--src-devaid-border);
 }
 
 .badge-source.dgm {
-    background: var(--src-dgm-bg);
-    color: var(--src-dgm-text);
-    border-color: var(--src-dgm-border);
+  background: var(--src-dgm-bg);
+  color: var(--src-dgm-text);
+  border-color: var(--src-dgm-border);
 }
 
 .badge-source.ag {
-    background: var(--src-ag-bg);
-    color: var(--src-ag-text);
-    border-color: var(--src-ag-border);
+  background: var(--src-ag-bg);
+  color: var(--src-ag-text);
+  border-color: var(--src-ag-border);
 }
 
 .badge-source-sm {
-    padding: 1px var(--sp-2) !important;
-    font-size: .62rem !important;
+  padding: 2px var(--sp-2) !important;
+  font-size: 0.64rem !important;
 }
 
 .badge-verified {
-    background: var(--green-bg);
-    color: var(--green);
-    border: 1px solid var(--green-border);
+  background: var(--green-bg);
+  color: var(--green);
+  border: 1px solid var(--green-border);
 }
 
 .badge-unverified {
-    background: var(--bg-muted);
-    color: var(--text-muted);
-    border: 1px solid var(--border-light);
+  background: var(--bg-muted);
+  color: var(--text-muted);
+  border: 1px solid var(--border-light);
 }
 
 .badge-go {
-    background: var(--green-bg);
-    color: var(--green);
-    border: 1px solid var(--green-border);
+  background: var(--green-bg);
+  color: var(--green);
+  border: 1px solid var(--green-border);
 }
 
 .badge-nogo {
-    background: var(--red-bg);
-    color: var(--red);
-    border: 1px solid var(--red-border);
+  background: var(--red-bg);
+  color: var(--red);
+  border: 1px solid var(--red-border);
 }
 
-/* ── Pagination ── */
 .pagination-bar {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: var(--sp-3) var(--sp-5);
-    border-top: 1px solid var(--border-light);
-    background: var(--bg-muted);
-    font-size: .8rem;
-    color: var(--text-muted);
-    gap: var(--sp-4);
-    flex-wrap: wrap;
-    border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--sp-3) var(--sp-5);
+  border-top: 1px solid var(--border-light);
+  background: var(--bg-muted);
+  font-size: 0.88rem;
+  color: var(--text-muted);
+  gap: var(--sp-4);
+  flex-wrap: wrap;
+  border-radius: 0 0 var(--radius-lg) var(--radius-lg);
 }
 
 .pagination-info strong {
-    color: var(--text-primary);
+  color: var(--text-primary);
 }
 
 .pagination-controls {
-    display: flex;
-    align-items: center;
-    gap: var(--sp-1);
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
 }
 
 .pagination-pages {
-    padding: 0 var(--sp-3);
-    white-space: nowrap;
+  padding: 0 var(--sp-3);
+  white-space: nowrap;
 }
 
 .pagination-pages strong {
-    color: var(--text-primary);
+  color: var(--text-primary);
 }
 
 .pagination-btn {
-    width: 28px;
-    height: 28px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    background: var(--bg-surface);
-    color: var(--text-secondary);
-    cursor: pointer;
-    font-size: .85rem;
-    transition: all 150ms ease;
+  min-width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 0.84rem;
+  font-weight: 700;
+  transition: all 150ms ease;
 }
 
 .pagination-btn:hover:not(:disabled) {
-    background: var(--bg-muted);
-    border-color: var(--accent);
-    color: var(--accent);
+  background: var(--bg-hover);
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
 .pagination-btn:disabled {
-    opacity: .3;
-    cursor: not-allowed;
+  opacity: 0.36;
+  cursor: not-allowed;
 }
 
 .pagination-size {
-    display: flex;
-    align-items: center;
-    gap: var(--sp-1);
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
 }
 
 .pagination-size select {
-    height: 28px;
-    background: var(--bg-surface);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    color: var(--text-primary);
-    padding: 0 var(--sp-2);
-    font-size: .8rem;
-    cursor: pointer;
+  height: 30px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  padding: 0 var(--sp-2);
+  font-size: 0.85rem;
+  cursor: pointer;
 }
 
-/* ── Table Empty State ── */
 .table-empty-state {
-    padding: 0 !important;
-    border-bottom: none !important;
-    text-align: center;
+  padding: 0 !important;
+  border-bottom: none !important;
+  text-align: center;
 }
 
 .table-empty-inner {
-    padding: 56px var(--sp-6);
-    color: var(--text-muted);
+  padding: 56px var(--sp-6);
+  color: var(--text-muted);
 }
 
 .table-empty-inner h3 {
-    font-size: 1rem;
-    font-weight: 600;
-    color: var(--text-secondary);
-    margin-bottom: var(--sp-2);
+  font-size: 1.08rem;
+  font-weight: 700;
+  color: var(--text-secondary);
+  margin-bottom: var(--sp-2);
 }
 
 .table-empty-inner p {
-    font-size: .88rem;
-    color: var(--text-muted);
+  font-size: 0.92rem;
+  color: var(--text-muted);
 }

@@ -3,19 +3,16 @@ export default function FilterBar({
   onSourceChange,
   verified,
   onVerifiedChange,
-  keyword,
-  onKeywordChange,
-  keywords,
   sources,
   region,
   onRegionChange,
   regions,
-  status,
-  onStatusChange,
+  decision,
+  onDecisionChange,
   onClear,
 }) {
-  const hasFilters = source || verified || keyword || region || status;
-  const activeCount = [source, verified, keyword, region, status].filter(Boolean).length;
+  const hasFilters = source || verified || region || decision;
+  const activeCount = [source, verified, region, decision].filter(Boolean).length;
 
   return (
     <div className="filter-bar">
@@ -37,9 +34,11 @@ export default function FilterBar({
           onChange={(e) => onRegionChange(e.target.value)}
         >
           <option value="">Region</option>
-          {Object.keys(regions || {}).sort().map((r) => (
-            <option key={r} value={r}>{r}</option>
-          ))}
+          {Object.keys(regions || {})
+            .sort()
+            .map((r) => (
+              <option key={r} value={r}>{r}</option>
+            ))}
         </select>
 
         <select
@@ -54,24 +53,13 @@ export default function FilterBar({
 
         <select
           className="filter-select filter-select-compact"
-          value={status}
-          onChange={(e) => onStatusChange(e.target.value)}
+          value={decision}
+          onChange={(e) => onDecisionChange(e.target.value)}
         >
           <option value="">Decision</option>
           <option value="Go">Go</option>
           <option value="No Go">No Go</option>
           <option value="Undecided">Undecided</option>
-        </select>
-
-        <select
-          className="filter-select filter-select-compact"
-          value={keyword}
-          onChange={(e) => onKeywordChange(e.target.value)}
-        >
-          <option value="">Keyword</option>
-          {keywords.map((kw) => (
-            <option key={kw} value={kw}>{kw}</option>
-          ))}
         </select>
 
         {hasFilters && (

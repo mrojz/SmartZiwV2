@@ -309,7 +309,7 @@ export default function SchedulePanel({ open, onClose }) {
         <div className="sync-overlay" onClick={onClose}>
             <div className="sync-panel schedule-panel-wide" onClick={(e) => e.stopPropagation()}>
                 <div className="sync-header">
-                    <h2>📅 Sync Schedule</h2>
+                    <h2>Sync Schedule</h2>
                     <button className="sync-close" onClick={onClose}>✕</button>
                 </div>
 
@@ -339,10 +339,10 @@ export default function SchedulePanel({ open, onClose }) {
 
                             {/* Server time bar */}
                             <div className="schedule-server-time">
-                                <span>🖥️ Server time: <strong>{currentServerTimeStr}</strong></span>
+                                <span>Server time: <strong>{currentServerTimeStr}</strong></span>
                                 {schedule.enabled && countdown !== null && (
                                     <span className="schedule-countdown">
-                                        ⏳ Next run in: <strong>{formatCountdown(countdown)}</strong>
+                                        Next run in: <strong>{formatCountdown(countdown)}</strong>
                                     </span>
                                 )}
                             </div>
@@ -356,7 +356,7 @@ export default function SchedulePanel({ open, onClose }) {
                                         onChange={(e) => update('enabled', e.target.checked)}
                                     />
                                     <span className="toggle-label">
-                                        {schedule.enabled ? '✅ Scheduled sync enabled' : '⏸️ Scheduled sync disabled'}
+                                        {schedule.enabled ? 'Scheduled sync enabled' : 'Scheduled sync disabled'}
                                     </span>
                                 </label>
                             </div>
@@ -401,7 +401,7 @@ export default function SchedulePanel({ open, onClose }) {
                                         className="schedule-time-trigger"
                                         onClick={() => setShowClock(true)}
                                     >
-                                        <span className="trigger-icon">🕓</span>
+                                        <span className="trigger-icon">Time</span>
                                         {String(schedule.hour).padStart(2, '0')}:{String(schedule.minute).padStart(2, '0')}
                                     </button>
 
@@ -483,21 +483,21 @@ export default function SchedulePanel({ open, onClose }) {
                                         Saving…
                                     </>
                                 ) : (
-                                    '💾 Save Schedule'
+                                    'Save Schedule'
                                 )}
                             </button>
 
                             {saveResult && (
                                 <div className={`sync-result ${saveResult.success ? 'success' : 'error'}`}>
                                     <div className="sync-result-header">
-                                        <span>{saveResult.success ? '✅' : '⚠️'} {saveResult.message}</span>
+                                        <span>{saveResult.success ? 'Saved:' : 'Warning:'} {saveResult.message}</span>
                                     </div>
                                 </div>
                             )}
 
                             {/* ── Run History ────────────────────────────────── */}
                             <div className="sync-section schedule-history">
-                                <h3>📋 Run History</h3>
+                                <h3>Run History</h3>
                                 {logs.length === 0 ? (
                                     <p className="schedule-no-logs">No scheduled runs yet.</p>
                                 ) : (
@@ -523,10 +523,10 @@ export default function SchedulePanel({ open, onClose }) {
                                                     }}
                                                 >
                                                     <span className="schedule-log-status">
-                                                        {log.success ? '✅' : '❌'}
+                                                        {log.success ? 'OK' : 'Failed'}
                                                     </span>
                                                     <span className="schedule-log-trigger">
-                                                        {log.trigger === 'scheduled' ? '⚙️' : '👤'}
+                                                        {log.trigger === 'scheduled' ? 'Auto' : 'Manual'}
                                                     </span>
                                                     <span className="schedule-log-date">
                                                         {formatDateTime(log.started_at)}
@@ -579,3 +579,9 @@ export default function SchedulePanel({ open, onClose }) {
         </div>
     );
 }
+
+
+
+
+
+
