@@ -59,3 +59,4 @@ export default function ContextMenu({ anchorRect, items, onClose }) {
         document.body
     );
 }
+
