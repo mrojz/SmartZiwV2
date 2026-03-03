@@ -22,7 +22,7 @@ export default function App() {
   const [chips, setChips] = useState([]);
   const [freeText, setFreeText] = useState('');
   const [source, setSource] = useState('');
-  const [verified, setVerified] = useState('');
+  const [verified, setVerified] = useState('Yes');
   const [region, setRegion] = useState('');
   const [decision, setDecision] = useState('');
   const [startDateFrom, setStartDateFrom] = useState('');
@@ -299,7 +299,7 @@ export default function App() {
     setChips([]);
     setFreeText('');
     setSource('');
-    setVerified('');
+    setVerified('Yes');
     setRegion('');
     setDecision('');
     setStartDateFrom('');
@@ -474,5 +474,6 @@ export default function App() {
     </div>
   );
 }
+
 
 
