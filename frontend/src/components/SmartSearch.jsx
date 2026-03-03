@@ -2,15 +2,15 @@ import { useState, useRef, useEffect, useMemo, useLayoutEffect } from 'react';
 import { createPortal } from 'react-dom';
 
 /**
- * SmartSearch — chip-based tokenized filter input.
+ * SmartSearch ï¿½ chip-based tokenized filter input.
  *
  * Props:
- *   chips          – array of { field, value } objects (active filters)
- *   onChipsChange  – callback to update the chips array
- *   freeText       – current free-text search string
- *   onFreeTextChange – callback to update free-text
- *   projects       – project data (for value autocomplete)
- *   regions        – region config (for region value autocomplete)
+ *   chips          ï¿½ array of { field, value } objects (active filters)
+ *   onChipsChange  ï¿½ callback to update the chips array
+ *   freeText       ï¿½ current free-text search string
+ *   onFreeTextChange ï¿½ callback to update free-text
+ *   projects       ï¿½ project data (for value autocomplete)
+ *   regions        ï¿½ region config (for region value autocomplete)
  */
 
 const FILTER_COLUMNS = [
@@ -41,7 +41,7 @@ export default function SmartSearch({
     const inputAreaRef = useRef(null);
     const dropRef = useRef(null);
 
-    // —— Parse what the user is currently typing ——————————————————————
+    // ï¿½ï¿½ Parse what the user is currently typing ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
     const ctx = useMemo(() => {
         const text = input.trim();
         const colonIdx = text.indexOf(':');
@@ -53,7 +53,7 @@ export default function SmartSearch({
         return { phase: 'value', column: col, partial: val.toLowerCase(), colRaw: text.slice(0, colonIdx) };
     }, [input]);
 
-    // —— Unique values from data —————————————————————————————————————————————
+    // ï¿½ï¿½ Unique values from data ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
     const columnValues = useMemo(() => {
         const vals = {
             source: new Set(), region: new Set(), country: new Set(),
@@ -77,7 +77,7 @@ export default function SmartSearch({
         return result;
     }, [projects, regions]);
 
-    // —— Suggestions ———————————————————————————————————————————————————————————————
+    // ï¿½ï¿½ Suggestions ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
     const suggestions = useMemo(() => {
         if (ctx.phase === 'column') {
             if (!ctx.partial) return [];
@@ -141,7 +141,7 @@ export default function SmartSearch({
         };
     }, [showDrop, suggestions.length, chips.length, freeText, input]);
 
-    // —— Commit a chip ————————————————————————————————————————————————————————————
+    // ï¿½ï¿½ Commit a chip ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
     const addChip = (chip) => {
         onChipsChange([...chips, chip]);
         setInput('');
@@ -163,7 +163,7 @@ export default function SmartSearch({
         }
     };
 
-    // —— Try to commit the current input as a chip —————————————————————
+    // ï¿½ï¿½ Try to commit the current input as a chip ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
     const tryCommit = () => {
         const text = input.trim();
         const colonIdx = text.indexOf(':');
@@ -221,7 +221,7 @@ export default function SmartSearch({
         if (e.key === 'Enter') {
             e.preventDefault();
             if (!tryCommit()) {
-                // Not a structured token — update free text
+                // Not a structured token ï¿½ update free text
                 const text = input.trim();
                 if (text) {
                     onFreeTextChange(text);
@@ -247,25 +247,24 @@ export default function SmartSearch({
     return (
         <div className="smart-search">
             <div className="smart-search-input-area" ref={inputAreaRef} onClick={() => inputRef.current?.focus()}>
-                <span className="search-icon">S</span>
                 {chips.map((chip, i) => (
                     <span key={`${chip.field}-${chip.value}-${i}`} className="search-chip">
                         <span className="chip-field">{chip.field}</span>
                         <span className="chip-value">{chip.value}</span>
-                        <button className="chip-remove" onClick={(e) => { e.stopPropagation(); removeChip(i); }}>×</button>
+                        <button className="chip-remove" onClick={(e) => { e.stopPropagation(); removeChip(i); }}>x</button>
                     </span>
                 ))}
                 {freeText && (
                     <span className="search-chip free-text-chip">
                         <span className="chip-value">{freeText}</span>
-                        <button className="chip-remove" onClick={(e) => { e.stopPropagation(); onFreeTextChange(''); }}>×</button>
+                        <button className="chip-remove" onClick={(e) => { e.stopPropagation(); onFreeTextChange(''); }}>x</button>
                     </span>
                 )}
                 <input
                     ref={inputRef}
                     className="search-input"
                     type="text"
-                    placeholder={chips.length > 0 || freeText ? 'Add filter…' : 'Type to search or filter (e.g. source:iadb)'}
+                    placeholder={chips.length > 0 || freeText ? 'Add filter' : 'Type to search or filter (e.g. source:iadb)'}
                     value={input}
                     onChange={handleChange}
                     onKeyDown={handleKeyDown}
