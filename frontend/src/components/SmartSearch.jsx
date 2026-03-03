@@ -2,15 +2,15 @@ import { useState, useRef, useEffect, useMemo, useLayoutEffect } from 'react';
 import { createPortal } from 'react-dom';
 
 /**
- * SmartSearch � chip-based tokenized filter input.
+ * SmartSearch  chip-based tokenized filter input.
  *
  * Props:
- *   chips          � array of { field, value } objects (active filters)
- *   onChipsChange  � callback to update the chips array
- *   freeText       � current free-text search string
- *   onFreeTextChange � callback to update free-text
- *   projects       � project data (for value autocomplete)
- *   regions        � region config (for region value autocomplete)
+ *   chips           array of { field, value } objects (active filters)
+ *   onChipsChange   callback to update the chips array
+ *   freeText        current free-text search string
+ *   onFreeTextChange  callback to update free-text
+ *   projects        project data (for value autocomplete)
+ *   regions         region config (for region value autocomplete)
  */
 
 const FILTER_COLUMNS = [
@@ -41,7 +41,7 @@ export default function SmartSearch({
     const inputAreaRef = useRef(null);
     const dropRef = useRef(null);
 
-    // �� Parse what the user is currently typing ����������������������
+    //  Parse what the user is currently typing 
     const ctx = useMemo(() => {
         const text = input.trim();
         const colonIdx = text.indexOf(':');
@@ -53,7 +53,7 @@ export default function SmartSearch({
         return { phase: 'value', column: col, partial: val.toLowerCase(), colRaw: text.slice(0, colonIdx) };
     }, [input]);
 
-    // �� Unique values from data ���������������������������������������������
+    //  Unique values from data 
     const columnValues = useMemo(() => {
         const vals = {
             source: new Set(), region: new Set(), country: new Set(),
@@ -77,7 +77,7 @@ export default function SmartSearch({
         return result;
     }, [projects, regions]);
 
-    // �� Suggestions ���������������������������������������������������������������
+    //  Suggestions 
     const suggestions = useMemo(() => {
         if (ctx.phase === 'column') {
             if (!ctx.partial) return [];
@@ -141,7 +141,7 @@ export default function SmartSearch({
         };
     }, [showDrop, suggestions.length, chips.length, freeText, input]);
 
-    // �� Commit a chip ������������������������������������������������������������
+    //  Commit a chip 
     const addChip = (chip) => {
         onChipsChange([...chips, chip]);
         setInput('');
@@ -163,7 +163,7 @@ export default function SmartSearch({
         }
     };
 
-    // �� Try to commit the current input as a chip ���������������������
+    //  Try to commit the current input as a chip 
     const tryCommit = () => {
         const text = input.trim();
         const colonIdx = text.indexOf(':');
@@ -221,7 +221,7 @@ export default function SmartSearch({
         if (e.key === 'Enter') {
             e.preventDefault();
             if (!tryCommit()) {
-                // Not a structured token � update free text
+                // Not a structured token  update free text
                 const text = input.trim();
                 if (text) {
                     onFreeTextChange(text);

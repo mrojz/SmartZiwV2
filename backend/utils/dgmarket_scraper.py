@@ -10,7 +10,7 @@ Requires a session initialization flow:
 """
 
 import re
-from urllib.parse import quote_plus
+from urllib.parse import urlencode
 import requests
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
@@ -167,7 +167,29 @@ def _parse_date_text(raw: str) -> str:
             pass
 
     return format_date(text)
+def _extract_notice_id(href: str, raw_link_html: str = "") -> str:
+    """Extract noticeId robustly across parser variations.
 
+    Some parsers may decode '&noticeId' as '\\u00aciceId' (entity '&not').
+    """
+    candidates = [href or "", raw_link_html or ""]
+    for candidate in candidates:
+        if not candidate:
+            continue
+        normalized = candidate.replace("&amp;", "&").replace("\u00aciceId", "&noticeId")
+        match = re.search(r"(?:[?&]|\b)noticeId=(\d+)", normalized, flags=re.IGNORECASE)
+        if match:
+            return match.group(1)
+    return ""
+
+
+def _sanitize_keyword(keyword: str) -> str:
+    """Remove accidental notice-id tails from keywords."""
+    if not keyword:
+        return ""
+    clean = keyword.strip()
+    clean = re.sub(r"(?:&noticeId|\u00aciceId)=\d+\s*$", "", clean, flags=re.IGNORECASE)
+    return clean
 
 def _parse_tender_row(tr_tag, keyword: str) -> dict | None:
     """Parse a single <tr> from the results table into a project dict."""
@@ -189,11 +211,10 @@ def _parse_tender_row(tr_tag, keyword: str) -> dict | None:
     title = link.get_text(strip=True)
     href = link.get("href", "")
 
-    # Extract noticeId from href
-    notice_id = ""
-    id_match = re.search(r"noticeId=(\d+)", href)
-    if id_match:
-        notice_id = id_match.group(1)
+    raw_link_html = str(link)
+
+    # Extract noticeId from href/html in a parser-safe way
+    notice_id = _extract_notice_id(href, raw_link_html)
 
     # Country
     country = ""
@@ -220,13 +241,11 @@ def _parse_tender_row(tr_tag, keyword: str) -> dict | None:
         pub_date = _parse_date_text(date_text)
 
     # Build canonical project URL from keyword + noticeId
-    encoded_keyword = quote_plus(keyword or "")
+    safe_keyword = _sanitize_keyword(keyword)
     project_url = ""
     if notice_id:
-        project_url = (
-            f"{BASE_HOST}/tenders/np-notice.do"
-            f"?keywords={encoded_keyword}&noticeId={notice_id}"
-        )
+        query = urlencode({"keywords": safe_keyword, "noticeId": notice_id})
+        project_url = f"{BASE_HOST}/tenders/np-notice.do?{query}"
 
     return {
         "project_id": notice_id,
