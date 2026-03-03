@@ -51,6 +51,8 @@
   flex-direction: column;
   gap: var(--sp-3);
   padding: var(--sp-4) var(--sp-5);
+  position: relative;
+  z-index: 20;
   background: linear-gradient(170deg, rgba(255, 255, 255, 0.7), var(--bg-surface));
   border: 1px solid var(--border-light);
   border-bottom: none;
@@ -197,9 +199,10 @@
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-md);
-  z-index: 100;
-  max-height: 280px;
+  z-index: 1200;
+  max-height: 320px;
   overflow-y: auto;
+  overscroll-behavior: contain;
   padding: var(--sp-1);
 }
 
@@ -255,4 +258,11 @@
   .main-content {
     padding: var(--sp-5) var(--sp-4) var(--sp-6);
   }
+}
+.search-dropdown-portal {
+  position: fixed;
+  left: 0;
+  top: 0;
+  right: auto;
+  z-index: 1200;
 }

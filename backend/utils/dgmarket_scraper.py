@@ -10,6 +10,7 @@ Requires a session initialization flow:
 """
 
 import re
+from urllib.parse import quote_plus
 import requests
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
@@ -168,7 +169,7 @@ def _parse_date_text(raw: str) -> str:
     return format_date(text)
 
 
-def _parse_tender_row(tr_tag) -> dict | None:
+def _parse_tender_row(tr_tag, keyword: str) -> dict | None:
     """Parse a single <tr> from the results table into a project dict."""
     tds = tr_tag.find_all("td", recursive=False)
     if len(tds) < 3:
@@ -218,8 +219,14 @@ def _parse_tender_row(tr_tag) -> dict | None:
         date_text = tds[2].get_text(strip=True)
         pub_date = _parse_date_text(date_text)
 
-    # Build project URL
-    project_url = f"{BASE_HOST}{href}" if href else ""
+    # Build canonical project URL from keyword + noticeId
+    encoded_keyword = quote_plus(keyword or "")
+    project_url = ""
+    if notice_id:
+        project_url = (
+            f"{BASE_HOST}/tenders/np-notice.do"
+            f"?keywords={encoded_keyword}&noticeId={notice_id}"
+        )
 
     return {
         "project_id": notice_id,
@@ -263,7 +270,7 @@ def fetch_keyword(session: requests.Session, keyword: str) -> list[dict]:
     projects = []
     for table in tables:
         for tr in table.find_all("tr"):
-            project = _parse_tender_row(tr)
+            project = _parse_tender_row(tr, keyword)
             if project:
                 projects.append(project)
 
@@ -321,3 +328,4 @@ if __name__ == "__main__":
     print(f"\n[+] Final: {len(results)} unique projects")
     for p in results[:5]:
         print(f"  - [{p['project_id']}] {p['project_name'][:80]} ({p['project_sponsor']})")
+

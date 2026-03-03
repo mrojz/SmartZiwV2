@@ -1,15 +1,16 @@
-import { useState, useRef, useEffect, useMemo } from 'react';
+import { useState, useRef, useEffect, useMemo, useLayoutEffect } from 'react';
+import { createPortal } from 'react-dom';
 
 /**
- * SmartSearch ‚Äî chip-based tokenized filter input.
+ * SmartSearch ó chip-based tokenized filter input.
  *
  * Props:
- *   chips          ‚Äì array of { field, value } objects (active filters)
- *   onChipsChange  ‚Äì callback to update the chips array
- *   freeText       ‚Äì current free-text search string
- *   onFreeTextChange ‚Äì callback to update free-text
- *   projects       ‚Äì project data (for value autocomplete)
- *   regions        ‚Äì region config (for region value autocomplete)
+ *   chips          ñ array of { field, value } objects (active filters)
+ *   onChipsChange  ñ callback to update the chips array
+ *   freeText       ñ current free-text search string
+ *   onFreeTextChange ñ callback to update free-text
+ *   projects       ñ project data (for value autocomplete)
+ *   regions        ñ region config (for region value autocomplete)
  */
 
 const FILTER_COLUMNS = [
@@ -35,10 +36,12 @@ export default function SmartSearch({
     const [input, setInput] = useState('');
     const [showDrop, setShowDrop] = useState(false);
     const [selIdx, setSelIdx] = useState(0);
+    const [dropPos, setDropPos] = useState({ top: 0, left: 0, width: 0, maxHeight: 320 });
     const inputRef = useRef(null);
+    const inputAreaRef = useRef(null);
     const dropRef = useRef(null);
 
-    // ‚îÄ‚îÄ Parse what the user is currently typing ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ
+    // óó Parse what the user is currently typing óóóóóóóóóóóóóóóóóóóóóó
     const ctx = useMemo(() => {
         const text = input.trim();
         const colonIdx = text.indexOf(':');
@@ -50,7 +53,7 @@ export default function SmartSearch({
         return { phase: 'value', column: col, partial: val.toLowerCase(), colRaw: text.slice(0, colonIdx) };
     }, [input]);
 
-    // ‚îÄ‚îÄ Unique values from data ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ
+    // óó Unique values from data óóóóóóóóóóóóóóóóóóóóóóóóóóóóóóóóóóóóóóóóóóóóó
     const columnValues = useMemo(() => {
         const vals = {
             source: new Set(), region: new Set(), country: new Set(),
@@ -74,7 +77,7 @@ export default function SmartSearch({
         return result;
     }, [projects, regions]);
 
-    // ‚îÄ‚îÄ Suggestions ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ
+    // óó Suggestions óóóóóóóóóóóóóóóóóóóóóóóóóóóóóóóóóóóóóóóóóóóóóóóóóóóóóóóóóóóóóóó
     const suggestions = useMemo(() => {
         if (ctx.phase === 'column') {
             if (!ctx.partial) return [];
@@ -103,7 +106,7 @@ export default function SmartSearch({
     useEffect(() => {
         const handler = (e) => {
             if (dropRef.current && !dropRef.current.contains(e.target) &&
-                inputRef.current && !inputRef.current.contains(e.target)) {
+                inputAreaRef.current && !inputAreaRef.current.contains(e.target)) {
                 setShowDrop(false);
             }
         };
@@ -111,7 +114,34 @@ export default function SmartSearch({
         return () => document.removeEventListener('mousedown', handler);
     }, []);
 
-    // ‚îÄ‚îÄ Commit a chip ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ
+    // Keep portal dropdown anchored to input area
+    useLayoutEffect(() => {
+        if (!showDrop) return undefined;
+
+        const updateDropPosition = () => {
+            const anchor = inputAreaRef.current;
+            if (!anchor) return;
+            const rect = anchor.getBoundingClientRect();
+            const viewportPad = 12;
+            const spaceBelow = window.innerHeight - rect.bottom - viewportPad;
+            setDropPos({
+                left: rect.left,
+                top: rect.bottom + 6,
+                width: rect.width,
+                maxHeight: Math.max(140, Math.min(320, spaceBelow)),
+            });
+        };
+
+        updateDropPosition();
+        window.addEventListener('resize', updateDropPosition);
+        window.addEventListener('scroll', updateDropPosition, true);
+        return () => {
+            window.removeEventListener('resize', updateDropPosition);
+            window.removeEventListener('scroll', updateDropPosition, true);
+        };
+    }, [showDrop, suggestions.length, chips.length, freeText, input]);
+
+    // óó Commit a chip óóóóóóóóóóóóóóóóóóóóóóóóóóóóóóóóóóóóóóóóóóóóóóóóóóóóóóóóóóóó
     const addChip = (chip) => {
         onChipsChange([...chips, chip]);
         setInput('');
@@ -133,7 +163,7 @@ export default function SmartSearch({
         }
     };
 
-    // ‚îÄ‚îÄ Try to commit the current input as a chip ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ
+    // óó Try to commit the current input as a chip óóóóóóóóóóóóóóóóóóóóó
     const tryCommit = () => {
         const text = input.trim();
         const colonIdx = text.indexOf(':');
@@ -191,7 +221,7 @@ export default function SmartSearch({
         if (e.key === 'Enter') {
             e.preventDefault();
             if (!tryCommit()) {
-                // Not a structured token ‚Äî update free text
+                // Not a structured token ó update free text
                 const text = input.trim();
                 if (text) {
                     onFreeTextChange(text);
@@ -216,34 +246,43 @@ export default function SmartSearch({
 
     return (
         <div className="smart-search">
-            <div className="smart-search-input-area" onClick={() => inputRef.current?.focus()}>
-                <span className="search-icon">üîç</span>
+            <div className="smart-search-input-area" ref={inputAreaRef} onClick={() => inputRef.current?.focus()}>
+                <span className="search-icon">S</span>
                 {chips.map((chip, i) => (
                     <span key={`${chip.field}-${chip.value}-${i}`} className="search-chip">
                         <span className="chip-field">{chip.field}</span>
                         <span className="chip-value">{chip.value}</span>
-                        <button className="chip-remove" onClick={(e) => { e.stopPropagation(); removeChip(i); }}>√ó</button>
+                        <button className="chip-remove" onClick={(e) => { e.stopPropagation(); removeChip(i); }}>◊</button>
                     </span>
                 ))}
                 {freeText && (
                     <span className="search-chip free-text-chip">
                         <span className="chip-value">{freeText}</span>
-                        <button className="chip-remove" onClick={(e) => { e.stopPropagation(); onFreeTextChange(''); }}>√ó</button>
+                        <button className="chip-remove" onClick={(e) => { e.stopPropagation(); onFreeTextChange(''); }}>◊</button>
                     </span>
                 )}
                 <input
                     ref={inputRef}
                     className="search-input"
                     type="text"
-                    placeholder={chips.length > 0 || freeText ? 'Add filter‚Ä¶' : 'Type to search or filter (e.g. source:iadb)'}
+                    placeholder={chips.length > 0 || freeText ? 'Add filterÖ' : 'Type to search or filter (e.g. source:iadb)'}
                     value={input}
                     onChange={handleChange}
                     onKeyDown={handleKeyDown}
                     onFocus={() => suggestions.length > 0 && setShowDrop(true)}
                 />
             </div>
-            {showDrop && suggestions.length > 0 && (
-                <div className="search-dropdown" ref={dropRef}>
+            {showDrop && suggestions.length > 0 && createPortal(
+                <div
+                    className="search-dropdown search-dropdown-portal"
+                    ref={dropRef}
+                    style={{
+                        top: `${dropPos.top}px`,
+                        left: `${dropPos.left}px`,
+                        width: `${dropPos.width}px`,
+                        maxHeight: `${dropPos.maxHeight}px`,
+                    }}
+                >
                     <div className="dropdown-header">
                         {ctx.phase === 'column' ? 'Filter by column' : `Values for ${ctx.column}`}
                     </div>
@@ -260,7 +299,8 @@ export default function SmartSearch({
                             <span className="suggestion-desc">{s.desc}</span>
                         </div>
                     ))}
-                </div>
+                </div>,
+                document.body,
             )}
         </div>
     );
