@@ -1,5 +1,7 @@
 .table-wrapper {
   overflow-x: auto;
+  overflow-y: visible;
+  isolation: isolate;
   border-radius: 0 0 var(--radius-lg) var(--radius-lg);
   border: 1px solid var(--border-light);
   border-top: none;

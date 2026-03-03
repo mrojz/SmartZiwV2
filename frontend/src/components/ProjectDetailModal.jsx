@@ -136,8 +136,8 @@ export default function ProjectDetailModal({ project, onClose, onDecisionChange,
               <h4>Links</h4>
               <div className="modal-links">
                 {project_url && (
-                  <a className="modal-link" href={project_url} target="_blank" rel="noopener noreferrer">
-                    Project Page
+                  <a className="modal-link" href={project_url} target="_blank" rel="noopener noreferrer" title={project_url}>
+                    {project_url}
                   </a>
                 )}
                 {document_url && (
@@ -173,6 +173,4 @@ export default function ProjectDetailModal({ project, onClose, onDecisionChange,
     document.body,
   );
 }
-
-
 
