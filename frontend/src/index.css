@@ -1,3 +1,4 @@
+@import "./styles/untitledui/globals.css";
 /* ── Style Modules ── */
 @import './styles/base.css';
 @import './styles/header.css';
@@ -8,3 +9,5 @@
 @import './styles/actions.css';
 @import './styles/badges-pagination.css';
 @import './styles/panels.css';
+@import './styles/app-shell.css';
+

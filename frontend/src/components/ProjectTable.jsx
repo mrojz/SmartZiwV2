@@ -1,7 +1,7 @@
 import { useState, useMemo, useCallback } from 'react';
-import ProjectDetailModal from './ProjectDetailModal';
 import ContextMenu from './ContextMenu';
 import SmartSearch from './SmartSearch';
+import { Table } from '@/components/application/table/table';
 
 const ROWS_PER_PAGE_OPTIONS = [25, 50, 100];
 
@@ -59,13 +59,13 @@ export default function ProjectTable({
   endDateTo,
   onEndDateToChange,
   onClearFilters,
+  onProjectSelect,
+  activeProjectId,
 }) {
   const [sortCol, setSortCol] = useState(null);
   const [sortDir, setSortDir] = useState('asc');
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(25);
-  const [selectedProject, setSelectedProject] = useState(null);
-  const [selectedIndex, setSelectedIndex] = useState(-1);
   const [selectedRows, setSelectedRows] = useState(new Set());
   const [contextMenu, setContextMenu] = useState(null);
   const [showStartFilter, setShowStartFilter] = useState(false);
@@ -170,20 +170,13 @@ export default function ProjectTable({
   const startItem = sorted.length === 0 ? 0 : page * rowsPerPage + 1;
   const endItem = Math.min((page + 1) * rowsPerPage, sorted.length);
 
-  const handleSort = (colKey) => {
-    const col = columns.find((c) => c.key === colKey);
-    if (!col || col.type === 'none') return;
-    if (sortCol === colKey) {
-      setSortDir(sortDir === 'asc' ? 'desc' : 'asc');
-    } else {
-      setSortCol(colKey);
-      setSortDir('asc');
-    }
-  };
+  const sortDescriptor = sortCol
+    ? { column: sortCol, direction: sortDir === 'asc' ? 'ascending' : 'descending' }
+    : undefined;
 
-  const sortIcon = (colKey) => {
-    if (sortCol !== colKey) return ' <->';
-    return sortDir === 'asc' ? ' ^' : ' v';
+  const handleSortChange = (descriptor) => {
+    setSortCol(descriptor?.column ? String(descriptor.column) : null);
+    setSortDir(descriptor?.direction === 'descending' ? 'desc' : 'asc');
   };
 
   const allOnPageSelected =
@@ -234,7 +227,7 @@ export default function ProjectTable({
     endDateTo;
 
   return (
-    <div className="table-wrapper">
+    <div className="table-wrapper table-surface">
       <div className="table-toolbar">
         <div className="table-toolbar-row">
           <SmartSearch
@@ -301,34 +294,102 @@ export default function ProjectTable({
         </div>
       )}
 
-      <table className="projects-table">
-        <thead>
-          <tr>
-            <th className="th-checkbox">
+      {(showStartFilter || showEndFilter) && (
+        <div className="table-toolbar-row" style={{ marginBottom: 8 }}>
+          {showStartFilter && (
+            <div className="col-filter-panel">
+              <span className="col-filter-label">Start Date range:</span>
               <input
-                type="checkbox"
-                checked={allOnPageSelected}
-                onChange={toggleSelectAll}
-                title="Select all on this page"
+                type="date"
+                className="col-filter-date"
+                value={startDateFrom}
+                onChange={(e) => onStartDateFromChange(e.target.value)}
+                placeholder="From"
               />
-            </th>
-            {columns.slice(1, -1).map((col) => (
-              <th
-                key={col.key}
-                className={`${col.type !== 'none' ? 'sortable-th' : ''} ${
-                  col.key === '_startDate' || col.key === '_endDate' ? 'th-date-col' : ''
-                }`}
-              >
-                <div className="th-content" onClick={() => handleSort(col.key)}>
-                  {col.label}
-                  {col.type !== 'none' && <span className="sort-indicator">{sortIcon(col.key)}</span>}
-                </div>
+              <span className="col-filter-sep">to</span>
+              <input
+                type="date"
+                className="col-filter-date"
+                value={startDateTo}
+                onChange={(e) => onStartDateToChange(e.target.value)}
+                placeholder="To"
+              />
+              {hasStartFilter && (
+                <button
+                  className="col-filter-clear"
+                  onClick={() => {
+                    onStartDateFromChange('');
+                    onStartDateToChange('');
+                  }}
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+          )}
+          {showEndFilter && (
+            <div className="col-filter-panel">
+              <span className="col-filter-label">End Date range:</span>
+              <input
+                type="date"
+                className="col-filter-date"
+                value={endDateFrom}
+                onChange={(e) => onEndDateFromChange(e.target.value)}
+                placeholder="From"
+              />
+              <span className="col-filter-sep">to</span>
+              <input
+                type="date"
+                className="col-filter-date"
+                value={endDateTo}
+                onChange={(e) => onEndDateToChange(e.target.value)}
+                placeholder="To"
+              />
+              {hasEndFilter && (
+                <button
+                  className="col-filter-clear"
+                  onClick={() => {
+                    onEndDateFromChange('');
+                    onEndDateToChange('');
+                  }}
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      <Table
+        aria-label="Projects table"
+        className="app-table projects-table"
+        sortDescriptor={sortDescriptor}
+        onSortChange={handleSortChange}
+      >
+        <Table.Header columns={columns}>
+          {(col) => (
+            <Table.Head
+              id={col.key}
+              allowsSorting={col.type !== 'none'}
+              className={`${col.key === '_select' ? 'th-checkbox' : ''} ${col.key === '_actions' ? 'th-actions' : ''
+                } ${col.key === '_startDate' || col.key === '_endDate' ? 'th-date-col' : ''}`}
+            >
+              <div className="th-content">
+                {col.key === '_select' ? (
+                  <input
+                    type="checkbox"
+                    checked={allOnPageSelected}
+                    onChange={toggleSelectAll}
+                    title="Select all on this page"
+                  />
+                ) : col.label}
                 {col.key === '_startDate' && (
                   <button
                     className={`col-filter-toggle ${hasStartFilter ? 'active' : ''}`}
                     onClick={(e) => {
                       e.stopPropagation();
-                      setShowStartFilter(!showStartFilter);
+                      setShowStartFilter((v) => !v);
                     }}
                     title="Filter start date"
                   >
@@ -340,219 +401,176 @@ export default function ProjectTable({
                     className={`col-filter-toggle ${hasEndFilter ? 'active' : ''}`}
                     onClick={(e) => {
                       e.stopPropagation();
-                      setShowEndFilter(!showEndFilter);
+                      setShowEndFilter((v) => !v);
                     }}
                     title="Filter end date"
                   >
                     v
                   </button>
                 )}
-              </th>
-            ))}
-            <th className="th-actions"></th>
-          </tr>
-
-          {showStartFilter && (
-            <tr className="col-filter-row">
-              <td colSpan={columns.length}>
-                <div className="col-filter-panel">
-                  <span className="col-filter-label">Start Date range:</span>
-                  <input
-                    type="date"
-                    className="col-filter-date"
-                    value={startDateFrom}
-                    onChange={(e) => onStartDateFromChange(e.target.value)}
-                    placeholder="From"
-                  />
-                  <span className="col-filter-sep">to</span>
-                  <input
-                    type="date"
-                    className="col-filter-date"
-                    value={startDateTo}
-                    onChange={(e) => onStartDateToChange(e.target.value)}
-                    placeholder="To"
-                  />
-                  {hasStartFilter && (
-                    <button
-                      className="col-filter-clear"
-                      onClick={() => {
-                        onStartDateFromChange('');
-                        onStartDateToChange('');
-                      }}
-                    >
-                      Clear
-                    </button>
-                  )}
-                </div>
-              </td>
-            </tr>
+              </div>
+            </Table.Head>
           )}
-          {showEndFilter && (
-            <tr className="col-filter-row">
-              <td colSpan={columns.length}>
-                <div className="col-filter-panel">
-                  <span className="col-filter-label">End Date range:</span>
-                  <input
-                    type="date"
-                    className="col-filter-date"
-                    value={endDateFrom}
-                    onChange={(e) => onEndDateFromChange(e.target.value)}
-                    placeholder="From"
-                  />
-                  <span className="col-filter-sep">to</span>
-                  <input
-                    type="date"
-                    className="col-filter-date"
-                    value={endDateTo}
-                    onChange={(e) => onEndDateToChange(e.target.value)}
-                    placeholder="To"
-                  />
-                  {hasEndFilter && (
-                    <button
-                      className="col-filter-clear"
-                      onClick={() => {
-                        onEndDateFromChange('');
-                        onEndDateToChange('');
-                      }}
-                    >
-                      Clear
-                    </button>
-                  )}
-                </div>
-              </td>
-            </tr>
-          )}
-        </thead>
-        <tbody>
-          {pageData.length === 0 ? (
-            <tr>
-              <td colSpan={columns.length} className="table-empty-state">
-                <div className="table-empty-inner">
-                  <h3>No tenders match your filters</h3>
-                  <p>Try adjusting your search or filters</p>
-                </div>
-              </td>
-            </tr>
-          ) : (
-            pageData.map((p, i) => {
-              const realIndex = allProjects.indexOf(p);
-              const isSelected = selectedRows.has(realIndex);
-              const isVerified = p.ai_verified === 'Yes';
-              const displayName = p.project_name || p.project_description || '-';
-              const regionName = getRegion(p.project_sponsor);
+        </Table.Header>
 
-              return (
-                <tr
-                  key={`${p.project_id}-${i}`}
-                  className={`clickable-row ${p.decision === 'No Go' ? 'row-nogo' : ''} ${
-                    isSelected ? 'row-selected' : ''
-                  }`}
-                  onClick={() => {
-                    setSelectedProject(p);
-                    setSelectedIndex(realIndex);
-                  }}
-                >
-                  <td className="td-checkbox" onClick={(e) => e.stopPropagation()}>
-                    <input
-                      type="checkbox"
-                      checked={isSelected}
-                      onChange={() => toggleSelectRow(realIndex)}
-                    />
-                  </td>
+        <Table.Body items={pageData}>
+          {(p) => {
+            const realIndex = allProjects.indexOf(p);
+            const isSelected = selectedRows.has(realIndex);
+            const isVerified = p.ai_verified === 'Yes';
+            const displayName = p.project_name || p.project_description || '-';
+            const regionName = getRegion(p.project_sponsor);
+            const rowEntityId = p.project_id || p.project_name || '';
 
-                  <td className="td-project">
-                    <div className="project-cell">
-                      <span className="project-cell-name" title={displayName}>{displayName}</span>
-                      <span className="project-cell-meta">
-                        <span className="project-cell-id">{p.project_id}</span>
-                        <span className={`badge badge-source badge-source-sm ${sourceClass(p.source)}`}>
-                          {p.source}
-                        </span>
-                      </span>
-                    </div>
-                  </td>
+            return (
+              <Table.Row
+                id={`${p.project_id || 'row'}-${realIndex}`}
+                columns={columns}
+                className={`clickable-row ${p.decision === 'No Go' ? 'row-nogo' : ''} ${isSelected ? 'row-selected' : ''
+                  } ${rowEntityId && activeProjectId === rowEntityId ? 'row-active-view' : ''}`}
+                onClick={() => onProjectSelect?.(p)}
+              >
+                {(columnKey) => {
+                  const key = typeof columnKey === 'string' ? columnKey : (columnKey?.key || columnKey?.id || '');
+                  if (key === '_select') {
+                    return (
+                      <Table.Cell className="td-checkbox" onClick={(e) => e.stopPropagation()}>
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => toggleSelectRow(realIndex)}
+                        />
+                      </Table.Cell>
+                    );
+                  }
 
-                  <td className="td-country">
-                    <div className="country-cell">
-                      <span className="country-cell-name">{p.project_sponsor || '-'}</span>
-                      {regionName !== '-' && <span className="country-cell-region">{regionName}</span>}
-                    </div>
-                  </td>
+                  if (key === '_project') {
+                    return (
+                      <Table.Cell
+                        className="td-project"
+                        onClick={() => {
+                          onProjectSelect?.(p);
+                        }}
+                      >
+                        <div className="project-cell">
+                          <span className="project-cell-name" title={displayName}>{displayName}</span>
+                          <span className="project-cell-meta">
+                            <span className="project-cell-id">{p.project_id}</span>
+                            <span className={`badge badge-source badge-source-sm ${sourceClass(p.source)}`}>
+                              {p.source}
+                            </span>
+                          </span>
+                        </div>
+                      </Table.Cell>
+                    );
+                  }
 
-                  <td className="td-date">{p.project_start_date || '-'}</td>
-                  <td className="td-date">{p.project_end_date || '-'}</td>
+                  if (key === '_country') {
+                    return (
+                      <Table.Cell className="td-country">
+                        <div className="country-cell">
+                          <span className="country-cell-name">{p.project_sponsor || '-'}</span>
+                          {regionName !== '-' && <span className="country-cell-region">{regionName}</span>}
+                        </div>
+                      </Table.Cell>
+                    );
+                  }
 
-                  <td className="td-keywords">
-                    {p.matched_keywords ? (
-                      (() => {
-                        const kws = p.matched_keywords.split(',').map((k) => k.trim()).filter(Boolean);
-                        const shown = kws.slice(0, 2);
-                        const remaining = kws.length - shown.length;
-                        return (
-                          <>
-                            {shown.map((kw) => (
-                              <span key={kw} className="keyword-tag">{kw}</span>
-                            ))}
-                            {remaining > 0 && (
-                              <span className="keyword-tag keyword-more" title={kws.slice(2).join(', ')}>
-                                +{remaining}
-                              </span>
-                            )}
-                          </>
-                        );
-                      })()
-                    ) : (
-                      <span className="text-muted">-</span>
-                    )}
-                  </td>
+                  if (key === '_startDate') return <Table.Cell className="td-date">{p.project_start_date || '-'}</Table.Cell>;
+                  if (key === '_endDate') return <Table.Cell className="td-date">{p.project_end_date || '-'}</Table.Cell>;
 
-                  <td className="td-status" onClick={(e) => e.stopPropagation()}>
-                    <div className="status-cell">
-                      <span
-                        className={`status-dot ${
-                          p.decision === 'Go'
-                            ? 'status-dot-positive'
-                            : p.decision === 'No Go'
-                              ? 'status-dot-negative'
-                              : isVerified
-                                ? 'status-dot-warning'
-                                : 'status-dot-neutral'
-                        }`}
-                        title={isVerified ? 'AI Verified' : 'Not Verified'}
-                      />
-                      {p.decision ? (
-                        <span className={`status-badge ${p.decision === 'Go' ? 'status-go' : 'status-nogo'}`}>
-                          {p.decision}
-                        </span>
-                      ) : (
-                        <span className="status-badge status-pending">Pending</span>
-                      )}
-                    </div>
-                  </td>
+                  if (key === 'matched_keywords') {
+                    return (
+                      <Table.Cell className="td-keywords">
+                        {p.matched_keywords ? (
+                          (() => {
+                            const kws = p.matched_keywords.split(',').map((k) => k.trim()).filter(Boolean);
+                            const shown = kws.slice(0, 2);
+                            const remaining = kws.length - shown.length;
+                            return (
+                              <>
+                                {shown.map((kw) => (
+                                  <span key={kw} className="keyword-tag">{kw}</span>
+                                ))}
+                                {remaining > 0 && (
+                                  <span className="keyword-tag keyword-more" title={kws.slice(2).join(', ')}>
+                                    +{remaining}
+                                  </span>
+                                )}
+                              </>
+                            );
+                          })()
+                        ) : (
+                          <span className="text-muted">-</span>
+                        )}
+                      </Table.Cell>
+                    );
+                  }
 
-                  <td className="td-scraped" title={p.scraped_at ? new Date(p.scraped_at).toLocaleString() : ''}>
-                    {relativeTime(p.scraped_at)}
-                  </td>
+                  if (key === '_decision') {
+                    return (
+                      <Table.Cell className="td-status" onClick={(e) => e.stopPropagation()}>
+                        <div className="status-cell">
+                          <span
+                            className={`status-dot ${p.decision === 'Go'
+                                ? 'status-dot-positive'
+                                : p.decision === 'No Go'
+                                  ? 'status-dot-negative'
+                                  : isVerified
+                                    ? 'status-dot-warning'
+                                    : 'status-dot-neutral'
+                              }`}
+                            title={isVerified ? 'AI Verified' : 'Not Verified'}
+                          />
+                          {p.decision ? (
+                            <span className={`status-badge ${p.decision === 'Go' ? 'status-go' : 'status-nogo'}`}>
+                              {p.decision}
+                            </span>
+                          ) : (
+                            <span className="status-badge status-pending">Pending</span>
+                          )}
+                        </div>
+                      </Table.Cell>
+                    );
+                  }
 
-                  <td className="td-actions" onClick={(e) => e.stopPropagation()}>
-                    <button
-                      className="context-trigger"
-                      onClick={(e) => {
-                        const rect = e.currentTarget.getBoundingClientRect();
-                        setContextMenu({ rect, project: p, realIndex });
-                      }}
-                      title="Actions"
-                    >
-                      ...
-                    </button>
-                  </td>
-                </tr>
-              );
-            })
-          )}
-        </tbody>
-      </table>
+                  if (key === 'scraped_at') {
+                    return (
+                      <Table.Cell className="td-scraped" title={p.scraped_at ? new Date(p.scraped_at).toLocaleString() : ''}>
+                        {relativeTime(p.scraped_at)}
+                      </Table.Cell>
+                    );
+                  }
 
+                  return (
+                    <Table.Cell className="td-actions" onClick={(e) => e.stopPropagation()}>
+                      <button
+                        className="context-trigger"
+                        onClick={(e) => {
+                          const rect = e.currentTarget.getBoundingClientRect();
+                          setContextMenu({ rect, project: p, realIndex });
+                        }}
+                        title="Actions"
+                      >
+                        ...
+                      </button>
+                    </Table.Cell>
+                  );
+                }}
+              </Table.Row>
+            );
+          }}
+        </Table.Body>
+      </Table>
+
+      {pageData.length === 0 && (
+        <div className="table-empty-state">
+          <div className="table-empty-inner">
+            <h3>No tenders match your filters</h3>
+            <p>Try adjusting your search or filters</p>
+          </div>
+        </div>
+      )}
       {sorted.length > 0 && (
         <div className="pagination-bar">
           <div className="pagination-info">
@@ -584,18 +602,6 @@ export default function ProjectTable({
         </div>
       )}
 
-      {selectedProject && (
-        <ProjectDetailModal
-          project={selectedProject}
-          index={selectedIndex}
-          onClose={() => setSelectedProject(null)}
-          onDecisionChange={(idx, dec) => {
-            onDecisionChange(idx, dec);
-            setSelectedProject((prev) => (prev ? { ...prev, decision: dec } : null));
-          }}
-        />
-      )}
-
       {contextMenu && (
         <ContextMenu
           anchorRect={contextMenu.rect}
@@ -616,21 +622,21 @@ export default function ProjectTable({
             { divider: true },
             ...(contextMenu.project.project_url
               ? [
-                  {
-                    icon: 'O',
-                    label: 'Open Project',
-                    onClick: () => window.open(contextMenu.project.project_url, '_blank'),
-                  },
-                ]
+                {
+                  icon: 'O',
+                  label: 'Open Project',
+                  onClick: () => window.open(contextMenu.project.project_url, '_blank'),
+                },
+              ]
               : []),
             ...(contextMenu.project.document_url
               ? [
-                  {
-                    icon: 'D',
-                    label: 'Open Document',
-                    onClick: () => window.open(contextMenu.project.document_url, '_blank'),
-                  },
-                ]
+                {
+                  icon: 'D',
+                  label: 'Open Document',
+                  onClick: () => window.open(contextMenu.project.document_url, '_blank'),
+                },
+              ]
               : []),
             { divider: true },
             {
@@ -651,5 +657,6 @@ export default function ProjectTable({
     </div>
   );
 }
+
 
 

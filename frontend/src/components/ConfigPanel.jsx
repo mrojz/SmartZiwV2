@@ -1,4 +1,9 @@
 import { useState, useEffect } from 'react';
+import { X, Plus } from '@untitledui/icons';
+import { Button } from '@/components/base/buttons/button';
+import { Input } from '@/components/base/input/input';
+import { BadgeWithButton } from '@/components/base/badges/badges';
+import { Tabs } from '@/components/application/tabs/tabs';
 
 export default function ConfigPanel({ open, onClose }) {
   const [tab, setTab] = useState('keywords');
@@ -97,44 +102,43 @@ export default function ConfigPanel({ open, onClose }) {
       <div className="config-panel" onClick={(e) => e.stopPropagation()}>
         <div className="sync-header">
           <h2>Settings</h2>
-          <button className="sync-close" onClick={onClose}>x</button>
+          <Button color="tertiary" size="sm" iconLeading={X} onPress={onClose} />
         </div>
 
         <div className="config-tabs">
-          <button
-            className={`config-tab ${tab === 'keywords' ? 'active' : ''}`}
-            onClick={() => setTab('keywords')}
+          <Button
+            color={tab === 'keywords' ? 'primary' : 'secondary'}
+            size="sm"
+            onPress={() => setTab('keywords')}
           >
             Keywords ({keywords.length})
-          </button>
-          <button
-            className={`config-tab ${tab === 'regions' ? 'active' : ''}`}
-            onClick={() => setTab('regions')}
+          </Button>
+          <Button
+            color={tab === 'regions' ? 'primary' : 'secondary'}
+            size="sm"
+            onPress={() => setTab('regions')}
           >
             Regions ({Object.keys(regions).length})
-          </button>
+          </Button>
         </div>
 
         <div className="config-body">
           {tab === 'keywords' && (
             <div className="config-section">
               <div className="config-add-row">
-                <input
-                  type="text"
+                <Input
                   placeholder="Add keyword..."
                   value={newKeyword}
                   onChange={(e) => setNewKeyword(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && addKeyword()}
-                  className="config-input"
                 />
-                <button className="config-add-btn" onClick={addKeyword}>+</button>
+                <Button color="primary" size="sm" iconLeading={Plus} onPress={addKeyword} />
               </div>
               <div className="config-tags">
                 {keywords.map((kw) => (
-                  <span key={kw} className="config-tag">
+                  <BadgeWithButton key={kw} color="brand" size="sm" onButtonClick={() => removeKeyword(kw)} buttonLabel="Remove">
                     {kw}
-                    <button onClick={() => removeKeyword(kw)}>x</button>
-                  </span>
+                  </BadgeWithButton>
                 ))}
               </div>
             </div>
@@ -143,15 +147,13 @@ export default function ConfigPanel({ open, onClose }) {
           {tab === 'regions' && (
             <div className="config-section">
               <div className="config-add-row">
-                <input
-                  type="text"
+                <Input
                   placeholder="New region name..."
                   value={newRegionName}
                   onChange={(e) => setNewRegionName(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && addRegion()}
-                  className="config-input"
                 />
-                <button className="config-add-btn" onClick={addRegion}>+</button>
+                <Button color="primary" size="sm" iconLeading={Plus} onPress={addRegion} />
               </div>
               <div className="config-regions">
                 {Object.entries(regions).map(([name, countries]) => (
@@ -164,37 +166,32 @@ export default function ConfigPanel({ open, onClose }) {
                         {editingRegion === name ? 'v' : '>'} {name}
                       </span>
                       <span className="region-count">{countries.length} countries</span>
-                      <button
-                        className="region-delete"
-                        onClick={(e) => {
-                          e.stopPropagation();
+                      <Button
+                        color="primary-destructive"
+                        size="sm"
+                        onPress={(e) => {
                           deleteRegion(name);
                         }}
                       >
                         Delete
-                      </button>
+                      </Button>
                     </div>
                     {editingRegion === name && (
                       <div className="region-body">
                         <div className="config-add-row">
-                          <input
-                            type="text"
+                          <Input
                             placeholder="Add country..."
                             value={newCountry}
                             onChange={(e) => setNewCountry(e.target.value)}
                             onKeyDown={(e) => e.key === 'Enter' && addCountryToRegion(name)}
-                            className="config-input"
                           />
-                          <button className="config-add-btn" onClick={() => addCountryToRegion(name)}>
-                            +
-                          </button>
+                          <Button color="primary" size="sm" iconLeading={Plus} onPress={() => addCountryToRegion(name)} />
                         </div>
                         <div className="config-tags">
                           {countries.map((c) => (
-                            <span key={c} className="config-tag country-tag">
+                            <BadgeWithButton key={c} color="blue" size="sm" onButtonClick={() => removeCountryFromRegion(name, c)} buttonLabel="Remove">
                               {c}
-                              <button onClick={() => removeCountryFromRegion(name, c)}>x</button>
-                            </span>
+                            </BadgeWithButton>
                           ))}
                           {countries.length === 0 && <span className="config-empty">No countries added yet</span>}
                         </div>
@@ -213,9 +210,9 @@ export default function ConfigPanel({ open, onClose }) {
               {status.error ? 'Error:' : 'Saved:'} {status.msg}
             </span>
           )}
-          <button className="sync-run-btn" onClick={handleSave} disabled={saving}>
-            {saving ? 'Saving...' : 'Save Config'}
-          </button>
+          <Button color="primary" onPress={handleSave} isDisabled={saving} isLoading={saving}>
+            Save Config
+          </Button>
         </div>
       </div>
     </div>

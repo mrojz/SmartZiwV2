@@ -1,3 +1,5 @@
+import { Button } from '@/components/base/buttons/button';
+
 export default function FilterBar({
   source,
   onSourceChange,
@@ -63,9 +65,9 @@ export default function FilterBar({
         </select>
 
         {hasFilters && (
-          <button className="clear-btn" onClick={onClear}>
+          <Button color="tertiary" size="sm" onPress={onClear}>
             Clear{activeCount > 0 ? ` (${activeCount})` : ''}
-          </button>
+          </Button>
         )}
       </div>
     </div>

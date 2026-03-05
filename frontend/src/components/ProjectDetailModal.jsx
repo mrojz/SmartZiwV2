@@ -1,15 +1,19 @@
 import { createPortal } from 'react-dom';
+import { X } from '@untitledui/icons';
+import { Button } from '@/components/base/buttons/button';
+import { Badge, BadgeWithDot } from '@/components/base/badges/badges';
+import type { BadgeTypes } from "@/components/base/badges/badge-types";
 
-function sourceClass(source) {
+function sourceColor(source) {
   const s = (source || '').toLowerCase();
-  if (s.includes('iadb')) return 'iadb';
-  if (s.includes('world bank')) return 'wb';
-  if (s.includes('global')) return 'gt';
-  if (s.includes('giz')) return 'giz';
-  if (s.includes('development')) return 'devaid';
-  if (s.includes('dgmarket')) return 'dgm';
-  if (s.includes('africa')) return 'ag';
-  return '';
+  if (s.includes('iadb')) return 'blue';
+  if (s.includes('world bank')) return 'indigo';
+  if (s.includes('global')) return 'purple';
+  if (s.includes('giz')) return 'orange';
+  if (s.includes('development')) return 'success';
+  if (s.includes('dgmarket')) return 'pink';
+  if (s.includes('africa')) return 'warning';
+  return 'gray';
 }
 
 export default function ProjectDetailModal({ project, onClose, onDecisionChange, index }) {
@@ -49,22 +53,22 @@ export default function ProjectDetailModal({ project, onClose, onDecisionChange,
         <div className="modal-header">
           <div className="modal-header-top">
             <div className="modal-badges">
-              <span className={`badge badge-source ${sourceClass(source)}`}>{source}</span>
-              <span className={`badge ${isVerified ? 'badge-verified' : 'badge-unverified'}`}>
+              <Badge color={sourceColor(source)}>{source}</Badge>
+              <BadgeWithDot color={isVerified ? 'success' : 'gray'}>
                 {isVerified ? 'AI Verified' : 'Not Verified'}
-              </span>
+              </BadgeWithDot>
               {decision && (
-                <span className={`badge ${decision === 'Go' ? 'badge-go' : 'badge-nogo'}`}>
+                <Badge color={decision === 'Go' ? 'success' : 'error'}>
                   {decision}
-                </span>
+                </Badge>
               )}
               {original_source && original_source !== 'Unknown' && (
-                <span className="badge badge-origin" title="Original funding source">
+                <Badge color="blue" title="Original funding source">
                   {original_source}
-                </span>
+                </Badge>
               )}
             </div>
-            <button className="modal-close" onClick={onClose} title="Close">x</button>
+            <Button color="tertiary" size="sm" iconLeading={X} onPress={onClose} aria-label="Close" />
           </div>
           <h2 className="modal-title">{displayName}</h2>
           <span className="modal-id">ID: {project_id}</span>
@@ -126,7 +130,7 @@ export default function ProjectDetailModal({ project, onClose, onDecisionChange,
                 <h4>Matched Keywords</h4>
                 <div className="modal-keywords">
                   {keywords.map((kw) => (
-                    <span key={kw} className="keyword-tag">{kw}</span>
+                    <Badge key={kw} color="brand" size="sm">{kw}</Badge>
                   ))}
                 </div>
               </div>
@@ -152,18 +156,18 @@ export default function ProjectDetailModal({ project, onClose, onDecisionChange,
             <div className="modal-section">
               <h4>Decision</h4>
               <div className="modal-decisions">
-                <button
-                  className={`decision-btn go ${decision === 'Go' ? 'active' : ''}`}
-                  onClick={() => handleDecision('Go')}
+                <Button
+                  color={decision === 'Go' ? 'primary' : 'secondary'}
+                  onPress={() => handleDecision('Go')}
                 >
                   Go
-                </button>
-                <button
-                  className={`decision-btn nogo ${decision === 'No Go' ? 'active' : ''}`}
-                  onClick={() => handleDecision('No Go')}
+                </Button>
+                <Button
+                  color={decision === 'No Go' ? 'primary-destructive' : 'secondary'}
+                  onPress={() => handleDecision('No Go')}
                 >
                   No Go
-                </button>
+                </Button>
               </div>
             </div>
           </div>
@@ -173,4 +177,3 @@ export default function ProjectDetailModal({ project, onClose, onDecisionChange,
     document.body,
   );
 }
-

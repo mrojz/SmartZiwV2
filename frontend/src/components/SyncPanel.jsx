@@ -1,4 +1,8 @@
 import { useState, useRef } from 'react';
+import { X } from '@untitledui/icons';
+import { Button } from '@/components/base/buttons/button';
+import { Toggle } from '@/components/base/toggle/toggle';
+import { BadgeWithDot } from '@/components/base/badges/badges';
 
 export default function SyncPanel({ open, onClose, onSyncDone, onSyncStart }) {
   const [iadb, setIadb] = useState(true);
@@ -87,73 +91,36 @@ export default function SyncPanel({ open, onClose, onSyncDone, onSyncStart }) {
       <div className="sync-panel" onClick={(e) => e.stopPropagation()}>
         <div className="sync-header">
           <h2>Sync Projects</h2>
-          <button className="sync-close" onClick={onClose}>x</button>
+          <Button color="tertiary" size="sm" iconLeading={X} onPress={onClose} />
         </div>
 
         <div className="sync-body">
           <div className="sync-section">
             <h3>Sources</h3>
-            <label className="sync-toggle">
-              <input type="checkbox" checked={iadb} onChange={(e) => setIadb(e.target.checked)} disabled={syncing} />
-              <span className="toggle-label">IADB</span>
-            </label>
-            <label className="sync-toggle">
-              <input type="checkbox" checked={worldbank} onChange={(e) => setWorldbank(e.target.checked)} disabled={syncing} />
-              <span className="toggle-label">World Bank</span>
-            </label>
-            <label className="sync-toggle">
-              <input type="checkbox" checked={globaltenders} onChange={(e) => setGlobaltenders(e.target.checked)} disabled={syncing} />
-              <span className="toggle-label">Global Tenders</span>
-            </label>
-            <label className="sync-toggle">
-              <input type="checkbox" checked={giz} onChange={(e) => setGiz(e.target.checked)} disabled={syncing} />
-              <span className="toggle-label">GIZ</span>
-            </label>
-            <label className="sync-toggle">
-              <input type="checkbox" checked={devaid} onChange={(e) => setDevaid(e.target.checked)} disabled={syncing} />
-              <span className="toggle-label">DevelopmentAid</span>
-            </label>
-            <label className="sync-toggle">
-              <input type="checkbox" checked={dgmarket} onChange={(e) => setDgmarket(e.target.checked)} disabled={syncing} />
-              <span className="toggle-label">DGMarket</span>
-            </label>
-            <label className="sync-toggle">
-              <input type="checkbox" checked={africagateway} onChange={(e) => setAfricagateway(e.target.checked)} disabled={syncing} />
-              <span className="toggle-label">Africa Gateway</span>
-            </label>
+            <Toggle isSelected={iadb} onChange={setIadb} isDisabled={syncing} label="IADB" />
+            <Toggle isSelected={worldbank} onChange={setWorldbank} isDisabled={syncing} label="World Bank" />
+            <Toggle isSelected={globaltenders} onChange={setGlobaltenders} isDisabled={syncing} label="Global Tenders" />
+            <Toggle isSelected={giz} onChange={setGiz} isDisabled={syncing} label="GIZ" />
+            <Toggle isSelected={devaid} onChange={setDevaid} isDisabled={syncing} label="DevelopmentAid" />
+            <Toggle isSelected={dgmarket} onChange={setDgmarket} isDisabled={syncing} label="DGMarket" />
+            <Toggle isSelected={africagateway} onChange={setAfricagateway} isDisabled={syncing} label="Africa Gateway" />
           </div>
 
           <div className="sync-section">
             <h3>Options</h3>
-            <label className="sync-toggle">
-              <input type="checkbox" checked={noAi} onChange={(e) => setNoAi(e.target.checked)} disabled={syncing} />
-              <span className="toggle-label">Skip AI Filter</span>
-            </label>
-            <label className="sync-toggle">
-              <input
-                type="checkbox"
-                checked={includeExpired}
-                onChange={(e) => setIncludeExpired(e.target.checked)}
-                disabled={syncing}
-              />
-              <span className="toggle-label">Include Expired</span>
-            </label>
+            <Toggle isSelected={noAi} onChange={setNoAi} isDisabled={syncing} label="Skip AI Filter" />
+            <Toggle isSelected={includeExpired} onChange={setIncludeExpired} isDisabled={syncing} label="Include Expired" />
           </div>
 
-          <button
-            className={`sync-run-btn ${syncing ? 'syncing' : ''}`}
-            onClick={handleSync}
-            disabled={syncing || (!iadb && !worldbank && !globaltenders && !giz && !devaid && !dgmarket && !africagateway)}
+          <Button
+            color="primary"
+            className="w-full"
+            onPress={handleSync}
+            isDisabled={syncing || (!iadb && !worldbank && !globaltenders && !giz && !devaid && !dgmarket && !africagateway)}
+            isLoading={syncing}
           >
-            {syncing ? (
-              <>
-                <span className="btn-spinner" />
-                Running scrapers...
-              </>
-            ) : (
-              'Run Sync'
-            )}
-          </button>
+            {syncing ? 'Running scrapers...' : 'Run Sync'}
+          </Button>
 
           {(logs.length > 0 || syncing) && (
             <div className="sync-logs">
