@@ -1,5 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
 import ClockTimePicker from './ClockTimePicker';
+import { X } from '@untitledui/icons';
+import { Button } from '@/components/base/buttons/button';
+import { Toggle } from '@/components/base/toggle/toggle';
+import { Badge, BadgeWithDot } from '@/components/base/badges/badges';
 
 const DAYS = [
     { value: 'mon', label: 'Monday' },
@@ -65,7 +69,6 @@ function computeTimeUntil(hour, minute, frequency, dayOfWeek) {
         if (daysUntil < 0 || (daysUntil === 0 && target <= now)) daysUntil += 7;
         target.setDate(target.getDate() + daysUntil);
     } else {
-        // Daily: if time has passed today, move to tomorrow
         if (target <= now) target.setDate(target.getDate() + 1);
     }
 
@@ -139,34 +142,29 @@ export default function SchedulePanel({ open, onClose }) {
         },
         no_ai: false,
         include_expired: false,
-        timezone: 1, // default UTC+1 (CET)
+        timezone: 1,
     });
     const [nextRun, setNextRun] = useState(null);
     const [saveResult, setSaveResult] = useState(null);
 
-    // Server time & countdown
     const [serverTime, setServerTime] = useState(null);
-    const [serverOffset, setServerOffset] = useState(0); // ms offset between server and local
+    const [serverOffset, setServerOffset] = useState(0);
     const [countdown, setCountdown] = useState(null);
     const timerRef = useRef(null);
 
-    // Sync run history
     const [logs, setLogs] = useState([]);
     const [expandedLog, setExpandedLog] = useState(null);
     const [scraperLogData, setScraperLogData] = useState({});
     const [scraperLogTab, setScraperLogTab] = useState('summary');
 
-    // Ongoing scrape tracking
     const [syncRunning, setSyncRunning] = useState(false);
     const [liveLogs, setLiveLogs] = useState([]);
     const liveLogEndRef = useRef(null);
     const sseRef = useRef(null);
     const [showClock, setShowClock] = useState(false);
 
-    // Load schedule + server time + logs + sync status when panel opens
     useEffect(() => {
         if (!open) {
-            // Clean up SSE on close
             if (sseRef.current) {
                 sseRef.current.close();
                 sseRef.current = null;
@@ -184,21 +182,17 @@ export default function SchedulePanel({ open, onClose }) {
             fetch('/api/sync/status').then((r) => r.json()),
         ])
             .then(([schedData, timeData, logsData, statusData]) => {
-                // Schedule
                 setNextRun(schedData.next_run || null);
                 delete schedData.next_run;
                 setSchedule((prev) => ({ ...prev, ...schedData }));
 
-                // Server time offset
                 const serverMs = new Date(timeData.server_time).getTime();
                 const localMs = Date.now();
                 setServerOffset(serverMs - localMs);
                 setServerTime(serverMs);
 
-                // Logs
                 setLogs(Array.isArray(logsData) ? logsData : []);
 
-                // If sync is currently running, connect to SSE stream
                 if (statusData.running) {
                     setSyncRunning(true);
                     setLiveLogs([]);
@@ -213,7 +207,6 @@ export default function SchedulePanel({ open, onClose }) {
                             setSyncRunning(false);
                             es.close();
                             sseRef.current = null;
-                            // Refresh logs
                             fetch('/api/schedule/logs')
                                 .then((r) => r.json())
                                 .then((fresh) => setLogs(Array.isArray(fresh) ? fresh : []))
@@ -235,7 +228,6 @@ export default function SchedulePanel({ open, onClose }) {
             .finally(() => setLoading(false));
     }, [open]);
 
-    // Live tick: update server time + countdown every second
     useEffect(() => {
         if (!open) {
             if (timerRef.current) clearInterval(timerRef.current);
@@ -310,7 +302,7 @@ export default function SchedulePanel({ open, onClose }) {
             <div className="sync-panel schedule-panel-wide" onClick={(e) => e.stopPropagation()}>
                 <div className="sync-header">
                     <h2>Sync Schedule</h2>
-                    <button className="sync-close" onClick={onClose}>✕</button>
+                    <Button color="tertiary" size="sm" iconLeading={X} onPress={onClose} />
                 </div>
 
                 <div className="sync-body">
@@ -321,7 +313,6 @@ export default function SchedulePanel({ open, onClose }) {
                         </div>
                     ) : (
                         <>
-                            {/* Ongoing scrape banner */}
                             {syncRunning && (
                                 <div className="schedule-ongoing">
                                     <div className="schedule-ongoing-header">
@@ -337,7 +328,6 @@ export default function SchedulePanel({ open, onClose }) {
                                 </div>
                             )}
 
-                            {/* Server time bar */}
                             <div className="schedule-server-time">
                                 <span>Server time: <strong>{currentServerTimeStr}</strong></span>
                                 {schedule.enabled && countdown !== null && (
@@ -347,21 +337,15 @@ export default function SchedulePanel({ open, onClose }) {
                                 )}
                             </div>
 
-                            {/* Enable toggle */}
                             <div className="sync-section">
-                                <label className="sync-toggle schedule-enable">
-                                    <input
-                                        type="checkbox"
-                                        checked={schedule.enabled}
-                                        onChange={(e) => update('enabled', e.target.checked)}
-                                    />
-                                    <span className="toggle-label">
-                                        {schedule.enabled ? 'Scheduled sync enabled' : 'Scheduled sync disabled'}
-                                    </span>
-                                </label>
+                                <Toggle
+                                    isSelected={schedule.enabled}
+                                    onChange={(val) => update('enabled', val)}
+                                    label={schedule.enabled ? 'Scheduled sync enabled' : 'Scheduled sync disabled'}
+                                    size="md"
+                                />
                             </div>
 
-                            {/* Next run info */}
                             {schedule.enabled && nextRun && (
                                 <div className="schedule-next-run">
                                     <span className="meta-icon">⏰</span>
@@ -369,7 +353,6 @@ export default function SchedulePanel({ open, onClose }) {
                                 </div>
                             )}
 
-                            {/* Frequency */}
                             <div className="sync-section">
                                 <h3>Frequency</h3>
                                 <div className="schedule-frequency">
@@ -396,14 +379,13 @@ export default function SchedulePanel({ open, onClose }) {
 
                                     <span className="schedule-at">at</span>
 
-                                    <button
-                                        type="button"
-                                        className="schedule-time-trigger"
-                                        onClick={() => setShowClock(true)}
+                                    <Button
+                                        color="secondary"
+                                        size="sm"
+                                        onPress={() => setShowClock(true)}
                                     >
-                                        <span className="trigger-icon">Time</span>
                                         {String(schedule.hour).padStart(2, '0')}:{String(schedule.minute).padStart(2, '0')}
-                                    </button>
+                                    </Button>
 
                                     {showClock && (
                                         <ClockTimePicker
@@ -429,63 +411,46 @@ export default function SchedulePanel({ open, onClose }) {
                                     </select>
                                 </div>
 
-                                {/* Time until execution preview */}
                                 <div className="schedule-time-preview">
                                     ⏱ Runs in <strong>{timeUntilStr}</strong> <span className="schedule-tz-note">({tzLabel})</span>
                                 </div>
                             </div>
 
-                            {/* Sources */}
                             <div className="sync-section">
                                 <h3>Sources</h3>
                                 {SOURCE_LIST.map((src) => (
-                                    <label key={src.key} className="sync-toggle">
-                                        <input
-                                            type="checkbox"
-                                            checked={schedule.sources?.[src.key] ?? true}
-                                            onChange={(e) => updateSource(src.key, e.target.checked)}
-                                        />
-                                        <span className="toggle-label">{src.label}</span>
-                                    </label>
+                                    <Toggle
+                                        key={src.key}
+                                        isSelected={schedule.sources?.[src.key] ?? true}
+                                        onChange={(val) => updateSource(src.key, val)}
+                                        label={src.label}
+                                    />
                                 ))}
                             </div>
 
-                            {/* Options */}
                             <div className="sync-section">
                                 <h3>Options</h3>
-                                <label className="sync-toggle">
-                                    <input
-                                        type="checkbox"
-                                        checked={schedule.no_ai}
-                                        onChange={(e) => update('no_ai', e.target.checked)}
-                                    />
-                                    <span className="toggle-label">Skip AI Filter</span>
-                                </label>
-                                <label className="sync-toggle">
-                                    <input
-                                        type="checkbox"
-                                        checked={schedule.include_expired}
-                                        onChange={(e) => update('include_expired', e.target.checked)}
-                                    />
-                                    <span className="toggle-label">Include Expired</span>
-                                </label>
+                                <Toggle
+                                    isSelected={schedule.no_ai}
+                                    onChange={(val) => update('no_ai', val)}
+                                    label="Skip AI Filter"
+                                />
+                                <Toggle
+                                    isSelected={schedule.include_expired}
+                                    onChange={(val) => update('include_expired', val)}
+                                    label="Include Expired"
+                                />
                             </div>
 
-                            {/* Save button */}
-                            <button
-                                className={`sync-run-btn ${saving ? 'syncing' : ''}`}
-                                onClick={handleSave}
-                                disabled={saving}
+                            <Button
+                                color="primary"
+                                className="w-full"
+                                onPress={handleSave}
+                                isDisabled={saving}
+                                isLoading={saving}
                             >
-                                {saving ? (
-                                    <>
-                                        <span className="btn-spinner" />
-                                        Saving…
-                                    </>
-                                ) : (
-                                    'Save Schedule'
-                                )}
-                            </button>
+                                Save Schedule
+                            </Button>
 
                             {saveResult && (
                                 <div className={`sync-result ${saveResult.success ? 'success' : 'error'}`}>
@@ -512,7 +477,6 @@ export default function SchedulePanel({ open, onClose }) {
                                                         } else {
                                                             setExpandedLog(i);
                                                             setScraperLogTab('summary');
-                                                            // Fetch per-scraper logs if not cached
                                                             if (!scraperLogData[i]) {
                                                                 fetch(`/api/schedule/logs/${i}/scrapers`)
                                                                     .then((r) => r.json())
@@ -522,12 +486,12 @@ export default function SchedulePanel({ open, onClose }) {
                                                         }
                                                     }}
                                                 >
-                                                    <span className="schedule-log-status">
+                                                    <BadgeWithDot color={log.success ? 'success' : 'error'} size="sm">
                                                         {log.success ? 'OK' : 'Failed'}
-                                                    </span>
-                                                    <span className="schedule-log-trigger">
+                                                    </BadgeWithDot>
+                                                    <Badge color={log.trigger === 'scheduled' ? 'brand' : 'gray'} size="sm">
                                                         {log.trigger === 'scheduled' ? 'Auto' : 'Manual'}
-                                                    </span>
+                                                    </Badge>
                                                     <span className="schedule-log-date">
                                                         {formatDateTime(log.started_at)}
                                                     </span>
@@ -544,20 +508,22 @@ export default function SchedulePanel({ open, onClose }) {
                                                 {expandedLog === i && (
                                                     <div>
                                                         <div className="schedule-log-tabs">
-                                                            <button
-                                                                className={`schedule-log-tab ${scraperLogTab === 'summary' ? 'active' : ''}`}
-                                                                onClick={() => setScraperLogTab('summary')}
+                                                            <Button
+                                                                color={scraperLogTab === 'summary' ? 'primary' : 'secondary'}
+                                                                size="sm"
+                                                                onPress={() => setScraperLogTab('summary')}
                                                             >
                                                                 Summary
-                                                            </button>
+                                                            </Button>
                                                             {scraperLogData[i] && Object.entries(scraperLogData[i]).map(([key, s]) => (
-                                                                <button
+                                                                <Button
                                                                     key={key}
-                                                                    className={`schedule-log-tab ${scraperLogTab === key ? 'active' : ''}`}
-                                                                    onClick={() => setScraperLogTab(key)}
+                                                                    color={scraperLogTab === key ? 'primary' : 'secondary'}
+                                                                    size="sm"
+                                                                    onPress={() => setScraperLogTab(key)}
                                                                 >
                                                                     {s.label || key}
-                                                                </button>
+                                                                </Button>
                                                             ))}
                                                         </div>
                                                         <pre className="schedule-log-output">
@@ -579,9 +545,3 @@ export default function SchedulePanel({ open, onClose }) {
         </div>
     );
 }
-
-
-
-
-
-
