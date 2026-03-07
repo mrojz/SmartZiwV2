@@ -11,11 +11,13 @@ import { createPortal } from 'react-dom';
  *   onFreeTextChange  callback to update free-text
  *   projects        project data (for value autocomplete)
  *   regions         region config (for region value autocomplete)
+ *   continents      geography continent list
  */
 
 const FILTER_COLUMNS = [
     { key: 'source', label: 'source', desc: 'Data source' },
     { key: 'region', label: 'region', desc: 'Geographic region' },
+    { key: 'continent', label: 'continent', desc: 'Continent' },
     { key: 'country', label: 'country', desc: 'Country / Sponsor' },
     { key: 'keyword', label: 'keyword', desc: 'Matched keyword' },
     { key: 'ai', label: 'ai', desc: 'AI verified (Yes/No)' },
@@ -23,15 +25,38 @@ const FILTER_COLUMNS = [
     { key: 'id', label: 'id', desc: 'Project ID' },
 ];
 
+
+function parseStructuredTokens(raw) {
+    const normalized = String(raw || '');
+    const tokenRegex = /(source|region|continent|country)\s*:\s*([^:]+?)(?=\s+(?:source|region|continent|country)\s*:|\s+OR\s+|$)/gi;
+    const chips = [];
+    const spans = [];
+    let match;
+    while ((match = tokenRegex.exec(normalized)) !== null) {
+        const field = match[1].toLowerCase();
+        const value = match[2].trim();
+        if (!value) continue;
+        chips.push({ field, value });
+        spans.push([match.index, tokenRegex.lastIndex]);
+    }
+    let free = normalized;
+    for (let i = spans.length - 1; i >= 0; i -= 1) {
+        const [start, end] = spans[i];
+        free = `${free.slice(0, start)} ${free.slice(end)}`;
+    }
+    free = free.replace(/\bOR\b/gi, ' ').replace(/\s+/g, ' ').trim();
+    return { chips, freeText: free };
+}
+
 const ALIASES = {
-    source: 'source', region: 'region', country: 'country',
+    source: 'source', region: 'region', continent: 'continent', country: 'country',
     sponsor: 'country', keyword: 'keyword', kw: 'keyword',
     ai: 'ai', verified: 'ai', decision: 'decision', id: 'id',
 };
 
 export default function SmartSearch({
     chips, onChipsChange, freeText, onFreeTextChange,
-    projects, regions,
+    projects, regions, continents,
 }) {
     const [input, setInput] = useState('');
     const [showDrop, setShowDrop] = useState(false);
@@ -56,14 +81,17 @@ export default function SmartSearch({
     //  Unique values from data 
     const columnValues = useMemo(() => {
         const vals = {
-            source: new Set(), region: new Set(), country: new Set(),
+            source: new Set(), region: new Set(), continent: new Set(), country: new Set(),
             keyword: new Set(), ai: new Set(['Yes', 'No']),
             decision: new Set(['Go', 'No Go']), id: new Set(),
         };
         Object.keys(regions || {}).forEach((r) => vals.region.add(r));
+        (continents || []).forEach((c) => vals.continent.add(c.name_en || c.name_fr || c.code));
         (projects || []).forEach((p) => {
             if (p.source) vals.source.add(p.source);
-            if (p.project_sponsor) vals.country.add(p.project_sponsor);
+            (p.country_names_en || []).forEach((name) => name && vals.country.add(name));
+            (p.country_names_fr || []).forEach((name) => name && vals.country.add(name));
+            if (!(p.country_names_en || []).length && !(p.country_names_fr || []).length && p.project_sponsor) vals.country.add(p.project_sponsor);
             if (p.project_id) vals.id.add(p.project_id);
             if (p.matched_keywords) {
                 p.matched_keywords.split(',').forEach((k) => {
@@ -75,7 +103,7 @@ export default function SmartSearch({
         const result = {};
         for (const [k, s] of Object.entries(vals)) result[k] = [...s].sort();
         return result;
-    }, [projects, regions]);
+    }, [projects, regions, continents]);
 
     //  Suggestions 
     const suggestions = useMemo(() => {
@@ -143,7 +171,15 @@ export default function SmartSearch({
 
     //  Commit a chip 
     const addChip = (chip) => {
-        onChipsChange([...chips, chip]);
+        const key = `${String(chip.field).toLowerCase()}::${String(chip.value).toLowerCase()}`;
+        const existing = new Set(chips.map((item) => `${String(item.field).toLowerCase()}::${String(item.value).toLowerCase()}`));
+        if (existing.has(key)) {
+            setInput('');
+            inputRef.current?.focus();
+            setShowDrop(false);
+            return;
+        }
+        onChipsChange([...chips, { field: String(chip.field).toLowerCase(), value: chip.value }]);
         setInput('');
         inputRef.current?.focus();
         setShowDrop(false);
@@ -163,26 +199,32 @@ export default function SmartSearch({
         }
     };
 
-    //  Try to commit the current input as a chip 
+    //  Try to commit the current input as chips / free text 
     const tryCommit = () => {
         const text = input.trim();
-        const colonIdx = text.indexOf(':');
-        if (colonIdx > 0 && colonIdx < text.length - 1) {
-            const field = text.slice(0, colonIdx).trim();
-            let value = text.slice(colonIdx + 1).trim();
-            // Strip quotes
-            if (value.startsWith('"') && value.endsWith('"')) {
-                value = value.slice(1, -1);
+        if (!text) return false;
+        const parsed = parseStructuredTokens(text);
+        if (!parsed.chips.length) return false;
+        const existing = new Set(chips.map((item) => `${String(item.field).toLowerCase()}::${String(item.value).toLowerCase()}`));
+        const nextChips = [...chips];
+        parsed.chips.forEach((chip) => {
+            const normalizedChip = { field: String(chip.field).toLowerCase(), value: chip.value };
+            const key = `${normalizedChip.field}::${String(normalizedChip.value).toLowerCase()}`;
+            if (!existing.has(key)) {
+                existing.add(key);
+                nextChips.push(normalizedChip);
             }
-            if (field && value) {
-                addChip({ field, value });
-                return true;
-            }
-        }
-        return false;
+        });
+        onChipsChange(nextChips);
+        onFreeTextChange(parsed.freeText);
+        setInput('');
+        setShowDrop(false);
+        return true;
     };
 
     const handleKeyDown = (e) => {
+        e.stopPropagation();
+
         if (showDrop && suggestions.length > 0) {
             if (e.key === 'ArrowDown') {
                 e.preventDefault();

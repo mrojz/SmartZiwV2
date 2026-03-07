@@ -4,7 +4,7 @@ import ProjectTable from './components/ProjectTable';
 import SyncPanel from './components/SyncPanel';
 import ConfigPanel from './components/ConfigPanel';
 import SchedulePanel from './components/SchedulePanel';
-import { HomeLine, Shield01, User01, LogOut01, Menu02, Moon01, Sun, X, Mail01, Lock01, Edit01, Key01, UserX01, UserCheck01 } from '@untitledui/icons';
+import { HomeLine, Shield01, User01, LogOut01, Menu02, Moon01, Sun, X, Mail01, Lock01, Edit01, Key01, UserX01, UserCheck01, SearchLg } from '@untitledui/icons';
 import { Button } from '@/components/base/buttons/button';
 import { Input } from '@/components/base/input/input';
 import { InputBase } from '@/components/base/input/input';
@@ -33,6 +33,41 @@ function colorFromSeed(seed = '') {
     let hash = 0;
     for (let i = 0; i < seed.length; i += 1) hash = (hash * 31 + seed.charCodeAt(i)) % 360;
     return `hsl(${hash} 45% 46%)`;
+}
+
+
+function formatDisplayDate(value) {
+    if (!value) return '-';
+    const direct = new Date(value);
+    if (!Number.isNaN(direct.getTime())) {
+        const day = String(direct.getDate()).padStart(2, '0');
+        const month = String(direct.getMonth() + 1).padStart(2, '0');
+        const year = direct.getFullYear();
+        return `${day}/${month}/${year}`;
+    }
+    const parts = String(value).split('/');
+    if (parts.length === 3) {
+        const [month, day, year] = parts;
+        return `${String(day).padStart(2, '0')}/${String(month).padStart(2, '0')}/${year}`;
+    }
+    return value;
+}
+
+function toInputDate(value) {
+    if (!value) return '';
+    const direct = new Date(value);
+    if (!Number.isNaN(direct.getTime())) {
+        const day = String(direct.getDate()).padStart(2, '0');
+        const month = String(direct.getMonth() + 1).padStart(2, '0');
+        const year = direct.getFullYear();
+        return `${year}-${month}-${day}`;
+    }
+    const parts = String(value).split('/');
+    if (parts.length === 3) {
+        const [month, day, year] = parts;
+        return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    }
+    return '';
 }
 
 function Avatar({ user, size = 34 }) {
@@ -240,12 +275,17 @@ function TopBar({ onOpenMobile, theme, onToggleTheme, user }) {
         </header>
     );
 }
-function CommentsPanel({ open, entity, project, projectRegion, comments, mine, setMine, body, setBody, onSubmit, onClose, currentUser, apiFetch }) {
+function CommentsPanel({ open, entity, project, projectRegion, comments, mine, setMine, body, setBody, onSubmit, onClose, currentUser, apiFetch, onDecisionChange, onDeadlineSave }) {
     const listRef = useRef(null);
     const fileInputRef = useRef(null);
+    const textAreaRef = useRef(null);
     const [pendingFiles, setPendingFiles] = useState([]);
     const [uploading, setUploading] = useState(false);
+    const [composerFocused, setComposerFocused] = useState(false);
+    const [searchOpen, setSearchOpen] = useState(false);
     const [search, setSearch] = useState('');
+    const [deadlineInput, setDeadlineInput] = useState('');
+    const [savingDeadline, setSavingDeadline] = useState(false);
 
     useEffect(() => {
         if (!open) return undefined;
@@ -262,10 +302,24 @@ function CommentsPanel({ open, entity, project, projectRegion, comments, mine, s
         }
     }, [comments]);
 
-    // Reset state when panel opens for a new project
     useEffect(() => {
-        if (open) { setPendingFiles([]); setSearch(''); }
-    }, [open, entity?.id]);
+        if (open) {
+            setPendingFiles([]);
+            setComposerFocused(false);
+            setSearch('');
+            setSearchOpen(false);
+            setDeadlineInput(toInputDate(project?.manual_deadline));
+        }
+    }, [open, entity?.id, project?.manual_deadline]);
+
+    useEffect(() => {
+        const el = textAreaRef.current;
+        if (!el) return;
+        el.style.height = '42px';
+        const nextHeight = Math.min(Math.max(el.scrollHeight, 42), 132);
+        el.style.height = `${nextHeight}px`;
+        el.style.overflowY = el.scrollHeight > 132 ? 'auto' : 'hidden';
+    }, [body]);
 
     if (!open) return null;
 
@@ -275,6 +329,11 @@ function CommentsPanel({ open, entity, project, projectRegion, comments, mine, s
         .filter(Boolean);
 
     const currentUserName = currentUser?.name || '';
+    const projectTitle = project?.project_name || project?.project_description || 'No project selected';
+    const projectDecision = project?.decision || '';
+    const projectVerified = project?.ai_verified === 'Yes';
+    const canEditDeadline = currentUser?.role === 'admin';
+    const effectiveDeadline = project?.effective_deadline || project?.manual_deadline || project?.scraped_deadline || project?.project_end_date || '';
 
     const handleKeyDown = (e) => {
         if (e.key === 'Enter' && !e.shiftKey) {
@@ -284,6 +343,16 @@ function CommentsPanel({ open, entity, project, projectRegion, comments, mine, s
     };
 
     const handleSubmit = () => onSubmit(pendingFiles, () => setPendingFiles([]));
+
+    const handleDeadlineSave = async () => {
+        if (!canEditDeadline) return;
+        setSavingDeadline(true);
+        try {
+            await onDeadlineSave?.(deadlineInput);
+        } finally {
+            setSavingDeadline(false);
+        }
+    };
 
     const handleFileChange = async (e) => {
         const files = Array.from(e.target.files || []);
@@ -319,115 +388,214 @@ function CommentsPanel({ open, entity, project, projectRegion, comments, mine, s
         : comments;
 
     return (
-        <div className="comments-drawer-backdrop" onClick={onClose}>
-            <aside className="comments-drawer" onClick={(e) => e.stopPropagation()}>
-                <div className="comments-drawer-head">
-                    <h2>Project Details</h2>
-                    <Button color="tertiary" size="sm" iconLeading={X} onClick={onClose} aria-label="Close comments drawer" />
-                </div>
-
-                <div className="comments-drawer-project">
-                    <h3>{project?.project_name || project?.project_description || 'No project selected'}</h3>
-                    <div className="comments-drawer-grid">
-                        <p><strong>ID:</strong> {project?.project_id || '-'}</p>
-                        <p><strong>Sponsor:</strong> {project?.project_sponsor || '-'}</p>
-                        <p><strong>Source:</strong> {project?.source || '-'}</p>
-                        <p><strong>Country/Region:</strong> {projectRegion || '-'}</p>
-                        <p><strong>Start Date:</strong> {project?.project_start_date || '-'}</p>
-                        <p><strong>End Date:</strong> {project?.project_end_date || '-'}</p>
-                        <p><strong>Decision:</strong> <span className={`drawer-chip decision-${(project?.decision || 'pending').toLowerCase().replace(/\s+/g, '-')}`}>{project?.decision || 'Pending'}</span></p>
-                        <p><strong>AI Status:</strong> <span className={`drawer-chip ai-${project?.ai_verified === 'Yes' ? 'yes' : 'no'}`}>{project?.ai_verified === 'Yes' ? 'Verified' : 'Not Verified'}</span></p>
-                        <p><strong>Project URL:</strong> {project?.project_url ? <a href={project.project_url} target="_blank" rel="noreferrer">Open project</a> : '-'}</p>
-                        <p><strong>Document URL:</strong> {project?.document_url ? <a href={project.document_url} target="_blank" rel="noreferrer">Open document</a> : '-'}</p>
+        <div className="project-drawer-backdrop" onClick={onClose}>
+            <aside className="project-drawer" onClick={(e) => e.stopPropagation()}>
+                <div className="project-drawer-head">
+                    <div>
+                        <span className="project-inspector-kicker">Project inspector</span>
+                        <h2>{projectTitle}</h2>
                     </div>
-                    {keywords.length > 0 ? (
-                        <div className="comments-keywords">
-                            {keywords.map((kw) => (
-                                <span key={kw} className="keyword-tag">{kw}</span>
-                            ))}
+                    <Button color="tertiary" size="sm" iconLeading={X} onClick={onClose} aria-label="Close project inspector" />
+                </div>
+
+                <div className="project-drawer-scroll">
+                    <section className="project-inspector-section project-inspector-summary">
+                        <div className="project-inspector-badges">
+                            <span className={`drawer-chip decision-${(projectDecision || 'pending').toLowerCase().replace(/\s+/g, '-')}`}>
+                                {projectDecision || 'Pending'}
+                            </span>
+                            <span className={`drawer-chip ai-${projectVerified ? 'yes' : 'no'}`}>
+                                {projectVerified ? 'Verified' : 'Not verified'}
+                            </span>
+                            {project?.source ? <span className="drawer-chip neutral">{project.source}</span> : null}
                         </div>
-                    ) : null}
-                </div>
 
-                <div className="chat-section-header">
-                    <span className="chat-section-title">Discussion</span>
-                    <span className="chat-section-count">{comments.length}</span>
-                    <input
-                        className="chat-search-input"
-                        type="text"
-                        placeholder="Search..."
-                        value={search}
-                        onChange={(e) => setSearch(e.target.value)}
-                    />
-                </div>
+                        <div className="inspector-decision-block">
+                            <div>
+                                <h3>Decision</h3>
+                                <p>Update the analyst call without leaving the review flow.</p>
+                            </div>
+                            <div className="inspector-decision-actions">
+                                <button
+                                    type="button"
+                                    className={`inspector-decision-btn ${projectDecision === 'Go' ? 'is-active is-go' : ''}`}
+                                    onClick={() => onDecisionChange(projectDecision === 'Go' ? '' : 'Go')}
+                                >
+                                    Go
+                                </button>
+                                <button
+                                    type="button"
+                                    className={`inspector-decision-btn ${projectDecision === 'No Go' ? 'is-active is-nogo' : ''}`}
+                                    onClick={() => onDecisionChange(projectDecision === 'No Go' ? '' : 'No Go')}
+                                >
+                                    No Go
+                                </button>
+                                <button
+                                    type="button"
+                                    className={`inspector-decision-btn ${!projectDecision ? 'is-active' : ''}`}
+                                    onClick={() => onDecisionChange('')}
+                                >
+                                    Undecided
+                                </button>
+                            </div>
+                        </div>
 
-                <div className="comments-drawer-list chat-list" ref={listRef}>
-                    {!entity?.id ? <p className="auth-muted">No entity selected.</p> : null}
-                    {entity?.id && filteredComments.length === 0 ? <p className="auth-muted chat-empty">{search ? 'No messages match your search.' : 'No comments yet. Start the conversation!'}</p> : null}
-                    {filteredComments.map((c) => {
-                        const isMe = c.authorName === currentUserName;
-                        const ts = new Date(c.createdAt);
-                        const timeStr = ts.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                        const dateStr = ts.toLocaleDateString([], { month: 'short', day: 'numeric' });
-                        return (
-                            <div key={c.id} className={`chat-bubble ${isMe ? 'chat-mine' : 'chat-theirs'}`}>
-                                {!isMe && (
-                                    <div className="chat-avatar" style={{ background: colorFromSeed(c.authorName || '') }}>
-                                        {initials(c.authorName || '', '')}
-                                    </div>
-                                )}
-                                <div className="chat-content">
-                                    {!isMe && <span className="chat-author">{c.authorName}</span>}
-                                    <div className="chat-body">
-                                        {c.body && <p>{c.body}</p>}
-                                        {(c.attachments || []).map((att) => (
-                                            <a key={att.fileId} className="chat-attachment" href={att.url} target="_blank" rel="noreferrer" download={att.originalName}>
-                                                {att.originalName}
-                                            </a>
-                                        ))}
-                                    </div>
-                                    <span className="chat-time">{dateStr} · {timeStr}</span>
+                        <div className="project-inspector-grid">
+                            <div><span>ID</span><strong>{project?.project_id || '-'}</strong></div>
+                            <div><span>Region</span><strong>{projectRegion || '-'}</strong></div>
+                            <div><span>Sponsor</span><strong>{project?.project_sponsor || '-'}</strong></div>
+                            <div><span>Start date</span><strong>{formatDisplayDate(project?.project_start_date)}</strong></div>
+                            <div><span>Deadline</span><strong>{formatDisplayDate(effectiveDeadline)}</strong></div>
+                            <div><span>Source</span><strong>{project?.source || '-'}</strong></div>
+                            <div><span>Deadline source</span><strong>{project?.deadline_source || '-'}</strong></div>
+                            <div><span>Scraped deadline</span><strong>{formatDisplayDate(project?.scraped_deadline || project?.project_end_date)}</strong></div>
+                            <div><span>Manual deadline</span><strong>{formatDisplayDate(project?.manual_deadline)}</strong></div>
+                        </div>
+
+                        <div className="project-inspector-deadline-editor">
+                            <div>
+                                <h3>Manual deadline</h3>
+                                <p>{canEditDeadline ? 'Override the scraped deadline when analyst review requires a correction.' : 'Only admins can edit the deadline.'}</p>
+                            </div>
+                            <div className="project-inspector-deadline-form">
+                                <input type="date" value={deadlineInput} onChange={(e) => setDeadlineInput(e.target.value)} disabled={!canEditDeadline || savingDeadline} />
+                                <button type="button" className="inspector-decision-btn" onClick={handleDeadlineSave} disabled={!canEditDeadline || savingDeadline}>
+                                    {savingDeadline ? 'Saving...' : 'Save deadline'}
+                                </button>
+                            </div>
+                            {project?.deadline_updated_by || project?.deadline_updated_at ? (
+                                <p className="project-inspector-deadline-meta">
+                                    {project?.deadline_updated_by ? `Updated by ${project.deadline_updated_by}` : 'Deadline updated'}
+                                    {project?.deadline_updated_at ? ` on ${formatDisplayDate(project.deadline_updated_at)}` : ''}
+                                </p>
+                            ) : null}
+                        </div>
+
+                        <div className="project-inspector-links">
+                            <h3>Links</h3>
+                            <div className="project-inspector-link-list">
+                                {project?.project_url ? <a href={project.project_url} target="_blank" rel="noreferrer">Open source listing</a> : <span>No project link</span>}
+                                {project?.document_url ? <a href={project.document_url} target="_blank" rel="noreferrer">Open document</a> : <span>No document link</span>}
+                            </div>
+                        </div>
+
+                        {keywords.length > 0 ? (
+                            <div className="project-inspector-keywords">
+                                <h3>Signals</h3>
+                                <div className="comments-keywords">
+                                    {keywords.map((kw) => (
+                                        <span key={kw} className="keyword-tag">{kw}</span>
+                                    ))}
                                 </div>
                             </div>
-                        );
-                    })}
-                </div>
+                        ) : null}
+                    </section>
 
-                {pendingFiles.length > 0 && (
-                    <div className="chat-pending-files">
-                        {pendingFiles.map((f) => (
-                            <span key={f.fileId} className="chat-file-chip">
-                                📎 {f.originalName}
-                                <button className="chat-file-remove" onClick={() => removeFile(f.fileId)} title="Remove">×</button>
-                            </span>
-                        ))}
-                    </div>
-                )}
+                    <section className="project-inspector-section project-inspector-discussion">
+                        <div className="project-discussion-header">
+                            <div className="project-discussion-title-row">
+                                <div>
+                                    <span className="project-discussion-title">Discussion</span>
+                                    <span className="project-discussion-meta">{comments.length} notes</span>
+                                </div>
+                                <button
+                                    type="button"
+                                    className={`chat-tool-btn ${searchOpen ? 'is-active' : ''}`}
+                                    aria-label={searchOpen ? 'Hide message search' : 'Search messages'}
+                                    onClick={() => {
+                                        if (searchOpen && !search) {
+                                            setSearchOpen(false);
+                                            return;
+                                        }
+                                        setSearchOpen((prev) => !prev);
+                                    }}
+                                >
+                                    <SearchLg className="chat-tool-icon" />
+                                </button>
+                            </div>
+                            <div className={`project-discussion-search ${searchOpen ? 'is-open' : ''}`}>
+                                <input
+                                    className="chat-search-input compact"
+                                    type="text"
+                                    placeholder="Search messages..."
+                                    value={search}
+                                    onChange={(e) => setSearch(e.target.value)}
+                                />
+                            </div>
+                        </div>
 
-                <div className="comments-compose chat-compose">
-                    <input ref={fileInputRef} type="file" multiple style={{ display: 'none' }} onChange={handleFileChange} />
-                    <button
-                        className="chat-attach-btn"
-                        onClick={() => fileInputRef.current?.click()}
-                        disabled={uploading}
-                        title="Attach file"
-                    >📎</button>
-                    <textarea
-                        className="chat-input"
-                        value={body}
-                        onChange={(e) => setBody(e.target.value)}
-                        onKeyDown={handleKeyDown}
-                        placeholder="Type a message..."
-                        rows={2}
-                    />
-                    <button
-                        className="chat-send-btn"
-                        onClick={handleSubmit}
-                        disabled={(!body.trim() && !pendingFiles.length) || !entity?.id || uploading}
-                        title="Send"
-                    >
-                        ↑
-                    </button>
+                        <div className="comments-drawer-list chat-list inspector-chat-list" ref={listRef}>
+                            {!entity?.id ? <p className="auth-muted">No entity selected.</p> : null}
+                            {entity?.id && filteredComments.length === 0 ? <p className="auth-muted chat-empty">{search ? 'No messages match your search.' : 'No discussion yet. Add the first analyst note.'}</p> : null}
+                            {filteredComments.map((c) => {
+                                const isMe = c.authorName === currentUserName;
+                                const ts = new Date(c.createdAt);
+                                const timeStr = ts.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                                const dateStr = ts.toLocaleDateString([], { month: 'short', day: 'numeric' });
+                                return (
+                                    <div key={c.id} className={`chat-bubble ${isMe ? 'chat-mine' : 'chat-theirs'}`}>
+                                        {!isMe ? (
+                                            <div className="chat-avatar" style={{ background: colorFromSeed(c.authorName || '') }}>
+                                                {initials(c.authorName || '', '')}
+                                            </div>
+                                        ) : null}
+                                        <div className="chat-content">
+                                            {!isMe ? <span className="chat-author">{c.authorName}</span> : null}
+                                            <div className="chat-body">
+                                                {c.body ? <p>{c.body}</p> : null}
+                                                {(c.attachments || []).map((att) => (
+                                                    <a key={att.fileId} className="chat-attachment" href={att.url} target="_blank" rel="noreferrer" download={att.originalName}>
+                                                        {att.originalName}
+                                                    </a>
+                                                ))}
+                                            </div>
+                                            <span className="chat-time">{dateStr}{" "}{timeStr}</span>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+
+                        {pendingFiles.length > 0 ? (
+                            <div className="chat-pending-files project-drawer-pending-files">
+                                {pendingFiles.map((f) => (
+                                    <span key={f.fileId} className="chat-file-chip">
+                                        {f.originalName}
+                                        <button className="chat-file-remove" onClick={() => removeFile(f.fileId)} title="Remove">x</button>
+                                    </span>
+                                ))}
+                            </div>
+                        ) : null}
+
+                        <div className={`project-inspector-compose ${composerFocused || body.trim() ? 'is-focused' : ''}`}>
+                            <input ref={fileInputRef} type="file" multiple style={{ display: 'none' }} onChange={handleFileChange} />
+                            <button
+                                className="chat-tool-btn"
+                                onClick={() => fileInputRef.current?.click()}
+                                disabled={uploading}
+                                title="Attach file"
+                            >+</button>
+                            <textarea
+                                ref={textAreaRef}
+                                className="chat-input project-chat-input"
+                                value={body}
+                                onChange={(e) => setBody(e.target.value)}
+                                onKeyDown={handleKeyDown}
+                                onFocus={() => setComposerFocused(true)}
+                                onBlur={() => setComposerFocused(Boolean(body.trim()))}
+                                placeholder="Type a message..."
+                                rows={1}
+                            />
+                            <button
+                                className="chat-send-btn chat-send-btn-icon"
+                                onClick={handleSubmit}
+                                disabled={(!body.trim() && !pendingFiles.length) || !entity?.id || uploading}
+                                title="Send"
+                            >
+                                {'>'}
+                            </button>
+                        </div>
+                    </section>
                 </div>
             </aside>
         </div>
@@ -446,6 +614,9 @@ function ProfilePage({ user, apiFetch, onUserUpdate }) {
     const [msg, setMsg] = useState('');
     const [savingProfile, setSavingProfile] = useState(false);
     const [savingPassword, setSavingPassword] = useState(false);
+    const displayName = `${firstName} ${lastName}`.trim() || user?.name || 'User';
+    const emailDomain = email?.split('@')[1] || 'No domain';
+    const passwordMismatch = Boolean(newPassword && newPassword !== confirmPassword);
 
     const saveProfile = async () => {
         setSavingProfile(true);
@@ -482,107 +653,126 @@ function ProfilePage({ user, apiFetch, onUserUpdate }) {
         }
     };
 
-
-
     return (
         <div className="layout-stack profile-page-v2">
-            <PageHeader title="Profile" subtitle="View all your profile details here." />
+            <PageHeader title="Profile settings" subtitle="Manage your personal information and account security." />
 
-            <section className="profile-hero-banner panel-card">
-                <div className="profile-cover" />
-
-                <div className="profile-hero-body">
-                    <div className="profile-avatar-wrap">
-                        <Avatar user={{ ...user, avatarUrl }} size={100} />
-                    </div>
-
-                    <div className="profile-hero-info">
-                        <h2 className="profile-hero-name">{user?.name || 'User'}</h2>
-                        <span className={`profile-hero-role-badge ${user?.role === 'admin' ? 'badge-admin' : 'badge-user'}`}>
-                            {user?.role === 'admin' ? '⚡ Admin' : '👤 User'}
-                        </span>
-                        <p className="profile-hero-email">{user?.email || ''}</p>
-                    </div>
-
-                    <div className="profile-hero-stats">
-                        <div className="profile-stat">
-                            <span className="profile-stat-value" style={{ textTransform: 'capitalize' }}>{user?.role || 'user'}</span>
-                            <span className="profile-stat-label">Role</span>
+            <div className="profile-layout">
+                <aside className="panel-card profile-summary-card">
+                    <div className="profile-summary-accent" />
+                    <div className="profile-summary-header">
+                        <div className="profile-summary-avatar">
+                            <Avatar user={{ ...user, name: displayName, email, avatarUrl }} size={84} />
                         </div>
-                        <div className="profile-stat-divider" />
-                        <div className="profile-stat">
-                            <span className="profile-stat-value">{user?.isActive !== false ? 'Active' : 'Inactive'}</span>
-                            <span className="profile-stat-label">Status</span>
-                        </div>
-                        <div className="profile-stat-divider" />
-                        <div className="profile-stat">
-                            <span className="profile-stat-value">{user?.email?.split('@')[1] || '—'}</span>
-                            <span className="profile-stat-label">Domain</span>
+                        <div className="profile-summary-copy">
+                            <span className="profile-summary-eyebrow">Account</span>
+                            <h2 className="profile-summary-name">{displayName}</h2>
+                            <span className={`profile-hero-role-badge ${user?.role === 'admin' ? 'badge-admin' : 'badge-user'}`}>
+                                {user?.role === 'admin' ? 'Admin' : 'User'}
+                            </span>
+                            <p className="profile-summary-email">{email || 'No email address'}</p>
                         </div>
                     </div>
+
+                    <div className="profile-summary-meta">
+                        <div className="profile-summary-meta-item">
+                            <span className="profile-summary-meta-label">Status</span>
+                            <span className={`profile-summary-status ${user?.isActive !== false ? 'is-active' : 'is-inactive'}`}>
+                                {user?.isActive !== false ? 'Active' : 'Inactive'}
+                            </span>
+                        </div>
+                        <div className="profile-summary-meta-item">
+                            <span className="profile-summary-meta-label">Domain</span>
+                            <span className="profile-summary-meta-value">{emailDomain}</span>
+                        </div>
+                        <div className="profile-summary-meta-item">
+                            <span className="profile-summary-meta-label">Role</span>
+                            <span className="profile-summary-meta-value" style={{ textTransform: 'capitalize' }}>{user?.role || 'user'}</span>
+                        </div>
+                    </div>
+                </aside>
+
+                <div className="profile-content-column">
+                    <section className="panel-card profile-settings-card">
+                        <div className="profile-card-head">
+                            <div>
+                                <h3>Personal information</h3>
+                                <p className="profile-card-description">Update your account details and public profile image.</p>
+                            </div>
+                        </div>
+
+                        <div className="profile-settings-grid">
+                            <div className="auth-field">
+                                <label className="auth-label" htmlFor="prof-firstname">First name</label>
+                                <input id="prof-firstname" className="auth-input" placeholder="First name" value={firstName} onChange={(e) => setFirstName(e.target.value)} />
+                            </div>
+                            <div className="auth-field">
+                                <label className="auth-label" htmlFor="prof-lastname">Last name</label>
+                                <input id="prof-lastname" className="auth-input" placeholder="Last name" value={lastName} onChange={(e) => setLastName(e.target.value)} />
+                            </div>
+                            <div className="auth-field profile-field-span-2">
+                                <label className="auth-label" htmlFor="prof-email">Email</label>
+                                <input id="prof-email" className="auth-input" type="email" placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} />
+                            </div>
+                            <div className="auth-field profile-field-span-2">
+                                <label className="auth-label" htmlFor="prof-avatar">Avatar URL</label>
+                                <input id="prof-avatar" className="auth-input" placeholder="https://..." value={avatarUrl} onChange={(e) => setAvatarUrl(e.target.value)} />
+                                <span className="profile-field-hint">Use a direct image link to update the profile photo preview.</span>
+                            </div>
+                        </div>
+
+                        <div className="profile-card-footer">
+                            <button type="button" className="profile-btn profile-btn-secondary" onClick={() => setAvatarUrl('')}>Remove avatar</button>
+                            <button type="button" className="profile-btn profile-btn-primary" onClick={saveProfile} disabled={savingProfile}>{savingProfile ? 'Saving...' : 'Save changes'}</button>
+                        </div>
+                    </section>
+
+                    <section className="panel-card profile-settings-card">
+                        <div className="profile-card-head">
+                            <div>
+                                <h3>Security</h3>
+                                <p className="profile-card-description">Change your password and keep your account secure.</p>
+                            </div>
+                        </div>
+
+                        <div className="profile-password-stack">
+                            <div className="auth-field">
+                                <label className="auth-label" htmlFor="prof-curpwd">Current password</label>
+                                <input id="prof-curpwd" className="auth-input" type="password" placeholder="Current password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} />
+                            </div>
+                            <div className="profile-password-grid">
+                                <div className="auth-field">
+                                    <label className="auth-label" htmlFor="prof-newpwd">New password</label>
+                                    <input id="prof-newpwd" className="auth-input" type="password" placeholder="New password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} />
+                                    <span className="profile-field-hint">Minimum 8 characters.</span>
+                                </div>
+                                <div className="auth-field">
+                                    <label className="auth-label" htmlFor="prof-confirmpwd">Confirm new password</label>
+                                    <input id="prof-confirmpwd" className="auth-input" type="password" placeholder="Confirm new password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} />
+                                    {passwordMismatch ? <span className="profile-pwd-mismatch">Passwords do not match.</span> : <span className="profile-field-hint">Re-enter the new password to confirm it.</span>}
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="profile-card-footer profile-card-footer-end">
+                            <button
+                                type="button"
+                                className="profile-btn profile-btn-primary"
+                                disabled={savingPassword || !currentPassword || !newPassword || passwordMismatch}
+                                onClick={savePassword}
+                            >
+                                {savingPassword ? 'Saving...' : 'Update password'}
+                            </button>
+                        </div>
+                    </section>
                 </div>
-            </section>
-            <section className="panel-card profile-settings-card">
-                <h3>Profile Settings</h3>
+            </div>
 
-                <div className="profile-settings-grid">
-                    <div className="auth-field">
-                        <label className="auth-label" htmlFor="prof-firstname">First name</label>
-                        <input id="prof-firstname" className="auth-input" placeholder="First name" value={firstName} onChange={(e) => setFirstName(e.target.value)} />
-                    </div>
-                    <div className="auth-field">
-                        <label className="auth-label" htmlFor="prof-lastname">Last name</label>
-                        <input id="prof-lastname" className="auth-input" placeholder="Last name" value={lastName} onChange={(e) => setLastName(e.target.value)} />
-                    </div>
-                    <div className="auth-field">
-                        <label className="auth-label" htmlFor="prof-email">Email</label>
-                        <input id="prof-email" className="auth-input" type="email" placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} />
-                    </div>
-                    <div className="auth-field">
-                        <label className="auth-label" htmlFor="prof-avatar">Avatar URL</label>
-                        <input id="prof-avatar" className="auth-input" placeholder="https://..." value={avatarUrl} onChange={(e) => setAvatarUrl(e.target.value)} />
-                    </div>
-                </div>
-
-                <div className="profile-settings-actions">
-                    <button type="button" className="profile-btn profile-btn-secondary" onClick={() => setAvatarUrl('')}>Remove Avatar</button>
-                    <button type="button" className="profile-btn profile-btn-primary" onClick={saveProfile} disabled={savingProfile}>{savingProfile ? 'Saving…' : 'Save Info'}</button>
-                </div>
-
-                <hr className="profile-divider" />
-
-                <h4 className="profile-section-subtitle">Change Password</h4>
-                <div className="profile-password-grid">
-                    <div className="auth-field">
-                        <label className="auth-label" htmlFor="prof-curpwd">Current password</label>
-                        <input id="prof-curpwd" className="auth-input" type="password" placeholder="Current password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} />
-                    </div>
-                    <div className="auth-field">
-                        <label className="auth-label" htmlFor="prof-newpwd">New password</label>
-                        <input id="prof-newpwd" className="auth-input" type="password" placeholder="New password (min 8 chars)" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} />
-                    </div>
-                    <div className="auth-field">
-                        <label className="auth-label" htmlFor="prof-confirmpwd">Confirm new password</label>
-                        <input id="prof-confirmpwd" className="auth-input" type="password" placeholder="Confirm new password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} />
-                    </div>
-                    <div className="auth-field profile-btn-cell">
-                        <button
-                            type="button"
-                            className="profile-btn profile-btn-primary profile-btn-full"
-                            disabled={savingPassword || !newPassword || newPassword !== confirmPassword}
-                            onClick={savePassword}
-                        >
-                            {savingPassword ? 'Saving…' : 'Save Password'}
-                        </button>
-                        {newPassword && newPassword !== confirmPassword && <span className="profile-pwd-mismatch">Passwords don't match</span>}
-                    </div>
-                </div>
-                {msg ? <p className="profile-success-msg">{msg}</p> : null}
-            </section>
-
-        </div >
+            {msg ? <p className="profile-success-msg">{msg}</p> : null}
+        </div>
     );
 }
+
 function UserDrawer({ open, mode, initialUser, onClose, onSave, saving }) {
     const [firstName, setFirstName] = useState('');
     const [lastName, setLastName] = useState('');
@@ -1026,6 +1216,7 @@ export default function App() {
     const [configOpen, setConfigOpen] = useState(false);
     const [scheduleOpen, setScheduleOpen] = useState(false);
     const [regions, setRegions] = useState({});
+    const [continents, setContinents] = useState([]);
     const [newProjectIds, setNewProjectIds] = useState(new Set());
     const preSyncIdsRef = useRef(new Set());
 
@@ -1034,11 +1225,14 @@ export default function App() {
     const [source, setSource] = useState('');
     const [verified, setVerified] = useState('Yes');
     const [region, setRegion] = useState('');
+    const [continent, setContinent] = useState('');
     const [decision, setDecision] = useState('');
     const [startDateFrom, setStartDateFrom] = useState('');
     const [startDateTo, setStartDateTo] = useState('');
     const [endDateFrom, setEndDateFrom] = useState('');
     const [endDateTo, setEndDateTo] = useState('');
+    const [scrapedFrom, setScrapedFrom] = useState('');
+    const [scrapedTo, setScrapedTo] = useState('');
 
     const [authUser, setAuthUser] = useState(null);
     const [authError, setAuthError] = useState('');
@@ -1052,6 +1246,7 @@ export default function App() {
 
     const [commentsOpen, setCommentsOpen] = useState(false);
     const [selectedProject, setSelectedProject] = useState(null);
+    const [selectedProjectIndex, setSelectedProjectIndex] = useState(null);
     const [commentsMine, setCommentsMine] = useState(false);
     const [commentsBody, setCommentsBody] = useState('');
     const [comments, setComments] = useState([]);
@@ -1149,9 +1344,14 @@ export default function App() {
     useEffect(() => {
         if (!authUser || authUser.mustChangePassword) return;
         loadProjects();
-        apiFetch('/api/config')
-            .then((r) => r.json())
-            .then((cfg) => setRegions(cfg.regions || {}))
+        Promise.all([
+            apiFetch('/api/config').then((r) => (r.ok ? r.json() : { regions: {} })),
+            apiFetch('/api/geography').then((r) => (r.ok ? r.json() : { continents: [] })),
+        ])
+            .then(([cfg, geography]) => {
+                setRegions(cfg.regions || {});
+                setContinents(geography.continents || []);
+            })
             .catch(() => { });
     }, [authUser, loadProjects, apiFetch]);
 
@@ -1204,20 +1404,85 @@ export default function App() {
 
     const filtered = useMemo(() => {
         const ft = freeText.toLowerCase();
+        const parseFilterDate = (value) => {
+            if (!value) return null;
+            const direct = new Date(value);
+            if (!Number.isNaN(direct.getTime())) return direct;
+            const parts = String(value).split('/');
+            if (parts.length === 3) {
+                const parsed = new Date(parts[2], parts[0] - 1, parts[1]);
+                if (!Number.isNaN(parsed.getTime())) return parsed;
+            }
+            return null;
+        };
+        const chipGroups = chips.reduce((acc, chip) => {
+            const field = String(chip.field || '').toLowerCase();
+            if (!['source', 'region', 'continent', 'country'].includes(field)) return acc;
+            if (!acc[field]) acc[field] = [];
+            acc[field].push(String(chip.value || '').toLowerCase());
+            return acc;
+        }, {});
+        const deadlineFromDate = endDateFrom ? new Date(endDateFrom) : null;
+        const deadlineToDate = endDateTo ? new Date(endDateTo) : null;
+        const scrapedFromDate = scrapedFrom ? new Date(scrapedFrom) : null;
+        const scrapedToDate = scrapedTo ? new Date(scrapedTo) : null;
+        if (deadlineToDate) deadlineToDate.setHours(23, 59, 59, 999);
+        if (scrapedToDate) scrapedToDate.setHours(23, 59, 59, 999);
         return projects.filter((p) => {
             if (ft && ![p.project_id, p.project_name, p.project_description, p.project_sponsor].join(' ').toLowerCase().includes(ft)) return false;
             if (source && p.source !== source) return false;
             if (verified && p.ai_verified !== verified) return false;
-            if (region && regions[region]) {
-                const countries = regions[region].map((c) => c.toLowerCase());
+            const projectRegions = (p.region_names || []).map((name) => String(name).toLowerCase());
+            if (region) {
+                const regionValue = String(region).toLowerCase();
                 const sponsor = (p.project_sponsor || '').toLowerCase();
-                if (!countries.some((c) => sponsor.includes(c))) return false;
+                const fallbackCountries = (regions[region] || []).map((c) => c.toLowerCase());
+                const regionMatch = projectRegions.includes(regionValue) || (fallbackCountries.length > 0 && fallbackCountries.some((c) => sponsor.includes(c)));
+                if (!regionMatch) return false;
+            }
+            if (continent) {
+                const continentValue = String(continent).toLowerCase();
+                const projectContinents = [
+                    ...(p.continent_codes || []).map((code) => String(code).toLowerCase()),
+                    ...(p.continent_names_en || []).map((name) => String(name).toLowerCase()),
+                    ...(p.continent_names_fr || []).map((name) => String(name).toLowerCase()),
+                ];
+                if (!projectContinents.includes(continentValue)) return false;
+            }
+            if (chipGroups.source?.length) {
+                const projectSource = String(p.source || '').toLowerCase();
+                if (!chipGroups.source.some((value) => projectSource.includes(value))) return false;
+            }
+            if (chipGroups.region?.length) {
+                if (!chipGroups.region.some((value) => projectRegions.includes(value))) return false;
+            }
+            if (chipGroups.continent?.length) {
+                const projectContinents = [
+                    ...(p.continent_codes || []).map((code) => String(code).toLowerCase()),
+                    ...(p.continent_names_en || []).map((name) => String(name).toLowerCase()),
+                    ...(p.continent_names_fr || []).map((name) => String(name).toLowerCase()),
+                ];
+                if (!chipGroups.continent.some((value) => projectContinents.includes(value))) return false;
+            }
+            if (chipGroups.country?.length) {
+                const projectCountries = [
+                    ...(p.country_names_en || []).map((name) => String(name).toLowerCase()),
+                    ...(p.country_names_fr || []).map((name) => String(name).toLowerCase()),
+                    String(p.project_sponsor || '').toLowerCase(),
+                ];
+                if (!chipGroups.country.some((value) => projectCountries.some((countryValue) => countryValue.includes(value)))) return false;
             }
             if (decision === 'Undecided' && p.decision) return false;
             if (decision && decision !== 'Undecided' && p.decision !== decision) return false;
+            const projectDeadline = parseFilterDate(p.effective_deadline || p.manual_deadline || p.scraped_deadline || p.project_end_date);
+            if (deadlineFromDate && (!projectDeadline || projectDeadline < deadlineFromDate)) return false;
+            if (deadlineToDate && (!projectDeadline || projectDeadline > deadlineToDate)) return false;
+            const scrapedAt = parseFilterDate(p.scraped_at);
+            if (scrapedFromDate && (!scrapedAt || scrapedAt < scrapedFromDate)) return false;
+            if (scrapedToDate && (!scrapedAt || scrapedAt > scrapedToDate)) return false;
             return true;
         });
-    }, [projects, freeText, source, verified, region, regions, decision]);
+    }, [projects, chips, freeText, source, verified, region, continent, regions, decision, endDateFrom, endDateTo, scrapedFrom, scrapedTo, getRegion]);
 
     const sources = useMemo(() => [...new Set(projects.map((p) => p.source).filter(Boolean))].sort(), [projects]);
 
@@ -1227,11 +1492,14 @@ export default function App() {
         setSource('');
         setVerified('Yes');
         setRegion('');
+        setContinent('');
         setDecision('');
         setStartDateFrom('');
         setStartDateTo('');
         setEndDateFrom('');
         setEndDateTo('');
+        setScrapedFrom('');
+        setScrapedTo('');
     };
 
     const handleDecisionChange = async (index, nextDecision) => {
@@ -1240,6 +1508,9 @@ export default function App() {
             next[index] = { ...next[index], decision: nextDecision };
             return next;
         });
+        if (selectedProjectIndex === index) {
+            setSelectedProject((prev) => (prev ? { ...prev, decision: nextDecision } : prev));
+        }
         await apiFetch(`${API}/projects/${index}/decision`, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
@@ -1247,9 +1518,35 @@ export default function App() {
         });
     };
 
+
+    const handleDeadlineChange = async (index, manualDeadline) => {
+        const res = await apiFetch(`${API}/projects/${index}/deadline`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ manualDeadline }),
+        });
+        if (!res.ok) throw new Error('Failed to update deadline');
+        const updated = await res.json();
+        setProjects((prev) => {
+            const next = [...prev];
+            next[index] = updated;
+            return next;
+        });
+        if (selectedProjectIndex === index) {
+            setSelectedProject(updated);
+        }
+    };
+
     const handleDelete = async (index) => {
         const res = await apiFetch(`${API}/projects/${index}`, { method: 'DELETE' });
-        if (res.ok) setProjects((prev) => prev.filter((_, i) => i !== index));
+        if (res.ok) {
+            setProjects((prev) => prev.filter((_, i) => i !== index));
+            if (selectedProjectIndex === index) {
+                setSelectedProject(null);
+                setSelectedProjectIndex(null);
+                setCommentsOpen(false);
+            }
+        }
     };
 
     const snapshotBeforeSync = useCallback(() => {
@@ -1329,6 +1626,12 @@ export default function App() {
         await refreshComments();
     };
 
+    const clearActiveProject = useCallback(() => {
+        setSelectedProject(null);
+        setSelectedProjectIndex(null);
+        setCommentsOpen(false);
+    }, []);
+
     const navigate = (key) => {
         if (key === 'logout') {
             doLogout();
@@ -1365,7 +1668,25 @@ export default function App() {
                         {route === 'dashboard' ? (
                             <div className="layout-dashboard layout-content-row">
                                 <div className="layout-dashboard-main">
-                                    <PageHeader title="Procurement Watch" subtitle="Track tenders, review sources, and manage decisions." />
+                                    <PageHeader
+                                        title="Procurement Watch"
+                                        subtitle="Track tenders, review sources, and manage decisions."
+                                        action={(
+                                            <div className="header-actions">
+                                                <div className="header-buttons">
+                                                    <button type="button" className="header-secondary-btn" onClick={() => setConfigOpen(true)}>
+                                                        Settings / Parameters
+                                                    </button>
+                                                    <button type="button" className="sync-btn" onClick={() => setSyncOpen(true)}>
+                                                        Sync
+                                                    </button>
+                                                    <button type="button" className="header-secondary-btn" onClick={() => setScheduleOpen(true)}>
+                                                        Schedule
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        )}
+                                    />
                                     <ProjectTable
                                         projects={filtered}
                                         allProjects={projects}
@@ -1378,23 +1699,30 @@ export default function App() {
                                         onFreeTextChange={setFreeText}
                                         source={source}
                                         onSourceChange={setSource}
+                                        region={region}
+                                        onRegionChange={setRegion}
+                                        continent={continent}
+                                        onContinentChange={setContinent}
+                                        continents={continents}
                                         verified={verified}
                                         onVerifiedChange={setVerified}
                                         sources={sources}
                                         decision={decision}
                                         onDecisionChangeFilter={setDecision}
-                                        startDateFrom={startDateFrom}
-                                        onStartDateFromChange={setStartDateFrom}
-                                        startDateTo={startDateTo}
-                                        onStartDateToChange={setStartDateTo}
-                                        endDateFrom={endDateFrom}
-                                        onEndDateFromChange={setEndDateFrom}
-                                        endDateTo={endDateTo}
-                                        onEndDateToChange={setEndDateTo}
+                                        deadlineFrom={endDateFrom}
+                                        deadlineTo={endDateTo}
+                                        onDeadlineFromChange={setEndDateFrom}
+                                        onDeadlineToChange={setEndDateTo}
+                                        scrapedFrom={scrapedFrom}
+                                        scrapedTo={scrapedTo}
+                                        onScrapedFromChange={setScrapedFrom}
+                                        onScrapedToChange={setScrapedTo}
                                         onClearFilters={clearFilters}
                                         activeProjectId={selectedEntityId}
-                                        onProjectSelect={(project) => {
+                                        onClearActiveProject={clearActiveProject}
+                                        onProjectSelect={(project, projectIndex) => {
                                             setSelectedProject(project);
+                                            setSelectedProjectIndex(projectIndex);
                                             setCommentsOpen(true);
                                         }}
                                     />
@@ -1412,21 +1740,29 @@ export default function App() {
                 open={commentsOpen}
                 entity={selectedEntity}
                 project={selectedProject}
-                projectRegion={selectedProject ? getRegion(selectedProject.project_sponsor) : ''}
+                projectRegion={selectedProject ? (selectedProject.primary_region_name || getRegion(selectedProject.project_sponsor)) : ''}
                 comments={comments}
                 mine={commentsMine}
                 setMine={setCommentsMine}
                 body={commentsBody}
                 setBody={setCommentsBody}
                 onSubmit={submitComment}
-                onClose={() => setCommentsOpen(false)}
+                onClose={clearActiveProject}
                 currentUser={authUser}
                 apiFetch={apiFetch}
+                onDecisionChange={(nextDecision) => {
+                    if (selectedProjectIndex !== null) handleDecisionChange(selectedProjectIndex, nextDecision);
+                }}
+                onDeadlineSave={(nextDeadline) => {
+                    if (selectedProjectIndex !== null) return handleDeadlineChange(selectedProjectIndex, nextDeadline);
+                    return Promise.resolve();
+                }}
             />
 
-            <SyncPanel open={syncOpen} onClose={() => setSyncOpen(false)} onSyncDone={handleSyncDone} onSyncStart={snapshotBeforeSync} />
-            <ConfigPanel open={configOpen} onClose={() => setConfigOpen(false)} />
-            <SchedulePanel open={scheduleOpen} onClose={() => setScheduleOpen(false)} />
+            <SyncPanel open={syncOpen} onClose={() => setSyncOpen(false)} onSyncDone={handleSyncDone} onSyncStart={snapshotBeforeSync} apiFetch={apiFetch} />
+            <ConfigPanel open={configOpen} onClose={() => setConfigOpen(false)} apiFetch={apiFetch} />
+            <SchedulePanel open={scheduleOpen} onClose={() => setScheduleOpen(false)} apiFetch={apiFetch} />
         </div>
     );
 }
+
