@@ -29,12 +29,15 @@ from pydantic import BaseModel, EmailStr, Field
 from database import (
     get_all_projects,
     update_project_by_index,
+    update_project_deadline_by_index,
     upsert_projects,
     delete_project_by_index,
     get_config as db_get_config,
     save_config as db_save_config,
     get_schedule as db_get_schedule,
     save_schedule as db_save_schedule,
+    get_geography as db_get_geography,
+    seed_geography as db_seed_geography,
     save_sync_log,
     get_sync_logs,
     get_db,
@@ -154,9 +157,13 @@ def _decode_token(token: str) -> dict | None:
 
 def _get_request_user(request: Request):
     auth_header = request.headers.get("Authorization", "")
-    if not auth_header.startswith("Bearer "):
+    token = None
+    if auth_header.startswith("Bearer "):
+        token = auth_header[7:]
+    else:
+        token = request.query_params.get("access_token")
+    if not token:
         return None
-    token = auth_header[7:]
     payload = _decode_token(token)
     if not payload or payload.get("type") != "access":
         return None
@@ -238,6 +245,7 @@ def _configure_scheduler():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     _bootstrap_admin_if_needed()
+    db_seed_geography()
     _configure_scheduler()
     scheduler.start()
     yield
@@ -462,6 +470,10 @@ class ScheduleUpdate(BaseModel):
 
 class DecisionUpdate(BaseModel):
     decision: str
+
+
+class DeadlineUpdate(BaseModel):
+    manualDeadline: str = ""
 
 
 class CommentCreateRequest(BaseModel):
@@ -753,6 +765,11 @@ def get_config():
     return db_get_config()
 
 
+@app.get("/api/geography")
+def get_geography():
+    return db_get_geography()
+
+
 @app.put("/api/config")
 def update_config(body: ConfigUpdate):
     db_save_config(body.keywords, body.regions)
@@ -786,7 +803,7 @@ async def stream_sync():
                 finished = sync_state.finished
                 success = sync_state.success
             for line in new_lines:
-                yield f"data: {json.dumps({'type': 'log', 'message': line})}\\n\\n"
+                yield f"data: {json.dumps({'type': 'log', 'message': line, 'index': sent})}\\n\\n"
                 sent += 1
             if finished:
                 projects = get_all_projects()
@@ -803,7 +820,7 @@ async def stream_sync():
 @app.get("/api/sync/status")
 def sync_status():
     with sync_state.lock:
-        return {"running": sync_state.running, "finished": sync_state.finished, "success": sync_state.success, "line_count": len(sync_state.lines), "summary": sync_state.summary}
+        return {"running": sync_state.running, "finished": sync_state.finished, "success": sync_state.success, "line_count": len(sync_state.lines), "lines": list(sync_state.lines), "summary": sync_state.summary}
 
 
 @app.get("/api/schedule/logs/{index}/scrapers")
@@ -851,7 +868,17 @@ def update_decision(index: int, body: DecisionUpdate):
     if result is None:
         raise HTTPException(status_code=404, detail="Project index out of range")
     _save_to_excel(get_all_projects())
-    return {"index": index, "decision": body.decision}
+    return result
+
+
+@app.patch("/api/projects/{index}/deadline")
+def update_deadline(index: int, body: DeadlineUpdate, request: Request):
+    user = _require_admin(request)
+    result = update_project_deadline_by_index(index, body.manualDeadline, user)
+    if result is None:
+        raise HTTPException(status_code=404, detail="Project index out of range")
+    _save_to_excel(get_all_projects())
+    return result
 
 
 @app.get("/api/download")

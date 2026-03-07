@@ -1202,3 +1202,1472 @@
     gap: var(--sp-4);
     color: var(--text-muted);
 }
+
+.config-header {
+    align-items: flex-start;
+}
+
+.config-header-copy {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-1);
+}
+
+.config-header-subtitle {
+    margin: 0;
+    font-size: .84rem;
+    line-height: 1.5;
+    color: var(--text-muted);
+}
+
+.config-tabs {
+    gap: var(--sp-2);
+    padding: var(--sp-3) var(--sp-6);
+    background: color-mix(in srgb, var(--bg-muted) 78%, transparent);
+}
+
+.config-tab {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--sp-2);
+    padding: var(--sp-2) var(--sp-4);
+    border: 1px solid transparent;
+    border-radius: var(--radius-md);
+    border-bottom-width: 1px;
+    background: transparent;
+}
+
+.config-tab.active {
+    color: var(--accent);
+    border-color: color-mix(in srgb, var(--accent) 18%, var(--border));
+    background: color-mix(in srgb, var(--accent) 8%, var(--bg-surface));
+}
+
+.config-tab-count {
+    min-width: 1.5rem;
+    height: 1.5rem;
+    padding: 0 .38rem;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--bg-muted) 88%, transparent);
+    color: var(--text-secondary);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: .75rem;
+    font-weight: 700;
+}
+
+.config-tab.active .config-tab-count {
+    background: color-mix(in srgb, var(--accent) 16%, var(--bg-surface));
+    color: var(--accent);
+}
+
+.config-section {
+    gap: var(--sp-4);
+}
+
+.config-section-header h3 {
+    margin: 0;
+    font-size: .96rem;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.config-section-header p {
+    margin: var(--sp-1) 0 0;
+    font-size: .82rem;
+    line-height: 1.5;
+    color: var(--text-muted);
+}
+
+.config-add-row {
+    align-items: center;
+    gap: var(--sp-3);
+}
+
+.config-add-row > *:first-child {
+    flex: 1;
+}
+
+.config-state {
+    min-height: 180px;
+    border: 1px dashed var(--border-light);
+    border-radius: var(--radius-md);
+    background: color-mix(in srgb, var(--bg-muted) 55%, transparent);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: var(--sp-3);
+    padding: var(--sp-6);
+    text-align: center;
+}
+
+.config-state p {
+    margin: 0;
+    font-size: .85rem;
+    color: var(--text-secondary);
+}
+
+.config-state-error {
+    border-style: solid;
+    background: color-mix(in srgb, var(--red-bg) 70%, var(--bg-surface));
+}
+
+.config-tags {
+    gap: var(--sp-2);
+}
+
+.region-card {
+    border-radius: var(--radius-lg);
+}
+
+.region-header {
+    gap: var(--sp-4);
+}
+
+.region-body {
+    gap: var(--sp-4);
+    background: color-mix(in srgb, var(--bg-muted) 34%, transparent);
+}
+
+.config-footer {
+    align-items: center;
+}
+
+.config-footer-meta {
+    min-height: 1.25rem;
+    display: flex;
+    align-items: center;
+}
+
+.config-footer-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-3);
+}
+
+
+.sync-dialog {
+    width: 640px;
+    max-width: min(92vw, 640px);
+}
+
+.schedule-dialog {
+    width: 780px;
+    max-width: min(94vw, 780px);
+}
+
+.sync-dialog-header {
+    align-items: flex-start;
+}
+
+.sync-dialog-copy {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-1);
+}
+
+.sync-dialog-copy p {
+    margin: 0;
+    font-size: .84rem;
+    line-height: 1.5;
+    color: var(--text-muted);
+}
+
+.sync-dialog-body {
+    gap: var(--sp-4);
+    background: color-mix(in srgb, var(--bg-muted) 28%, transparent);
+}
+
+.sync-card {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-4);
+    padding: var(--sp-5);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-lg);
+    background: var(--bg-surface);
+    box-shadow: var(--shadow-xs);
+}
+
+.sync-card-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--sp-3);
+}
+
+.sync-card-header h3 {
+    margin: 0;
+    font-size: .92rem;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.sync-card-header p {
+    margin: var(--sp-1) 0 0;
+    font-size: .82rem;
+    line-height: 1.5;
+    color: var(--text-muted);
+}
+
+.sync-card-meta {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 1.75rem;
+    padding: 0 var(--sp-3);
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--accent) 8%, var(--bg-surface));
+    color: var(--accent);
+    font-size: .75rem;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.sync-source-grid,
+.sync-options-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--sp-3);
+}
+
+.sync-source-item,
+.sync-option-item {
+    min-width: 0;
+    padding: var(--sp-2);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-md);
+    background: color-mix(in srgb, var(--bg-muted) 40%, transparent);
+}
+
+.sync-source-item .sync-toggle,
+.sync-option-item .sync-toggle {
+    padding: 0;
+}
+
+.sync-source-item .sync-toggle:hover,
+.sync-option-item .sync-toggle:hover {
+    background: transparent;
+}
+
+.sync-logs-card {
+    gap: var(--sp-3);
+}
+
+.sync-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--sp-3);
+    padding: var(--sp-4) var(--sp-6);
+    border-top: 1px solid var(--border-light);
+    background: var(--bg-surface);
+}
+
+.sync-footer-meta {
+    min-height: 1.25rem;
+    display: flex;
+    align-items: center;
+    color: var(--text-muted);
+    font-size: .82rem;
+    font-weight: 500;
+}
+
+.sync-footer-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-3);
+}
+
+.sync-primary-btn {
+    background: linear-gradient(130deg, var(--accent), #49a6ff) !important;
+    color: #fff !important;
+    border-color: transparent !important;
+}
+
+.sync-primary-btn:hover:not(:disabled) {
+    transform: translateY(-1px);
+    box-shadow: 0 10px 18px rgba(31, 123, 246, 0.22);
+}
+
+.sync-primary-btn[data-loading="true"] {
+    background: linear-gradient(130deg, var(--accent), #49a6ff) !important;
+}
+
+.schedule-overview-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: var(--sp-3);
+}
+
+.schedule-overview-item {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-1);
+    padding: var(--sp-3) var(--sp-4);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-md);
+    background: color-mix(in srgb, var(--bg-muted) 40%, transparent);
+}
+
+.schedule-overview-label {
+    font-size: .72rem;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    color: var(--text-muted);
+    font-weight: 700;
+}
+
+.schedule-overview-item strong {
+    color: var(--text-primary);
+    font-size: .92rem;
+}
+
+.schedule-overview-toggle {
+    padding-top: var(--sp-1);
+}
+
+.schedule-frequency-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: var(--sp-3);
+    align-items: end;
+}
+
+.schedule-field {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-2);
+}
+
+.schedule-field span {
+    font-size: .74rem;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    color: var(--text-muted);
+    font-weight: 700;
+}
+
+.schedule-field-wide {
+    grid-column: span 2;
+}
+
+.schedule-select,
+.schedule-time-btn {
+    width: 100%;
+}
+
+.schedule-time-btn {
+    justify-content: center;
+}
+
+.schedule-server-time {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--sp-3) var(--sp-4);
+    background: var(--bg-muted);
+    border-radius: var(--radius-md);
+    font-size: .82rem;
+    color: var(--text-secondary);
+}
+
+.schedule-ongoing {
+    border-color: color-mix(in srgb, var(--accent) 18%, var(--border));
+}
+
+.schedule-history {
+    gap: var(--sp-4);
+}
+
+.schedule-log-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-3);
+}
+
+.schedule-log-entry {
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-md);
+    background: color-mix(in srgb, var(--bg-muted) 24%, transparent);
+    overflow: hidden;
+}
+
+.schedule-log-header {
+    display: grid;
+    grid-template-columns: auto auto minmax(0, 1fr) auto auto auto;
+    align-items: center;
+    gap: var(--sp-3);
+    padding: var(--sp-3) var(--sp-4);
+}
+
+.schedule-log-output {
+    margin: 0;
+}
+
+@media (max-width: 860px) {
+    .schedule-dialog,
+    .sync-dialog {
+        width: min(94vw, 100%);
+    }
+
+    .schedule-overview-grid,
+    .schedule-frequency-grid,
+    .sync-source-grid,
+    .sync-options-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .schedule-field-wide {
+        grid-column: span 1;
+    }
+
+    .schedule-log-header {
+        grid-template-columns: 1fr;
+        align-items: flex-start;
+    }
+
+    .sync-footer {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .sync-footer-actions {
+        width: 100%;
+        justify-content: flex-end;
+    }
+}
+
+
+.config-panel,
+.sync-dialog,
+.schedule-dialog {
+    box-shadow: 0 28px 60px rgba(15, 23, 42, 0.18);
+}
+
+.config-panel .config-body,
+.sync-dialog .sync-dialog-body,
+.schedule-dialog .sync-dialog-body {
+    background: color-mix(in srgb, var(--bg-muted) 18%, transparent);
+}
+
+.config-panel .config-tab,
+.schedule-dialog .schedule-trigger-pill,
+.schedule-dialog .schedule-status-pill,
+.config-panel .config-tab-count,
+.sync-dialog .sync-card-meta,
+.schedule-dialog .sync-card-meta {
+    color: var(--text-secondary);
+}
+
+.config-panel .config-tab.active,
+.config-panel .config-tab:hover,
+.config-panel .config-tab.active .config-tab-count {
+    color: var(--text-primary);
+}
+
+.config-panel .config-tab {
+    border-color: transparent;
+}
+
+.config-panel .config-tab.active {
+    border-color: var(--border-light);
+    background: var(--bg-surface);
+}
+
+.config-panel .config-tab-count,
+.sync-card-meta,
+.sync-card-meta-neutral {
+    background: color-mix(in srgb, var(--bg-muted) 82%, var(--bg-surface));
+    color: var(--text-secondary);
+    border: 1px solid var(--border-light);
+}
+
+.config-panel .config-tags {
+    gap: var(--sp-2);
+}
+
+.config-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--sp-2);
+    padding: .38rem .65rem;
+    border: 1px solid var(--border-light);
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--bg-muted) 74%, var(--bg-surface));
+    color: var(--text-secondary);
+    font-size: .78rem;
+    font-weight: 600;
+}
+
+.config-chip-subtle {
+    background: color-mix(in srgb, var(--bg-muted) 92%, var(--bg-surface));
+}
+
+.config-chip-remove {
+    width: 1rem;
+    height: 1rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 0;
+    border-radius: 999px;
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: .95rem;
+    line-height: 1;
+}
+
+.config-chip-remove:hover {
+    background: color-mix(in srgb, var(--bg-muted) 100%, transparent);
+    color: var(--text-primary);
+}
+
+.config-panel .region-card,
+.sync-dialog .sync-card,
+.schedule-dialog .sync-card {
+    border-color: var(--border-light);
+    box-shadow: none;
+}
+
+.config-panel .region-body,
+.sync-dialog .sync-source-item,
+.sync-dialog .sync-option-item,
+.schedule-dialog .sync-source-item,
+.schedule-dialog .sync-option-item,
+.schedule-dialog .schedule-overview-item,
+.schedule-dialog .schedule-log-entry {
+    background: color-mix(in srgb, var(--bg-muted) 28%, var(--bg-surface));
+}
+
+.schedule-dialog .schedule-trigger-pill,
+.schedule-dialog .schedule-status-pill {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 1.65rem;
+    padding: 0 .55rem;
+    border-radius: 999px;
+    border: 1px solid var(--border-light);
+    background: color-mix(in srgb, var(--bg-muted) 92%, var(--bg-surface));
+    font-size: .73rem;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.schedule-dialog .schedule-status-pill.success {
+    color: #156f54;
+    background: #eaf7f1;
+    border-color: #bfe7d6;
+}
+
+.schedule-dialog .schedule-status-pill.failed {
+    color: #9f2f2f;
+    background: #fbeeee;
+    border-color: #f0caca;
+}
+
+.schedule-dialog .schedule-error-state {
+    min-height: 220px;
+}
+
+.schedule-dialog .schedule-log-tabs button[data-slot],
+.schedule-dialog .schedule-log-tabs button {
+    border-radius: 999px;
+}
+
+
+.config-panel-redesign {
+    width: 760px;
+    max-width: min(94vw, 760px);
+    max-height: 88vh;
+    border-color: var(--border-light);
+    box-shadow: 0 28px 60px rgba(15, 23, 42, 0.16);
+}
+
+.config-panel-redesign .config-header {
+    align-items: flex-start;
+    padding: 1.5rem 1.75rem 1.1rem;
+}
+
+.config-panel-redesign .config-header-copy {
+    gap: .35rem;
+}
+
+.config-panel-redesign .config-eyebrow {
+    display: inline-flex;
+    font-size: .72rem;
+    font-weight: 700;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+}
+
+.config-panel-redesign .config-header h2 {
+    font-size: 1.35rem;
+}
+
+.config-panel-redesign .config-header-subtitle {
+    max-width: 42rem;
+    color: var(--text-secondary);
+}
+
+.config-panel-redesign .config-close-btn {
+    border: 1px solid var(--border-light);
+    border-radius: 12px;
+    background: var(--bg-surface);
+    color: var(--text-secondary);
+}
+
+.config-panel-redesign .config-close-btn:hover {
+    background: color-mix(in srgb, var(--bg-muted) 72%, var(--bg-surface));
+    color: var(--text-primary);
+}
+
+.config-panel-redesign .config-tabs {
+    gap: .5rem;
+    padding: 0 1.75rem 1rem;
+    border-bottom: 1px solid var(--border-light);
+    background: transparent;
+}
+
+.config-panel-redesign .config-tab {
+    display: inline-flex;
+    align-items: center;
+    gap: .55rem;
+    padding: .7rem .95rem;
+    border: 1px solid transparent;
+    border-radius: 14px;
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: .84rem;
+    font-weight: 700;
+}
+
+.config-panel-redesign .config-tab:hover {
+    background: color-mix(in srgb, var(--bg-muted) 82%, var(--bg-surface));
+    color: var(--text-primary);
+}
+
+.config-panel-redesign .config-tab.active {
+    background: var(--bg-surface);
+    border-color: var(--border-light);
+    color: var(--text-primary);
+    box-shadow: var(--shadow-xs);
+}
+
+.config-panel-redesign .config-tab-label {
+    line-height: 1;
+}
+
+.config-panel-redesign .config-tab-count {
+    min-width: 1.55rem;
+    height: 1.55rem;
+    padding: 0 .35rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--border-light);
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--bg-muted) 90%, var(--bg-surface));
+    color: var(--text-secondary);
+    font-size: .72rem;
+    font-weight: 700;
+}
+
+.config-panel-redesign .config-body {
+    padding: 1.4rem 1.75rem;
+    gap: 1.25rem;
+    background: color-mix(in srgb, var(--bg-muted) 14%, transparent);
+}
+
+.config-panel-redesign .config-section {
+    gap: 1rem;
+}
+
+.config-panel-redesign .config-section-header h3 {
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.config-panel-redesign .config-section-header p {
+    color: var(--text-secondary);
+}
+
+.config-panel-redesign .config-input-card {
+    display: flex;
+    flex-direction: column;
+    gap: .9rem;
+    padding: 1rem;
+    border: 1px solid var(--border-light);
+    border-radius: 16px;
+    background: var(--bg-surface);
+    box-shadow: var(--shadow-xs);
+}
+
+.config-panel-redesign .config-input-copy {
+    display: flex;
+    flex-direction: column;
+    gap: .2rem;
+}
+
+.config-panel-redesign .config-input-label {
+    font-size: .82rem;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.config-panel-redesign .config-input-hint {
+    font-size: .78rem;
+    color: var(--text-muted);
+}
+
+.config-panel-redesign .config-add-row.modern {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: .75rem;
+}
+
+.config-panel-redesign .config-add-row.modern.compact {
+    margin-bottom: .1rem;
+}
+
+.config-panel-redesign .config-primary-action {
+    min-width: 104px;
+    justify-content: center;
+    background: linear-gradient(130deg, var(--accent), #49a6ff) !important;
+    color: #fff !important;
+    border-color: transparent !important;
+}
+
+.config-panel-redesign .config-primary-action:hover:not(:disabled) {
+    transform: translateY(-1px);
+    box-shadow: 0 10px 18px rgba(31, 123, 246, 0.18);
+}
+
+.config-panel-redesign .config-secondary-action {
+    border: 1px solid var(--border-light);
+    background: var(--bg-surface);
+    color: var(--text-secondary);
+}
+
+.config-panel-redesign .config-secondary-action:hover {
+    background: color-mix(in srgb, var(--bg-muted) 82%, var(--bg-surface));
+    color: var(--text-primary);
+}
+
+.config-panel-redesign .config-list {
+    display: flex;
+    flex-direction: column;
+    gap: .7rem;
+}
+
+.config-panel-redesign .config-list-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: .95rem 1rem;
+    border: 1px solid var(--border-light);
+    border-radius: 14px;
+    background: var(--bg-surface);
+    box-shadow: var(--shadow-xs);
+}
+
+.config-panel-redesign .config-list-copy {
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: .75rem;
+}
+
+.config-panel-redesign .config-list-title {
+    font-size: .88rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    word-break: break-word;
+}
+
+.config-panel-redesign .config-row-remove {
+    border: 1px solid var(--border-light);
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--bg-muted) 82%, var(--bg-surface));
+    color: var(--text-secondary);
+    padding: .5rem .7rem;
+    font-size: .78rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 160ms ease;
+}
+
+.config-panel-redesign .config-row-remove:hover {
+    background: color-mix(in srgb, var(--bg-muted) 96%, var(--bg-surface));
+    color: var(--text-primary);
+}
+
+.config-panel-redesign .config-region-list {
+    display: flex;
+    flex-direction: column;
+    gap: .8rem;
+}
+
+.config-panel-redesign .region-card.modern {
+    border-radius: 16px;
+    border-color: var(--border-light);
+    background: var(--bg-surface);
+    box-shadow: var(--shadow-xs);
+}
+
+.config-panel-redesign .region-card.modern.expanded {
+    border-color: var(--border-light);
+}
+
+.config-panel-redesign .region-header.modern {
+    justify-content: space-between;
+    gap: 1rem;
+    padding: .95rem 1rem;
+    background: transparent;
+}
+
+.config-panel-redesign .region-header.modern:hover {
+    background: color-mix(in srgb, var(--bg-muted) 48%, var(--bg-surface));
+}
+
+.config-panel-redesign .region-title-wrap {
+    display: flex;
+    align-items: center;
+    gap: .8rem;
+    min-width: 0;
+}
+
+.config-panel-redesign .region-caret {
+    width: 1.5rem;
+    height: 1.5rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 999px;
+    border: 1px solid var(--border-light);
+    background: color-mix(in srgb, var(--bg-muted) 88%, var(--bg-surface));
+    color: var(--text-secondary);
+    font-size: .8rem;
+    font-weight: 700;
+    flex-shrink: 0;
+}
+
+.config-panel-redesign .region-copy {
+    display: flex;
+    flex-direction: column;
+    gap: .15rem;
+    min-width: 0;
+}
+
+.config-panel-redesign .region-name {
+    font-size: .9rem;
+    font-weight: 700;
+}
+
+.config-panel-redesign .region-count {
+    font-size: .76rem;
+    color: var(--text-muted);
+}
+
+.config-panel-redesign .region-body.modern {
+    padding: 0 1rem 1rem;
+    gap: .9rem;
+    background: transparent;
+    border-top: 0;
+}
+
+.config-panel-redesign .config-tag-cloud {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .55rem;
+}
+
+.config-panel-redesign .config-neutral-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: .45rem;
+    padding: .45rem .65rem;
+    border: 1px solid var(--border-light);
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--bg-muted) 88%, var(--bg-surface));
+    color: var(--text-secondary);
+    font-size: .78rem;
+    font-weight: 600;
+}
+
+.config-panel-redesign .config-tag-remove {
+    width: 1rem;
+    height: 1rem;
+    border: 0;
+    border-radius: 999px;
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: .8rem;
+    line-height: 1;
+}
+
+.config-panel-redesign .config-tag-remove:hover {
+    color: var(--text-primary);
+}
+
+.config-panel-redesign .config-state.compact {
+    min-height: 132px;
+}
+
+.config-panel-redesign .config-empty {
+    color: var(--text-muted);
+    font-style: normal;
+}
+
+.config-panel-redesign .config-footer.modern {
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 1rem 1.75rem 1.25rem;
+    background: var(--bg-surface);
+}
+
+.config-panel-redesign .config-footer-meta {
+    min-height: 1.2rem;
+    display: flex;
+    align-items: center;
+}
+
+.config-panel-redesign .config-footer-note {
+    font-size: .8rem;
+    color: var(--text-muted);
+}
+
+.config-panel-redesign .config-footer-actions {
+    display: flex;
+    align-items: center;
+    gap: .75rem;
+}
+
+.config-panel-redesign .config-save-action {
+    min-width: 148px;
+}
+
+@media (max-width: 760px) {
+    .config-panel-redesign {
+        width: min(96vw, 100%);
+    }
+
+    .config-panel-redesign .config-add-row.modern {
+        grid-template-columns: 1fr;
+    }
+
+    .config-panel-redesign .config-footer.modern {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .config-panel-redesign .config-footer-actions {
+        width: 100%;
+        justify-content: stretch;
+        flex-direction: column-reverse;
+    }
+
+    .config-panel-redesign .config-footer-actions > * {
+        width: 100%;
+    }
+
+    .config-panel-redesign .config-list-row,
+    .config-panel-redesign .region-header.modern {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+}
+
+
+.config-shell {
+    width: 760px;
+    max-width: min(94vw, 760px);
+    max-height: 88vh;
+    border: 1px solid var(--border-light);
+    border-radius: 22px;
+    background: color-mix(in srgb, var(--bg-surface) 96%, white);
+    box-shadow: 0 28px 70px rgba(15, 23, 42, 0.16);
+}
+
+.config-shell-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 1.6rem 1.75rem 1.2rem;
+    border-bottom: 1px solid var(--border-light);
+}
+
+.config-shell-heading h2 {
+    margin: 0;
+    font-size: 1.35rem;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.config-shell-heading p {
+    margin: .45rem 0 0;
+    max-width: 42rem;
+    font-size: .88rem;
+    line-height: 1.55;
+    color: var(--text-secondary);
+}
+
+.config-shell-close {
+    width: 2.5rem;
+    height: 2.5rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--border-light);
+    border-radius: 14px;
+    background: var(--bg-surface);
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all 180ms ease;
+}
+
+.config-shell-close:hover {
+    background: color-mix(in srgb, var(--bg-muted) 85%, var(--bg-surface));
+    color: var(--text-primary);
+}
+
+.config-shell-close svg {
+    width: 1rem;
+    height: 1rem;
+}
+
+.config-shell-tabs {
+    padding: 1rem 1.75rem 0;
+    display: flex;
+}
+
+.config-shell-tabs[role='tablist'] {
+    gap: .4rem;
+}
+
+.config-shell-tab {
+    min-width: 126px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: .55rem;
+    padding: .8rem 1rem;
+    border: 1px solid transparent;
+    border-radius: 14px;
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: .84rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 180ms ease;
+}
+
+.config-shell-tab:hover {
+    background: color-mix(in srgb, var(--bg-muted) 76%, var(--bg-surface));
+    color: var(--text-primary);
+}
+
+.config-shell-tab.is-active {
+    background: var(--bg-surface);
+    border-color: var(--border-light);
+    color: var(--text-primary);
+    box-shadow: var(--shadow-xs);
+}
+
+.config-shell-tab-count {
+    min-width: 1.5rem;
+    height: 1.5rem;
+    padding: 0 .35rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--border-light);
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--bg-muted) 90%, var(--bg-surface));
+    color: var(--text-secondary);
+    font-size: .72rem;
+    font-weight: 700;
+}
+
+.config-shell-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 1.35rem 1.75rem 1.5rem;
+    background: color-mix(in srgb, var(--bg-muted) 12%, transparent);
+}
+
+.config-shell-section {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.config-shell-section-header h3 {
+    margin: 0;
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.config-shell-section-header p {
+    margin: .35rem 0 0;
+    font-size: .85rem;
+    line-height: 1.55;
+    color: var(--text-secondary);
+}
+
+.config-shell-input-card {
+    display: flex;
+    flex-direction: column;
+    gap: .85rem;
+    padding: 1rem;
+    border: 1px solid var(--border-light);
+    border-radius: 18px;
+    background: var(--bg-surface);
+    box-shadow: var(--shadow-xs);
+}
+
+.config-shell-input-copy {
+    display: flex;
+    flex-direction: column;
+    gap: .2rem;
+}
+
+.config-shell-label {
+    font-size: .8rem;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.config-shell-hint {
+    font-size: .78rem;
+    color: var(--text-muted);
+}
+
+.config-shell-entry-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: .8rem;
+    align-items: center;
+}
+
+.config-shell-entry-row.compact {
+    margin-bottom: .2rem;
+}
+
+.config-shell-input {
+    width: 100%;
+    height: 46px;
+    padding: 0 14px;
+    border: 1px solid var(--border-light);
+    border-radius: 14px;
+    background: color-mix(in srgb, var(--bg-surface) 94%, white);
+    color: var(--text-primary);
+    font: inherit;
+    font-size: .9rem;
+    outline: none;
+    transition: border-color 180ms ease, box-shadow 180ms ease, background-color 180ms ease;
+}
+
+.config-shell-input:focus {
+    border-color: color-mix(in srgb, var(--accent) 26%, var(--border-light));
+    box-shadow: 0 0 0 4px rgba(73, 166, 255, 0.12);
+    background: var(--bg-surface);
+}
+
+.config-ui-btn {
+    height: 46px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: .5rem;
+    padding: 0 16px;
+    border-radius: 14px;
+    border: 1px solid transparent;
+    font: inherit;
+    font-size: .88rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 180ms ease;
+}
+
+.config-ui-btn:disabled {
+    opacity: .55;
+    cursor: not-allowed;
+}
+
+.config-ui-btn-primary {
+    min-width: 150px;
+    background: linear-gradient(130deg, var(--accent), #49a6ff);
+    color: #fff;
+    border-color: transparent;
+}
+
+.config-ui-btn-primary:hover:not(:disabled) {
+    transform: translateY(-1px);
+    box-shadow: 0 12px 24px rgba(31, 123, 246, 0.22);
+}
+
+.config-ui-btn-secondary {
+    min-width: 104px;
+    background: color-mix(in srgb, var(--bg-muted) 86%, var(--bg-surface));
+    color: var(--text-primary);
+    border-color: var(--border-light);
+}
+
+.config-ui-btn-secondary:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--bg-muted) 98%, var(--bg-surface));
+}
+
+.config-ui-btn-inline {
+    width: auto;
+    min-width: 0;
+    padding: 0 14px;
+}
+
+.config-ui-btn-add {
+    min-width: 96px;
+}
+
+.config-ui-icon {
+    width: 1rem;
+    height: 1rem;
+}
+
+.config-shell-list,
+.config-shell-region-stack,
+.config-shell-sublist {
+    display: flex;
+    flex-direction: column;
+    gap: .75rem;
+}
+
+.config-shell-list-row,
+.config-shell-sublist-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: .95rem 1rem;
+    border: 1px solid var(--border-light);
+    border-radius: 16px;
+    background: var(--bg-surface);
+    box-shadow: var(--shadow-xs);
+}
+
+.config-shell-list-copy {
+    min-width: 0;
+}
+
+.config-shell-list-title,
+.config-shell-sublist-title {
+    font-size: .9rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    word-break: break-word;
+}
+
+.config-shell-row-action {
+    height: 36px;
+    padding: 0 12px;
+    border: 1px solid var(--border-light);
+    border-radius: 12px;
+    background: color-mix(in srgb, var(--bg-muted) 92%, var(--bg-surface));
+    color: var(--text-secondary);
+    font: inherit;
+    font-size: .78rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 160ms ease;
+}
+
+.config-shell-row-action:hover {
+    color: var(--text-primary);
+    background: color-mix(in srgb, var(--bg-muted) 100%, var(--bg-surface));
+}
+
+.config-shell-region-card {
+    border: 1px solid var(--border-light);
+    border-radius: 18px;
+    background: var(--bg-surface);
+    box-shadow: var(--shadow-xs);
+    overflow: hidden;
+}
+
+.config-shell-region-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 1rem;
+}
+
+.config-shell-region-summary {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: .8rem;
+    min-width: 0;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    text-align: left;
+    cursor: pointer;
+}
+
+.config-shell-region-indicator {
+    width: 1.55rem;
+    height: 1.55rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--border-light);
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--bg-muted) 92%, var(--bg-surface));
+    color: var(--text-secondary);
+    font-size: .78rem;
+    font-weight: 700;
+    flex-shrink: 0;
+}
+
+.config-shell-region-copy {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: .18rem;
+}
+
+.config-shell-region-title {
+    font-size: .92rem;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.config-shell-region-meta {
+    font-size: .78rem;
+    color: var(--text-muted);
+}
+
+.config-shell-region-body {
+    display: flex;
+    flex-direction: column;
+    gap: .9rem;
+    padding: 0 1rem 1rem;
+}
+
+.config-shell-empty,
+.config-shell-state {
+    min-height: 156px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: .85rem;
+    padding: 1.2rem;
+    border: 1px dashed var(--border-light);
+    border-radius: 18px;
+    background: color-mix(in srgb, var(--bg-muted) 70%, var(--bg-surface));
+    text-align: center;
+}
+
+.config-shell-empty.compact {
+    min-height: 108px;
+}
+
+.config-shell-state.is-error {
+    border-style: solid;
+    background: color-mix(in srgb, var(--red-bg) 75%, var(--bg-surface));
+}
+
+.config-shell-empty p,
+.config-shell-state p {
+    margin: 0;
+    color: var(--text-secondary);
+    font-size: .84rem;
+}
+
+.config-shell-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 1rem 1.75rem 1.25rem;
+    border-top: 1px solid var(--border-light);
+    background: var(--bg-surface);
+}
+
+.config-ui-btn-close {
+    min-width: 100px;
+}
+
+.config-shell-footer-right {
+    display: flex;
+    align-items: center;
+    gap: .9rem;
+}
+
+.config-shell-status {
+    font-size: .8rem;
+    font-weight: 600;
+}
+
+.config-shell-status.is-success {
+    color: #18794e;
+}
+
+.config-shell-status.is-error {
+    color: #b93838;
+}
+
+@media (max-width: 760px) {
+    .config-shell {
+        width: min(96vw, 100%);
+        max-height: 92vh;
+    }
+
+    .config-shell-tabs {
+        overflow-x: auto;
+        padding-right: 1.25rem;
+        padding-left: 1.25rem;
+    }
+
+    .config-shell-body,
+    .config-shell-header,
+    .config-shell-footer {
+        padding-left: 1.25rem;
+        padding-right: 1.25rem;
+    }
+
+    .config-shell-entry-row,
+    .config-shell-footer,
+    .config-shell-region-top,
+    .config-shell-list-row,
+    .config-shell-sublist-row {
+        grid-template-columns: 1fr;
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .config-shell-footer-right {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .config-shell-footer-right > *,
+    .config-ui-btn-close,
+    .config-ui-btn-add,
+    .config-ui-btn-primary {
+        width: 100%;
+    }
+}

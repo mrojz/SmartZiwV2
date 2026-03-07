@@ -2,9 +2,26 @@ import { useState, useRef } from 'react';
 import { X } from '@untitledui/icons';
 import { Button } from '@/components/base/buttons/button';
 import { Toggle } from '@/components/base/toggle/toggle';
-import { BadgeWithDot } from '@/components/base/badges/badges';
 
-export default function SyncPanel({ open, onClose, onSyncDone, onSyncStart }) {
+function buildSyncStreamUrl() {
+  const token = localStorage.getItem('pw_access_token');
+  const params = new URLSearchParams();
+  if (token) params.set('access_token', token);
+  const query = params.toString();
+  return query ? `/api/sync/stream?${query}` : '/api/sync/stream';
+}
+
+const SOURCES = [
+  { key: 'iadb', label: 'IADB' },
+  { key: 'worldbank', label: 'World Bank' },
+  { key: 'globaltenders', label: 'Global Tenders' },
+  { key: 'giz', label: 'GIZ' },
+  { key: 'devaid', label: 'DevelopmentAid' },
+  { key: 'dgmarket', label: 'DGMarket' },
+  { key: 'africagateway', label: 'Africa Gateway' },
+];
+
+export default function SyncPanel({ open, onClose, onSyncDone, onSyncStart, apiFetch }) {
   const [iadb, setIadb] = useState(true);
   const [worldbank, setWorldbank] = useState(true);
   const [globaltenders, setGlobaltenders] = useState(true);
@@ -21,6 +38,18 @@ export default function SyncPanel({ open, onClose, onSyncDone, onSyncStart }) {
 
   if (!open) return null;
 
+  const selectedSources = {
+    iadb,
+    worldbank,
+    globaltenders,
+    giz,
+    devaid,
+    dgmarket,
+    africagateway,
+  };
+
+  const selectedSourceCount = Object.values(selectedSources).filter(Boolean).length;
+
   const scrollToBottom = () => {
     logsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
@@ -32,7 +61,7 @@ export default function SyncPanel({ open, onClose, onSyncDone, onSyncStart }) {
     onSyncStart?.();
 
     try {
-      const startRes = await fetch('/api/sync/manual', {
+      const startRes = await apiFetch('/api/sync/manual', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -55,7 +84,7 @@ export default function SyncPanel({ open, onClose, onSyncDone, onSyncStart }) {
         return;
       }
 
-      const eventSource = new EventSource('/api/sync/stream');
+      const eventSource = new EventSource(buildSyncStreamUrl());
       eventSource.onmessage = (event) => {
         const data = JSON.parse(event.data);
 
@@ -88,43 +117,56 @@ export default function SyncPanel({ open, onClose, onSyncDone, onSyncStart }) {
 
   return (
     <div className="sync-overlay" onClick={onClose}>
-      <div className="sync-panel" onClick={(e) => e.stopPropagation()}>
-        <div className="sync-header">
-          <h2>Sync Projects</h2>
+      <div className="sync-panel sync-dialog" onClick={(e) => e.stopPropagation()}>
+        <div className="sync-header sync-dialog-header">
+          <div className="sync-dialog-copy">
+            <h2>Sync Projects</h2>
+            <p>Select the sources and processing options to run a manual sync.</p>
+          </div>
           <Button color="tertiary" size="sm" iconLeading={X} onPress={onClose} />
         </div>
 
-        <div className="sync-body">
-          <div className="sync-section">
-            <h3>Sources</h3>
-            <Toggle isSelected={iadb} onChange={setIadb} isDisabled={syncing} label="IADB" />
-            <Toggle isSelected={worldbank} onChange={setWorldbank} isDisabled={syncing} label="World Bank" />
-            <Toggle isSelected={globaltenders} onChange={setGlobaltenders} isDisabled={syncing} label="Global Tenders" />
-            <Toggle isSelected={giz} onChange={setGiz} isDisabled={syncing} label="GIZ" />
-            <Toggle isSelected={devaid} onChange={setDevaid} isDisabled={syncing} label="DevelopmentAid" />
-            <Toggle isSelected={dgmarket} onChange={setDgmarket} isDisabled={syncing} label="DGMarket" />
-            <Toggle isSelected={africagateway} onChange={setAfricagateway} isDisabled={syncing} label="Africa Gateway" />
+        <div className="sync-body sync-dialog-body">
+          <div className="sync-card">
+            <div className="sync-card-header">
+              <div>
+                <h3>Sources</h3>
+                <p>Choose which feeds to include in this sync run.</p>
+              </div>
+              <span className="sync-card-meta">{selectedSourceCount} selected</span>
+            </div>
+            <div className="sync-source-grid">
+              <div className="sync-source-item"><Toggle isSelected={iadb} onChange={setIadb} isDisabled={syncing} label="IADB" /></div>
+              <div className="sync-source-item"><Toggle isSelected={worldbank} onChange={setWorldbank} isDisabled={syncing} label="World Bank" /></div>
+              <div className="sync-source-item"><Toggle isSelected={globaltenders} onChange={setGlobaltenders} isDisabled={syncing} label="Global Tenders" /></div>
+              <div className="sync-source-item"><Toggle isSelected={giz} onChange={setGiz} isDisabled={syncing} label="GIZ" /></div>
+              <div className="sync-source-item"><Toggle isSelected={devaid} onChange={setDevaid} isDisabled={syncing} label="DevelopmentAid" /></div>
+              <div className="sync-source-item"><Toggle isSelected={dgmarket} onChange={setDgmarket} isDisabled={syncing} label="DGMarket" /></div>
+              <div className="sync-source-item"><Toggle isSelected={africagateway} onChange={setAfricagateway} isDisabled={syncing} label="Africa Gateway" /></div>
+            </div>
           </div>
 
-          <div className="sync-section">
-            <h3>Options</h3>
-            <Toggle isSelected={noAi} onChange={setNoAi} isDisabled={syncing} label="Skip AI Filter" />
-            <Toggle isSelected={includeExpired} onChange={setIncludeExpired} isDisabled={syncing} label="Include Expired" />
+          <div className="sync-card">
+            <div className="sync-card-header">
+              <div>
+                <h3>Options</h3>
+                <p>Adjust processing behavior for this one-off sync.</p>
+              </div>
+            </div>
+            <div className="sync-options-grid">
+              <div className="sync-option-item"><Toggle isSelected={noAi} onChange={setNoAi} isDisabled={syncing} label="Skip AI Filter" /></div>
+              <div className="sync-option-item"><Toggle isSelected={includeExpired} onChange={setIncludeExpired} isDisabled={syncing} label="Include Expired" /></div>
+            </div>
           </div>
-
-          <Button
-            color="primary"
-            className="w-full"
-            onPress={handleSync}
-            isDisabled={syncing || (!iadb && !worldbank && !globaltenders && !giz && !devaid && !dgmarket && !africagateway)}
-            isLoading={syncing}
-          >
-            {syncing ? 'Running scrapers...' : 'Run Sync'}
-          </Button>
 
           {(logs.length > 0 || syncing) && (
-            <div className="sync-logs">
-              <h3>Live Status</h3>
+            <div className="sync-card sync-logs-card">
+              <div className="sync-card-header">
+                <div>
+                  <h3>Live Status</h3>
+                  <p>Stream output from the active sync process.</p>
+                </div>
+              </div>
               <pre className="sync-output">
                 {logs.map((line, i) => (
                   <div key={i}>{line}</div>
@@ -181,6 +223,24 @@ export default function SyncPanel({ open, onClose, onSyncDone, onSyncStart }) {
               )}
             </div>
           )}
+        </div>
+
+        <div className="sync-footer">
+          <div className="sync-footer-meta">
+            <span>{selectedSourceCount} source{selectedSourceCount === 1 ? '' : 's'} ready</span>
+          </div>
+          <div className="sync-footer-actions">
+            <Button color="secondary" onPress={onClose} isDisabled={syncing}>Close</Button>
+            <Button
+              color="primary"
+              className="sync-primary-btn"
+              onPress={handleSync}
+              isDisabled={syncing || selectedSourceCount === 0}
+              isLoading={syncing}
+            >
+              {syncing ? 'Running scrapers...' : 'Run Sync'}
+            </Button>
+          </div>
         </div>
       </div>
     </div>
