@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { useId } from "react";
 import type { SwitchProps as AriaSwitchProps } from "react-aria-components";
 import { Switch as AriaSwitch } from "react-aria-components";
 import { cx } from "@/utils/cx";
@@ -82,6 +83,15 @@ interface ToggleProps extends AriaSwitchProps {
 }
 
 export const Toggle = ({ label, hint, className, size = "sm", slim, ...ariaSwitchProps }: ToggleProps) => {
+    const generatedId = useId().replace(/:/g, "");
+    const labelSlug = typeof label === "string"
+        ? label.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "")
+        : "toggle";
+    const resolvedId = ariaSwitchProps.id ?? `${labelSlug || "toggle"}-${generatedId}`;
+    const resolvedName = ariaSwitchProps.name ?? `${labelSlug || "toggle"}-${generatedId}`;
+    const resolvedLabelId = !ariaSwitchProps["aria-label"] && label ? `${resolvedId}-label` : ariaSwitchProps["aria-labelledby"];
+    const resolvedAriaLabel = ariaSwitchProps["aria-label"] ?? (typeof label === "string" ? label : undefined);
+
     const sizes = {
         sm: {
             root: "gap-2",
@@ -100,6 +110,10 @@ export const Toggle = ({ label, hint, className, size = "sm", slim, ...ariaSwitc
     return (
         <AriaSwitch
             {...ariaSwitchProps}
+            id={resolvedId}
+            name={resolvedName}
+            aria-label={resolvedAriaLabel}
+            aria-labelledby={resolvedLabelId}
             className={(renderProps) =>
                 cx(
                     "flex w-max items-start",
@@ -123,7 +137,7 @@ export const Toggle = ({ label, hint, className, size = "sm", slim, ...ariaSwitc
 
                     {(label || hint) && (
                         <div className={cx("flex flex-col", sizes[size].textWrapper)}>
-                            {label && <p className={cx("text-secondary select-none", sizes[size].label)}>{label}</p>}
+                            {label && <p id={typeof resolvedLabelId === "string" ? resolvedLabelId : undefined} className={cx("text-secondary select-none", sizes[size].label)}>{label}</p>}
                             {hint && (
                                 <span className={cx("text-tertiary", sizes[size].hint)} onClick={(event) => event.stopPropagation()}>
                                     {hint}

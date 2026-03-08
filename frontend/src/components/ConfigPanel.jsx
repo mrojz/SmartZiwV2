@@ -20,6 +20,13 @@ function normalizeRegions(raw) {
   );
 }
 
+function slugifyForId(value) {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '') || 'item';
+}
+
 function ModalButton({ className = '', children, ...props }) {
   return (
     <button type="button" className={`config-ui-btn ${className}`.trim()} {...props}>
@@ -43,6 +50,8 @@ export default function ConfigPanel({ open, onClose, apiFetch }) {
 
   const keywordCount = keywords.length;
   const regionCount = Object.keys(regions).length;
+  const keywordInputId = 'config-keyword-input';
+  const regionInputId = 'config-region-input';
 
   const loadConfig = useCallback(async () => {
     if (!apiFetch) return;
@@ -209,12 +218,14 @@ export default function ConfigPanel({ open, onClose, apiFetch }) {
 
                   <div className="config-shell-input-card">
                     <div className="config-shell-input-copy">
-                      <span className="config-shell-label">New keyword</span>
+                      <label className="config-shell-label" htmlFor={keywordInputId}>New keyword</label>
                       <span className="config-shell-hint">Use concise terms analysts will search and maintain.</span>
                     </div>
                     <div className="config-shell-entry-row">
                       <input
+                        id={keywordInputId}
                         className="config-shell-input"
+                        name="keyword"
                         placeholder="Type a keyword"
                         value={newKeyword}
                         onChange={(e) => setNewKeyword(e.target.value)}
@@ -257,12 +268,14 @@ export default function ConfigPanel({ open, onClose, apiFetch }) {
 
                   <div className="config-shell-input-card">
                     <div className="config-shell-input-copy">
-                      <span className="config-shell-label">New region</span>
+                      <label className="config-shell-label" htmlFor={regionInputId}>New region</label>
                       <span className="config-shell-hint">Create a region first, then add the countries that belong to it.</span>
                     </div>
                     <div className="config-shell-entry-row">
                       <input
+                        id={regionInputId}
                         className="config-shell-input"
+                        name="regionName"
                         placeholder="Region name"
                         value={newRegionName}
                         onChange={(e) => setNewRegionName(e.target.value)}
@@ -279,6 +292,7 @@ export default function ConfigPanel({ open, onClose, apiFetch }) {
                     <div className="config-shell-region-stack">
                       {Object.entries(regions).map(([name, countries]) => {
                         const isOpen = editingRegion === name;
+                        const countryInputId = `config-country-input-${slugifyForId(name)}`;
                         return (
                           <article key={name} className={`config-shell-region-card ${isOpen ? 'is-open' : ''}`}>
                             <div className="config-shell-region-top">
@@ -296,9 +310,12 @@ export default function ConfigPanel({ open, onClose, apiFetch }) {
 
                             {isOpen ? (
                               <div className="config-shell-region-body">
+                                <label className="visually-hidden" htmlFor={countryInputId}>Add country to {name}</label>
                                 <div className="config-shell-entry-row compact">
                                   <input
+                                    id={countryInputId}
                                     className="config-shell-input"
+                                    name={`country-${name}`}
                                     placeholder={`Add country to ${name}`}
                                     value={newCountry}
                                     onChange={(e) => setNewCountry(e.target.value)}

@@ -29,9 +29,13 @@ from pydantic import BaseModel, EmailStr, Field
 from database import (
     get_all_projects,
     update_project_by_index,
+    update_project_by_db_id,
     update_project_deadline_by_index,
+    update_project_deadline_by_db_id,
     upsert_projects,
     delete_project_by_index,
+    delete_project_by_db_id,
+    delete_projects_by_db_ids,
     get_config as db_get_config,
     save_config as db_save_config,
     get_schedule as db_get_schedule,
@@ -476,6 +480,10 @@ class DeadlineUpdate(BaseModel):
     manualDeadline: str = ""
 
 
+class BulkProjectDeleteRequest(BaseModel):
+    projectDbIds: list[str] = Field(default_factory=list)
+
+
 class CommentCreateRequest(BaseModel):
     entityType: str
     entityId: str
@@ -750,6 +758,28 @@ def delete_project(index: int):
     return {"deleted": True, "project": result}
 
 
+@app.delete("/api/projects/by-db-id/{project_db_id}")
+def delete_project_by_id(project_db_id: str):
+    result = delete_project_by_db_id(project_db_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+    _save_to_excel(get_all_projects())
+    return {"deleted": True, "project": result}
+
+
+@app.post("/api/projects/bulk-delete")
+def bulk_delete_projects(body: BulkProjectDeleteRequest):
+    result = delete_projects_by_db_ids(body.projectDbIds)
+    if result["deleted_count"] == 0:
+        return {"deleted": True, "count": 0, "deletedIds": []}
+    _save_to_excel(get_all_projects())
+    return {
+        "deleted": True,
+        "count": result["deleted_count"],
+        "deletedIds": result["deleted_ids"],
+    }
+
+
 @app.get("/api/documents/{project_id}/{filename}")
 def download_document(project_id: str, filename: str):
     safe_pid = project_id.replace("..", "").replace("/", "").replace("\\", "")
@@ -871,12 +901,33 @@ def update_decision(index: int, body: DecisionUpdate):
     return result
 
 
+@app.patch("/api/projects/by-db-id/{project_db_id}/decision")
+def update_decision_by_id(project_db_id: str, body: DecisionUpdate):
+    if body.decision not in ("Go", "No Go", ""):
+        raise HTTPException(status_code=400, detail="Decision must be 'Go', 'No Go', or ''")
+    result = update_project_by_db_id(project_db_id, body.decision)
+    if result is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+    _save_to_excel(get_all_projects())
+    return result
+
+
 @app.patch("/api/projects/{index}/deadline")
 def update_deadline(index: int, body: DeadlineUpdate, request: Request):
     user = _require_admin(request)
     result = update_project_deadline_by_index(index, body.manualDeadline, user)
     if result is None:
         raise HTTPException(status_code=404, detail="Project index out of range")
+    _save_to_excel(get_all_projects())
+    return result
+
+
+@app.patch("/api/projects/by-db-id/{project_db_id}/deadline")
+def update_deadline_by_id(project_db_id: str, body: DeadlineUpdate, request: Request):
+    user = _require_admin(request)
+    result = update_project_deadline_by_db_id(project_db_id, body.manualDeadline, user)
+    if result is None:
+        raise HTTPException(status_code=404, detail="Project not found")
     _save_to_excel(get_all_projects())
     return result
 

@@ -107,7 +107,7 @@ function formatCountdown(ms) {
 }
 
 function formatDateTime(iso) {
-    if (!iso) return '?';
+    if (!iso) return '-';
     const d = new Date(iso);
     return d.toLocaleString(undefined, {
         weekday: 'short',
@@ -121,7 +121,7 @@ function formatDateTime(iso) {
 }
 
 function formatDuration(startIso, endIso) {
-    if (!startIso || !endIso) return '?';
+    if (!startIso || !endIso) return '-';
     const ms = new Date(endIso) - new Date(startIso);
     const secs = Math.floor(ms / 1000);
     if (secs < 60) return `${secs}s`;
@@ -408,7 +408,7 @@ export default function SchedulePanel({ open, onClose, apiFetch }) {
                         <h2>Sync Schedule</h2>
                         <p>Configure the automated sync cadence, sources, and processing options.</p>
                     </div>
-                    <Button color="tertiary" size="sm" iconLeading={X} onPress={onClose} />
+                    <Button color="tertiary" size="sm" iconLeading={X} onPress={onClose} aria-label="Close schedule dialog" />
                 </div>
 
                 <div className="sync-body sync-dialog-body">
@@ -470,7 +470,7 @@ export default function SchedulePanel({ open, onClose, apiFetch }) {
                                 </div>
                                 {schedule.enabled && countdown !== null && (
                                     <div className="schedule-next-run">
-                                        <span className="meta-icon">?</span>
+                                        <span className="meta-icon" aria-hidden="true">i</span>
                                         Next run in <strong>{formatCountdown(countdown)}</strong>
                                     </div>
                                 )}
@@ -487,6 +487,8 @@ export default function SchedulePanel({ open, onClose, apiFetch }) {
                                     <label className="schedule-field">
                                         <span>Frequency</span>
                                         <select
+                                            name="scheduleFrequency"
+                                            aria-label="Schedule frequency"
                                             value={schedule.frequency}
                                             onChange={(e) => update('frequency', e.target.value)}
                                             className="schedule-select"
@@ -500,6 +502,8 @@ export default function SchedulePanel({ open, onClose, apiFetch }) {
                                         <label className="schedule-field">
                                             <span>Day</span>
                                             <select
+                                                name="scheduleDay"
+                                                aria-label="Schedule day"
                                                 value={schedule.day_of_week}
                                                 onChange={(e) => update('day_of_week', e.target.value)}
                                                 className="schedule-select"
@@ -511,21 +515,24 @@ export default function SchedulePanel({ open, onClose, apiFetch }) {
                                         </label>
                                     )}
 
-                                    <label className="schedule-field">
+                                    <div className="schedule-field">
                                         <span>Time</span>
                                         <Button
                                             color="secondary"
                                             size="sm"
                                             className="schedule-time-btn"
+                                            aria-label="Choose schedule time"
                                             onPress={() => setShowClock(true)}
                                         >
                                             {String(schedule.hour).padStart(2, '0')}:{String(schedule.minute).padStart(2, '0')}
                                         </Button>
-                                    </label>
+                                    </div>
 
                                     <label className="schedule-field schedule-field-wide">
                                         <span>Timezone</span>
                                         <select
+                                            name="scheduleTimezone"
+                                            aria-label="Schedule timezone"
                                             value={schedule.timezone}
                                             onChange={(e) => update('timezone', Number(e.target.value))}
                                             className="schedule-select schedule-tz-select"
@@ -551,7 +558,7 @@ export default function SchedulePanel({ open, onClose, apiFetch }) {
                                 )}
 
                                 <div className="schedule-time-preview">
-                                    ? Runs in <strong>{timeUntilStr}</strong> <span className="schedule-tz-note">({tzLabel})</span>
+                                    <span className="meta-icon" aria-hidden="true">i</span> Runs in <strong>{timeUntilStr}</strong> <span className="schedule-tz-note">({tzLabel})</span>
                                 </div>
                             </div>
 
@@ -651,7 +658,7 @@ export default function SchedulePanel({ open, onClose, apiFetch }) {
                                                     <span className="schedule-log-date">{formatDateTime(log.started_at)}</span>
                                                     <span className="schedule-log-duration">{formatDuration(log.started_at, log.finished_at)}</span>
                                                     <span className="schedule-log-projects">{log.project_count ?? '?'} projects</span>
-                                                    <span className="schedule-log-expand">{expandedLog === i ? '?' : '?'}</span>
+                                                    <span className="schedule-log-expand">{expandedLog === i ? '-' : '+'}</span>
                                                 </div>
                                                 {expandedLog === i && (
                                                     <div>

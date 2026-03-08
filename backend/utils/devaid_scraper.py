@@ -8,6 +8,7 @@ West/Central Africa matching cybersecurity-related terms.
 
 import time
 import requests
+from bs4 import BeautifulSoup
 from shared_excel import SEARCH_KEYWORDS, get_search_keywords, format_date
 
 # ── DevelopmentAid API config ────────────────────────────────────────────────
@@ -76,6 +77,40 @@ def _build_payload(keyword: str, page: int = 1, page_size: int = 50) -> dict:
     }
 
 
+def _normalize_description_text(text: str) -> str:
+    return " ".join((text or "").split()).strip()
+
+
+def _extract_project_description(session: requests.Session, project_url: str) -> str:
+    """Fetch a DevelopmentAid project page and extract the description block text."""
+    if not project_url:
+        return ""
+
+    try:
+        resp = session.get(project_url, headers=HEADERS, timeout=30, allow_redirects=True)
+        resp.raise_for_status()
+    except requests.RequestException as e:
+        print(f"    [!] Description request failed: {e}", flush=True)
+        return ""
+
+    try:
+        soup = BeautifulSoup(resp.text, "html.parser")
+        container = soup.select_one("div.row.details.description")
+        if not container:
+            for div in soup.find_all("div"):
+                classes = div.get("class") or []
+                class_string = " ".join(classes).lower()
+                if all(token in class_string for token in ("row", "details", "description")):
+                    container = div
+                    break
+        if not container:
+            return ""
+        return _normalize_description_text(container.get_text(" ", strip=True))
+    except Exception as e:
+        print(f"    [!] Description parsing failed: {e}", flush=True)
+        return ""
+
+
 def _parse_item(item: dict) -> dict:
     """Convert a DevelopmentAid tender item to our standard project format."""
     slug = item.get("slug", "")
@@ -93,6 +128,19 @@ def _parse_item(item: dict) -> dict:
         "project_url": f"{BASE_URL}/{tender_id}/{slug}" if slug else "",
         "matched_keywords": "",
     }
+
+
+def _enrich_project_descriptions(session: requests.Session, projects: list[dict]):
+    """Populate project_description from the tender detail page when available."""
+    for project in projects:
+        existing_description = _normalize_description_text(project.get("project_description", ""))
+        project_name = _normalize_description_text(project.get("project_name", ""))
+        if existing_description and existing_description != project_name:
+            continue
+
+        description = _extract_project_description(session, project.get("project_url", ""))
+        if description:
+            project["project_description"] = description
 
 
 def fetch_keyword(session: requests.Session, keyword: str, request_count: int) -> tuple[list[dict], int]:
@@ -172,6 +220,10 @@ def run_devaid_scraper():
     all_projects = list(seen.values())
     print(f"\n[+] Total raw tenders: {total_raw}", flush=True)
     print(f"[+] Unique tenders after dedup: {len(all_projects)}", flush=True)
+
+    if all_projects:
+        print("\n[>] Fetching DevelopmentAid project descriptions", flush=True)
+        _enrich_project_descriptions(session, all_projects)
 
     return all_projects
 
