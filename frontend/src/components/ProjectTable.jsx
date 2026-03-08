@@ -22,6 +22,20 @@ function formatDisplayDate(value) {
   return value;
 }
 
+function formatPlaceLabel(value) {
+  if (!value) return '-';
+  return String(value)
+    .trim()
+    .replace(/\s+/g, ' ')
+    .split(' ')
+    .map((part) => {
+      if (!part) return part;
+      if (part === part.toUpperCase()) return part;
+      return part.charAt(0).toUpperCase() + part.slice(1);
+    })
+    .join(' ');
+}
+
 function sourceClass(source) {
   const s = (source || '').toLowerCase();
   if (s.includes('iadb')) return 'iadb';
@@ -47,11 +61,16 @@ function getProjectBaseKey(project) {
   ].join('::');
 }
 
+function getProjectRowId(project, fallbackIndex = -1) {
+  return project?.__rowId || `${getProjectBaseKey(project)}__fallback_${fallbackIndex}`;
+}
+
 export default function ProjectTable({
   projects,
   allProjects,
   onDecisionChange,
   onDelete,
+  onBulkDelete,
   regions,
   chips,
   onChipsChange,
@@ -205,17 +224,18 @@ export default function ProjectTable({
     });
   }, [projects, sortCol, sortDir, getSortValue]);
 
-  const allProjectRowIds = useMemo(() => {
-    const seen = new Map();
-    return allProjects.map((project) => {
-      const baseKey = getProjectBaseKey(project);
-      const occurrence = (seen.get(baseKey) || 0) + 1;
-      seen.set(baseKey, occurrence);
-      return `${baseKey}__${occurrence}`;
-    });
+  const allProjectRowIds = useMemo(() => allProjects.map((project, index) => getProjectRowId(project, index)), [allProjects]);
+  const getRowIdByIndex = useCallback((index) => {
+    const project = allProjects[index];
+    return getProjectRowId(project, index);
   }, [allProjects]);
-
-  const getRowIdByIndex = useCallback((index) => allProjectRowIds[index] || `row__${index}`, [allProjectRowIds]);
+  const projectIndexByRowId = useMemo(() => {
+    const map = new Map();
+    allProjects.forEach((project, index) => {
+      map.set(getProjectRowId(project, index), index);
+    });
+    return map;
+  }, [allProjects]);
 
   const totalPages = Math.ceil(sorted.length / rowsPerPage);
   const pageData = sorted.slice(page * rowsPerPage, (page + 1) * rowsPerPage);
@@ -225,13 +245,21 @@ export default function ProjectTable({
   const sortDescriptor = sortCol
     ? { column: sortCol, direction: sortDir === 'asc' ? 'ascending' : 'descending' }
     : undefined;
+  const tableBodyKey = useMemo(() => {
+    const selectedKey = Array.from(selectedRowIds).sort().join('|');
+    return `${page}:${rowsPerPage}:${selectedKey}:${focusedRowIndex ?? ''}:${activeProjectId ?? ''}`;
+  }, [selectedRowIds, focusedRowIndex, activeProjectId, page, rowsPerPage]);
 
   const handleSortChange = (descriptor) => {
     setSortCol(descriptor?.column ? String(descriptor.column) : null);
     setSortDir(descriptor?.direction === 'descending' ? 'desc' : 'asc');
   };
 
-  const visibleRowIds = useMemo(() => pageData.map((project) => getRowIdByIndex(allProjects.indexOf(project))), [pageData, allProjects, getRowIdByIndex]);
+  const visibleRowIds = useMemo(() => pageData.map((project) => {
+    const directRowId = project?.__rowId;
+    const realIndex = directRowId ? (projectIndexByRowId.get(directRowId) ?? allProjects.indexOf(project)) : allProjects.indexOf(project);
+    return getProjectRowId(project, realIndex);
+  }), [pageData, projectIndexByRowId, allProjects]);
   const visibleSelectedCount = useMemo(() => visibleRowIds.filter((rowId) => selectedRowIds.has(rowId)).length, [visibleRowIds, selectedRowIds]);
   const allOnPageSelected = visibleRowIds.length > 0 && visibleSelectedCount === visibleRowIds.length;
   const someOnPageSelected = visibleSelectedCount > 0 && visibleSelectedCount < visibleRowIds.length;
@@ -254,12 +282,12 @@ export default function ProjectTable({
 
   const toggleSelectRow = (project, realIndex, isRange = false) => {
     const next = new Set(selectedRowIds);
-    const projectKey = getRowIdByIndex(realIndex);
+    const projectKey = getProjectRowId(project, realIndex);
     if (isRange && lastSelectedIndex !== null) {
       const [start, end] = [lastSelectedIndex, realIndex].sort((a, b) => a - b);
       for (let i = start; i <= end; i += 1) {
         const rangeProject = allProjects[i];
-        if (rangeProject) next.add(getRowIdByIndex(i));
+        if (rangeProject) next.add(getProjectRowId(rangeProject, i));
       }
     } else if (next.has(projectKey)) {
       next.delete(projectKey);
@@ -272,18 +300,24 @@ export default function ProjectTable({
 
   const handleBulkDecision = (nextDecision) => {
     allProjects.forEach((project, idx) => {
-      if (selectedRowIds.has(getRowIdByIndex(idx))) onDecisionChange(idx, nextDecision);
+      if (selectedRowIds.has(getProjectRowId(project, idx))) onDecisionChange(idx, nextDecision);
     });
     setSelectedRowIds(new Set());
   };
 
-  const handleBulkDelete = () => {
+  const handleBulkDelete = async () => {
     if (!window.confirm(`Delete ${selectedRowIds.size} selected project${selectedRowIds.size === 1 ? '' : 's'}?`)) return;
-    const indices = allProjects
-      .map((project, idx) => (selectedRowIds.has(getRowIdByIndex(idx)) ? idx : -1))
+    const selectedProjects = allProjects.filter((project, idx) => selectedRowIds.has(getProjectRowId(project, idx)));
+    if (onBulkDelete) {
+      await onBulkDelete(selectedProjects);
+      setSelectedRowIds(new Set());
+      return;
+    }
+    const indices = selectedProjects
+      .map((project) => allProjects.indexOf(project))
       .filter((idx) => idx >= 0)
       .sort((a, b) => b - a);
-    indices.forEach((idx) => onDelete?.(idx));
+    indices.forEach((idx) => onDelete?.(allProjects[idx], idx));
     setSelectedRowIds(new Set());
   };
 
@@ -326,7 +360,14 @@ export default function ProjectTable({
       || (activeElement instanceof Element && activeElement.closest('.smart-search'));
     if (searchIsActive) return;
     if (!pageData.length) return;
-    const realIndexes = pageData.map((item) => allProjects.indexOf(item));
+    const realIndexes = pageData
+      .map((item) => {
+        const directRowId = item?.__rowId;
+        if (directRowId && projectIndexByRowId.has(directRowId)) return projectIndexByRowId.get(directRowId);
+        return allProjects.indexOf(item);
+      })
+      .filter((index) => index >= 0);
+    if (!realIndexes.length) return;
     const fallbackIndex = realIndexes[0];
     const currentIndex = focusedRowIndex !== null && realIndexes.includes(focusedRowIndex) ? focusedRowIndex : fallbackIndex;
     const currentPosition = Math.max(realIndexes.indexOf(currentIndex), 0);
@@ -424,6 +465,8 @@ export default function ProjectTable({
               <span>Start date</span>
               <input
                 type="date"
+                name={isDeadline ? 'deadlineStart' : 'scrapedStart'}
+                aria-label={isDeadline ? 'Deadline start date' : 'Last scraped start date'}
                 value={draft.from}
                 onChange={(event) => (isDeadline ? setDeadlineDraft((prev) => ({ ...prev, from: event.target.value })) : setScrapedDraft((prev) => ({ ...prev, from: event.target.value })))}
               />
@@ -432,6 +475,8 @@ export default function ProjectTable({
               <span>End date</span>
               <input
                 type="date"
+                name={isDeadline ? 'deadlineEnd' : 'scrapedEnd'}
+                aria-label={isDeadline ? 'Deadline end date' : 'Last scraped end date'}
                 value={draft.to}
                 onChange={(event) => (isDeadline ? setDeadlineDraft((prev) => ({ ...prev, to: event.target.value })) : setScrapedDraft((prev) => ({ ...prev, to: event.target.value })))}
               />
@@ -467,24 +512,24 @@ export default function ProjectTable({
         <div className="table-toolbar-row table-toolbar-filters">
           <div className="filter-group">
             <span className="filter-group-label">Filters</span>
-            <select className="filter-select filter-select-compact" value={source} onChange={(e) => onSourceChange(e.target.value)}>
+            <select className="filter-select filter-select-compact" name="sourceFilter" aria-label="Filter by source" value={source} onChange={(e) => onSourceChange(e.target.value)}>
               <option value="">Source</option>
               {(sources || []).map((s) => <option key={s} value={s}>{s}</option>)}
             </select>
-            <select className="filter-select filter-select-compact" value={region} onChange={(e) => onRegionChange(e.target.value)}>
+            <select className="filter-select filter-select-compact" name="regionFilter" aria-label="Filter by region" value={region} onChange={(e) => onRegionChange(e.target.value)}>
               <option value="">Region</option>
               {Object.keys(regions || {}).sort().map((r) => <option key={r} value={r}>{r}</option>)}
             </select>
-            <select className="filter-select filter-select-compact" value={continent} onChange={(e) => onContinentChange(e.target.value)}>
+            <select className="filter-select filter-select-compact" name="continentFilter" aria-label="Filter by continent" value={continent} onChange={(e) => onContinentChange(e.target.value)}>
               <option value="">Continent</option>
               {(continents || []).map((item) => <option key={item.code} value={item.name_en}>{item.name_en}</option>)}
             </select>
-            <select className="filter-select filter-select-compact" value={verified} onChange={(e) => onVerifiedChange(e.target.value)}>
+            <select className="filter-select filter-select-compact" name="verificationFilter" aria-label="Filter by verification status" value={verified} onChange={(e) => onVerifiedChange(e.target.value)}>
               <option value="">Verification</option>
               <option value="Yes">Verified</option>
               <option value="No">Not Verified</option>
             </select>
-            <select className="filter-select filter-select-compact" value={decision} onChange={(e) => onDecisionChangeFilter(e.target.value)}>
+            <select className="filter-select filter-select-compact" name="decisionFilter" aria-label="Filter by decision" value={decision} onChange={(e) => onDecisionChangeFilter(e.target.value)}>
               <option value="">Decision</option>
               <option value="Go">Go</option>
               <option value="No Go">No Go</option>
@@ -515,7 +560,7 @@ export default function ProjectTable({
           <div className="bulk-actions">
             <button className="bulk-btn go" onClick={() => handleBulkDecision('Go')}>Mark Go</button>
             <button className="bulk-btn nogo" onClick={() => handleBulkDecision('No Go')}>Mark No Go</button>
-            <button className="bulk-btn delete" onClick={handleBulkDelete}>Delete</button>
+            <button className="bulk-btn delete" onClick={() => { void handleBulkDelete(); }}>Delete</button>
           </div>
         </div>
       ) : null}
@@ -525,20 +570,22 @@ export default function ProjectTable({
           {(col) => (
             <Table.Head id={col.key} isRowHeader={col.key === '_project'} allowsSorting={col.type !== 'none'} className={`${col.key === '_select' ? 'th-checkbox' : ''} ${col.key === '_actions' ? 'th-actions' : ''} ${col.key === '_deadline' ? 'th-has-date-filter' : ''} ${col.key === 'scraped_at' ? 'th-has-date-filter th-scraped-filter' : ''}`}>
               <div className="th-content th-content-with-filter">
-                {col.key === '_select' ? <input ref={headerCheckboxRef} type="checkbox" checked={allOnPageSelected} aria-checked={someOnPageSelected ? 'mixed' : allOnPageSelected} className={someOnPageSelected ? 'is-indeterminate' : ''} onClick={(e) => e.stopPropagation()} onChange={toggleSelectAll} title="Select all visible rows" /> : <><span>{col.label}</span>{renderHeaderFilter(col.key)}</>}
+                {col.key === '_select' ? <input ref={headerCheckboxRef} type="checkbox" name="selectVisibleRows" aria-label="Select all visible rows" checked={allOnPageSelected} aria-checked={someOnPageSelected ? 'mixed' : allOnPageSelected} className={someOnPageSelected ? 'is-indeterminate' : ''} onClick={(e) => e.stopPropagation()} onChange={toggleSelectAll} title="Select all visible rows" /> : <><span>{col.label}</span>{renderHeaderFilter(col.key)}</>}
               </div>
             </Table.Head>
           )}
         </Table.Header>
 
-        <Table.Body items={pageData}>
+        <Table.Body key={tableBodyKey} items={pageData}>
           {(p) => {
-            const realIndex = allProjects.indexOf(p);
-            const rowId = getRowIdByIndex(realIndex);
+            const realIndex = p?.__rowId ? (projectIndexByRowId.get(p.__rowId) ?? allProjects.indexOf(p)) : allProjects.indexOf(p);
+            const rowId = getProjectRowId(p, realIndex);
             const isSelected = selectedRowIds.has(rowId);
             const isVerified = p.ai_verified === 'Yes';
             const displayName = p.project_name || p.project_description || '-';
             const regionName = p.primary_region_name || getRegion(p.project_sponsor);
+            const sponsorLabel = formatPlaceLabel(p.project_sponsor || '-');
+            const regionLabel = regionName !== '-' ? formatPlaceLabel(regionName) : '-';
             const rowEntityId = p.project_id || p.project_name || '';
 
             return (
@@ -553,8 +600,24 @@ export default function ProjectTable({
 
                   if (key === '_select') {
                     return (
-                      <Table.Cell className="td-checkbox" onClick={(e) => e.stopPropagation()}>
-                        <input type="checkbox" checked={isSelected} aria-checked={isSelected} onClick={(e) => e.stopPropagation()} onChange={(e) => toggleSelectRow(p, realIndex, e.nativeEvent.shiftKey)} />
+                      <Table.Cell
+                        className="td-checkbox"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (e.target instanceof Element && e.target.closest('input')) return;
+                          toggleSelectRow(p, realIndex, e.shiftKey);
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          name={`select-${rowId}`}
+                          aria-label={`Select ${displayName}`}
+                          checked={isSelected}
+                          aria-checked={isSelected}
+                          className={isSelected ? 'is-checked' : ''}
+                          onClick={(e) => e.stopPropagation()}
+                          onChange={(e) => toggleSelectRow(p, realIndex, e.nativeEvent.shiftKey)}
+                        />
                       </Table.Cell>
                     );
                   }
@@ -577,8 +640,8 @@ export default function ProjectTable({
                     return (
                       <Table.Cell className="td-country td-region">
                         <div className="country-cell">
-                          <span className="country-cell-name">{p.project_sponsor || '-'}</span>
-                          {regionName !== '-' ? <span className="country-cell-region">{regionName}</span> : null}
+                          <span className="country-cell-name">{sponsorLabel}</span>
+                          {regionLabel !== '-' ? <span className="country-cell-region">{regionLabel}</span> : null}
                         </div>
                       </Table.Cell>
                     );
@@ -676,7 +739,7 @@ export default function ProjectTable({
           </div>
           <div className="pagination-size">
             <label>Rows:</label>
-            <select value={rowsPerPage} onChange={(e) => { setRowsPerPage(Number(e.target.value)); setPage(0); }}>
+            <select name="projectRowsPerPage" aria-label="Projects rows per page" value={rowsPerPage} onChange={(e) => { setRowsPerPage(Number(e.target.value)); setPage(0); }}>
               {ROWS_PER_PAGE_OPTIONS.map((n) => <option key={n} value={n}>{n}</option>)}
             </select>
           </div>
@@ -710,7 +773,7 @@ export default function ProjectTable({
               danger: true,
               onClick: () => {
                 const name = contextMenu.project.project_name || contextMenu.project.project_description || 'this project';
-                if (window.confirm(`Delete "${name.slice(0, 60)}"?`)) onDelete?.(contextMenu.realIndex);
+                if (window.confirm(`Delete "${name.slice(0, 60)}"?`)) onDelete?.(contextMenu.project, contextMenu.realIndex);
               },
             },
           ]}

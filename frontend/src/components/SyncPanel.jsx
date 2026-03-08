@@ -123,7 +123,7 @@ export default function SyncPanel({ open, onClose, onSyncDone, onSyncStart, apiF
             <h2>Sync Projects</h2>
             <p>Select the sources and processing options to run a manual sync.</p>
           </div>
-          <Button color="tertiary" size="sm" iconLeading={X} onPress={onClose} />
+          <Button color="tertiary" size="sm" iconLeading={X} onPress={onClose} aria-label="Close sync dialog" />
         </div>
 
         <div className="sync-body sync-dialog-body">

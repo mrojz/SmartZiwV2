@@ -99,6 +99,49 @@ DETAIL_KEYWORD_TERMS = (
     "tender closing",
     "due date",
 )
+DESCRIPTION_LABEL_TERMS = (
+    "description",
+    "notice description",
+    "project description",
+    "tender description",
+    "contract description",
+    "brief description",
+    "summary",
+    "scope of work",
+    "scope",
+    "objective",
+    "assignment",
+    "services required",
+    "procurement details",
+)
+METADATA_LABEL_TERMS = (
+    "posted on",
+    "publication",
+    "issue date",
+    "updated",
+    "closing date",
+    "deadline",
+    "submission deadline",
+    "proposal due",
+    "bid due",
+    "tender closing",
+    "due date",
+    "country",
+    "location",
+    "notice type",
+    "reference",
+    "notice no",
+    "notice id",
+    "source",
+    "buyer",
+    "language",
+    "sector",
+    "cpv",
+    "eligibility",
+    "document",
+    "fee",
+    "contact",
+)
 VALID_DEADLINE_LABEL_TERMS = (
     "closing",
     "deadline",
@@ -235,6 +278,85 @@ def _normalize_notice_text(text: str) -> str:
     return re.sub(r"\s+", " ", (text or "")).strip()
 
 
+def _normalize_row_label(text: str) -> str:
+    label = _normalize_notice_text(text).lower().strip(" :.-")
+    return re.sub(r"\s+", " ", label)
+
+
+def _clean_description_candidate(text: str, project_title: str, *, allow_short: bool = False) -> str:
+    candidate = _normalize_notice_text(text)
+    if not candidate:
+        return ""
+
+    normalized_title = _normalize_notice_text(project_title).lower()
+    normalized_candidate = candidate.lower()
+    if normalized_candidate == normalized_title:
+        return ""
+
+    if not allow_short:
+        words = [w for w in re.split(r"\s+", candidate) if w]
+        if len(candidate) < 60 and len(words) < 8:
+            return ""
+
+    metadata_hits = sum(1 for term in METADATA_LABEL_TERMS if term in normalized_candidate)
+    if metadata_hits >= 2 and len(candidate) < 220:
+        return ""
+
+    return candidate
+
+
+def _extract_detail_description(project_title: str, target_table) -> str:
+    labeled_candidates: list[tuple[str, str]] = []
+    fallback_candidates: list[str] = []
+
+    for row in target_table.find_all("tr"):
+        cells = [
+            _normalize_notice_text(cell.get_text(" ", strip=True))
+            for cell in row.find_all(["th", "td"], recursive=False)
+        ]
+        cells = [cell for cell in cells if cell]
+        if not cells:
+            continue
+
+        row_text = _normalize_notice_text(" ".join(cells))
+        if row_text:
+            cleaned_row = _clean_description_candidate(row_text, project_title)
+            if cleaned_row:
+                fallback_candidates.append(cleaned_row)
+
+        if len(cells) < 2:
+            continue
+
+        label = _normalize_row_label(cells[0])
+        value = _normalize_notice_text(" ".join(cells[1:]))
+        if not label or not value:
+            continue
+        labeled_candidates.append((label, value))
+
+    for label, value in labeled_candidates:
+        if any(term in label for term in DESCRIPTION_LABEL_TERMS):
+            cleaned = _clean_description_candidate(value, project_title, allow_short=True)
+            if cleaned:
+                return cleaned
+
+    for label, value in labeled_candidates:
+        if any(term in label for term in METADATA_LABEL_TERMS):
+            continue
+        cleaned = _clean_description_candidate(value, project_title)
+        if cleaned:
+            fallback_candidates.append(cleaned)
+
+    seen = set()
+    for candidate in sorted(fallback_candidates, key=len, reverse=True):
+        key = candidate.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        return candidate
+
+    return ""
+
+
 def _build_deepseek_client():
     if not DEEPSEEK_API_KEY or OpenAI is None:
         return None
@@ -253,15 +375,16 @@ def _clone_detail_session(base_session: requests.Session) -> requests.Session:
     return session
 
 
-def _get_detail_notice_text(session: requests.Session, project_url: str) -> str:
+def _get_detail_notice_data(session: requests.Session, project: dict) -> dict[str, str]:
+    project_url = project.get("project_url", "")
     if not project_url:
-        return ""
+        return {"notice_text": "", "description": ""}
     try:
         resp = session.get(project_url, timeout=20, allow_redirects=True)
         resp.raise_for_status()
     except requests.RequestException as exc:
         print(f"    [!] DGMarket detail request failed: {exc}", flush=True)
-        return ""
+        return {"notice_text": "", "description": ""}
 
     soup = BeautifulSoup(resp.text, "html.parser")
     target_table = None
@@ -275,13 +398,15 @@ def _get_detail_notice_text(session: requests.Session, project_url: str) -> str:
 
     if target_table is None:
         print("    [!] DGMarket detail page missing notice_table", flush=True)
-        return ""
+        return {"notice_text": "", "description": ""}
 
     table_text = _normalize_notice_text(target_table.get_text(" ", strip=True))
     if not table_text:
         print("    [!] DGMarket notice_table is empty", flush=True)
-        return ""
-    return table_text
+        return {"notice_text": "", "description": ""}
+
+    description = _extract_detail_description(project.get("project_name", ""), target_table)
+    return {"notice_text": table_text, "description": description}
 
 
 def _contains_deadline_keywords(text: str) -> bool:
@@ -372,44 +497,59 @@ def _extract_high_confidence_deadline(client, project: dict, notice_table_text: 
         return ""
 
 
-def _fetch_detail_notice_texts(base_session: requests.Session, projects: list[dict]) -> dict[int, str]:
-    detail_map: dict[int, str] = {}
-    eligible = [(idx, project) for idx, project in enumerate(projects) if project.get("project_url") and not project.get("project_end_date")]
+def _fetch_detail_notice_data(base_session: requests.Session, projects: list[dict]) -> dict[int, dict[str, str]]:
+    detail_map: dict[int, dict[str, str]] = {}
+    eligible = [
+        (idx, project)
+        for idx, project in enumerate(projects)
+        if project.get("project_url")
+        and (
+            not project.get("project_end_date")
+            or not project.get("project_description")
+            or project.get("project_description") == project.get("project_name")
+        )
+    ]
     if not eligible:
         return detail_map
 
-    def worker(project_url: str) -> str:
+    def worker(project: dict) -> dict[str, str]:
         session = _clone_detail_session(base_session)
-        return _get_detail_notice_text(session, project_url)
+        return _get_detail_notice_data(session, project)
 
     with ThreadPoolExecutor(max_workers=DETAIL_FETCH_WORKERS) as executor:
         future_map = {
-            executor.submit(worker, project.get("project_url", "")): idx
+            executor.submit(worker, project): idx
             for idx, project in eligible
         }
         for future in as_completed(future_map):
             idx = future_map[future]
             try:
-                detail_map[idx] = future.result() or ""
+                detail_map[idx] = future.result() or {"notice_text": "", "description": ""}
             except Exception as exc:
                 print(f"    [!] DGMarket detail fetch failed: {exc}", flush=True)
-                detail_map[idx] = ""
+                detail_map[idx] = {"notice_text": "", "description": ""}
     return detail_map
 
 
-def _enrich_project_deadlines(session: requests.Session, client, projects: list[dict]):
-    detail_texts = _fetch_detail_notice_texts(session, projects)
-    if not detail_texts:
+def _enrich_project_details(session: requests.Session, client, projects: list[dict]):
+    detail_map = _fetch_detail_notice_data(session, projects)
+    if not detail_map:
         return
 
-    for idx, project in enumerate(projects, 1):
-        if project.get("project_end_date"):
+    for idx, project in enumerate(projects):
+        detail_data = detail_map.get(idx) or {}
+        notice_text = detail_data.get("notice_text", "")
+        description = detail_data.get("description", "")
+
+        if description:
+            existing_description = _normalize_notice_text(project.get("project_description", ""))
+            existing_title = _normalize_notice_text(project.get("project_name", ""))
+            if not existing_description or existing_description == existing_title:
+                project["project_description"] = description
+
+        if project.get("project_end_date") or not notice_text or not _contains_deadline_keywords(notice_text):
             continue
-        notice_text = detail_texts.get(idx - 1, "")
-        if not notice_text:
-            continue
-        if not _contains_deadline_keywords(notice_text):
-            continue
+
         deadline_value = _extract_high_confidence_deadline(client, project, notice_text)
         if deadline_value and not project.get("project_end_date"):
             project["project_end_date"] = deadline_value
@@ -497,7 +637,7 @@ def fetch_keyword(session: requests.Session, keyword: str) -> list[dict]:
 
 
 def run_dgmarket_scraper():
-    """Search all keywords on DGMarket, deduplicate, enrich explicit deadlines, return projects."""
+    """Search all keywords on DGMarket, deduplicate, enrich descriptions/deadlines, return projects."""
     print("\n" + "=" * 60, flush=True)
     print("  DGMarket Scraper", flush=True)
     print("  Searching Info & Communications tenders in Africa", flush=True)
@@ -536,14 +676,14 @@ def run_dgmarket_scraper():
     print(f"[+] Unique tenders after dedup: {len(all_projects)}", flush=True)
 
     client = _build_deepseek_client()
-    if client and all_projects:
-        print("\n[>] Checking DGMarket detail pages for explicit deadlines", flush=True)
+    if all_projects:
+        print("\n[>] Checking DGMarket detail pages for descriptions and explicit deadlines", flush=True)
         try:
-            _enrich_project_deadlines(session, client, all_projects)
+            _enrich_project_details(session, client, all_projects)
         except Exception as exc:
-            print(f"    [!] DGMarket deadline enrichment failed: {exc}", flush=True)
-    elif not DEEPSEEK_API_KEY:
-        print("\n[i] DeepSeek API key missing, skipping DGMarket deadline enrichment", flush=True)
+            print(f"    [!] DGMarket detail enrichment failed: {exc}", flush=True)
+    if all_projects and not DEEPSEEK_API_KEY:
+        print("\n[i] DeepSeek API key missing, skipping DGMarket AI deadline enrichment", flush=True)
 
     return all_projects
 

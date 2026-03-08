@@ -40,6 +40,31 @@
     width: 520px;
 }
 
+.modal-card,
+.modal-card-sm {
+    width: min(620px, 92vw);
+    max-height: 86vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    background: color-mix(in srgb, var(--bg-surface) 96%, white);
+    border: 1px solid var(--border-light);
+    border-radius: 20px;
+    box-shadow: 0 28px 72px rgb(15 23 42 / 0.22);
+}
+
+.modal-card-sm {
+    width: min(460px, 92vw);
+}
+
+.modal-card > form,
+.modal-card-sm > form {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+
 /* ── Panel Header ── */
 .sync-header,
 .modal-header {
@@ -56,6 +81,13 @@
     font-weight: 700;
     color: var(--text-primary);
     margin: 0;
+}
+
+.modal-title {
+    margin: 0;
+    font-size: 1.16rem;
+    font-weight: 800;
+    color: var(--text-primary);
 }
 
 .sync-close,
@@ -81,6 +113,31 @@
     border-color: var(--border);
 }
 
+.modal-close-btn {
+    width: 36px;
+    height: 36px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--border-light);
+    border-radius: 12px;
+    background: color-mix(in srgb, var(--bg-muted) 76%, var(--bg-surface));
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all 150ms ease;
+}
+
+.modal-close-btn:hover {
+    background: var(--bg-muted);
+    color: var(--text-primary);
+    border-color: var(--border);
+}
+
+.modal-close-btn svg {
+    width: 16px;
+    height: 16px;
+}
+
 /* ── Panel Body ── */
 .sync-body,
 .modal-body,
@@ -93,11 +150,78 @@
     gap: var(--sp-5);
 }
 
+.modal-grid-2col {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--sp-4);
+}
+
+.modal-toggle-row {
+    min-height: 46px;
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    padding: 0 14px;
+    border: 1px solid var(--border-light);
+    border-radius: 14px;
+    background: color-mix(in srgb, var(--bg-surface) 96%, white);
+}
+
+.modal-toggle-row input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    accent-color: var(--accent);
+}
+
+.modal-toggle-label {
+    font-size: .88rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+}
+
+.modal-toggle-label.active {
+    color: var(--text-primary);
+}
+
+.modal-footer {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 12px;
+    padding: 18px 24px 22px;
+    border-top: 1px solid var(--border-light);
+    background: color-mix(in srgb, var(--bg-surface) 94%, white);
+}
+
+.row-disabled-user {
+    opacity: 0.68;
+}
+
+.admin-toolbar-btn {
+    height: 40px;
+    padding-inline: 18px;
+}
+
 /* ── Sync Panel Sections ── */
 .sync-section {
     display: flex;
     flex-direction: column;
     gap: var(--sp-3);
+}
+
+@media (max-width: 720px) {
+    .modal-grid-2col {
+        grid-template-columns: 1fr;
+    }
+
+    .modal-footer {
+        flex-direction: column-reverse;
+        align-items: stretch;
+    }
+
+    .modal-footer .profile-btn {
+        width: 100%;
+    }
 }
 
 .sync-section h3 {

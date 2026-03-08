@@ -12,11 +12,13 @@ import time
 import random
 import requests
 from bs4 import BeautifulSoup
+from urllib.parse import urljoin
 
 from shared_excel import SEARCH_KEYWORDS, GT_REGION_CODES, get_search_keywords, format_date, save_to_excel
 
 
 BASE_URL = "https://www.globaltenders.com/gtsearch"
+SITE_BASE_URL = "https://www.globaltenders.com"
 RESULTS_PER_PAGE = 10
 MAX_PAGES = 20  # Safety cap per keyword
 
@@ -35,6 +37,59 @@ HEADERS = {
     "Accept-Language": "en-US,en;q=0.9",
     "Referer": "https://www.globaltenders.com/",
 }
+
+
+def _normalize_description_text(text):
+    return " ".join((text or "").split()).strip()
+
+
+def _resolve_detail_url(url):
+    if not url:
+        return ""
+    return url if url.startswith("http") else urljoin(SITE_BASE_URL, url)
+
+
+def _extract_project_description(session, project_url):
+    """Fetch a Global Tenders project page and extract the panel description text."""
+    detail_url = _resolve_detail_url(project_url)
+    if not detail_url:
+        return ""
+
+    try:
+        resp = session.get(detail_url, headers=HEADERS, timeout=30, allow_redirects=True)
+        resp.raise_for_status()
+    except requests.RequestException as e:
+        print(f"    [!] GT description request failed: {e}")
+        return ""
+
+    try:
+        soup = BeautifulSoup(resp.text, "html.parser")
+        container = soup.select_one("div.panel.panel-info.pannel-inner")
+        if not container:
+            for div in soup.find_all("div"):
+                classes = div.get("class") or []
+                class_string = " ".join(classes).lower()
+                if all(token in class_string for token in ("panel", "panel-info", "pannel-inner")):
+                    container = div
+                    break
+        if not container:
+            return ""
+        return _normalize_description_text(container.get_text(" ", strip=True))
+    except Exception as e:
+        print(f"    [!] GT description parsing failed: {e}")
+        return ""
+
+
+def _enrich_project_descriptions(session, projects):
+    """Populate project_description from the tender detail page when available."""
+    for project in projects:
+        existing_description = _normalize_description_text(project.get("project_description", ""))
+        if existing_description and existing_description != _normalize_description_text(project.get("project_name", "")):
+            continue
+
+        description = _extract_project_description(session, project.get("project_url", ""))
+        if description:
+            project["project_description"] = description
 
 
 def _build_params(keyword, offset=0):
@@ -238,6 +293,10 @@ def run_gt_scraper():
     all_projects = list(seen.values())
     print(f"\n[+] Total raw tenders: {total_raw}")
     print(f"[+] Unique tenders after dedup: {len(all_projects)}")
+
+    if all_projects:
+        print("\n[>] Fetching Global Tenders project descriptions")
+        _enrich_project_descriptions(session, all_projects)
 
     return all_projects
 

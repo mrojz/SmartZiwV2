@@ -58,6 +58,7 @@ export default function SmartSearch({
     chips, onChipsChange, freeText, onFreeTextChange,
     projects, regions, continents,
 }) {
+    const inputId = 'project-smart-search-input';
     const [input, setInput] = useState('');
     const [showDrop, setShowDrop] = useState(false);
     const [selIdx, setSelIdx] = useState(0);
@@ -288,6 +289,7 @@ export default function SmartSearch({
 
     return (
         <div className="smart-search">
+            <label className="visually-hidden" htmlFor={inputId}>Search projects and add structured filters</label>
             <div className="smart-search-input-area" ref={inputAreaRef} onClick={() => inputRef.current?.focus()}>
                 {chips.map((chip, i) => (
                     <span key={`${chip.field}-${chip.value}-${i}`} className="search-chip">
@@ -303,9 +305,12 @@ export default function SmartSearch({
                     </span>
                 )}
                 <input
+                    id={inputId}
                     ref={inputRef}
                     className="search-input"
                     type="text"
+                    name="projectSearch"
+                    aria-label="Search projects and add structured filters"
                     placeholder={chips.length > 0 || freeText ? 'Add filter' : 'Type to search or filter (e.g. source:iadb)'}
                     value={input}
                     onChange={handleChange}

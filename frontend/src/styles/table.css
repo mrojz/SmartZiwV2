@@ -810,3 +810,11 @@
 .projects-table th.th-scraped-filter .column-filter-anchor {
   flex: 0 0 auto;
 }
+
+.projects-table tbody tr:nth-child(even):not(.row-selected):not(.row-active-view) {
+  background: color-mix(in srgb, var(--bg-zebra) 28%, var(--bg-surface));
+}
+
+.projects-table tbody tr:hover:not(.row-selected):not(.row-active-view) {
+  background: color-mix(in srgb, var(--bg-hover) 42%, var(--bg-surface));
+}

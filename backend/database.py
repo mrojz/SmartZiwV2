@@ -13,6 +13,7 @@ Collections:
 import os
 from datetime import datetime, timezone
 
+from bson import ObjectId
 from pymongo import ASCENDING, MongoClient, ReturnDocument
 
 try:
@@ -48,8 +49,17 @@ def get_db():
 # Projects
 
 def _strip_id(doc: dict) -> dict:
+    if '_id' in doc:
+        doc['db_id'] = str(doc['_id'])
     doc.pop('_id', None)
     return doc
+
+
+def _parse_object_id(value: str):
+    try:
+        return ObjectId(value)
+    except Exception:
+        return None
 
 
 def _normalize_project(doc: dict, geography: dict | None = None) -> dict:
@@ -140,6 +150,21 @@ def update_project_by_index(index: int, decision: str) -> dict | None:
     return _normalize_project(_strip_id(doc), get_geography())
 
 
+def update_project_by_db_id(project_db_id: str, decision: str) -> dict | None:
+    db = get_db()
+    object_id = _parse_object_id(project_db_id)
+    if not object_id:
+        return None
+    doc = db.projects.find_one_and_update(
+        {'_id': object_id},
+        {'$set': {'decision': decision}},
+        return_document=ReturnDocument.AFTER,
+    )
+    if not doc:
+        return None
+    return _normalize_project(_strip_id(doc), get_geography())
+
+
 def update_project_deadline_by_index(index: int, manual_deadline: str, updated_by: dict | None = None) -> dict | None:
     db = get_db()
     projects = list(db.projects.find())
@@ -159,6 +184,32 @@ def update_project_deadline_by_index(index: int, manual_deadline: str, updated_b
     return _normalize_project(_strip_id(doc), get_geography())
 
 
+def update_project_deadline_by_db_id(project_db_id: str, manual_deadline: str, updated_by: dict | None = None) -> dict | None:
+    db = get_db()
+    object_id = _parse_object_id(project_db_id)
+    if not object_id:
+        return None
+    doc = db.projects.find_one({'_id': object_id})
+    if not doc:
+        return None
+    scraped_deadline = doc.get('scraped_deadline') or doc.get('project_end_date') or ''
+    cleaned = (manual_deadline or '').strip()
+    updates = {
+        'manual_deadline': cleaned,
+        'deadline_source': 'manual' if cleaned else ('scraped' if scraped_deadline else ''),
+        'deadline_updated_at': now_iso(),
+        'deadline_updated_by': (updated_by or {}).get('email', '') or (updated_by or {}).get('name', ''),
+    }
+    updated = db.projects.find_one_and_update(
+        {'_id': object_id},
+        {'$set': updates},
+        return_document=ReturnDocument.AFTER,
+    )
+    if not updated:
+        return None
+    return _normalize_project(_strip_id(updated), get_geography())
+
+
 def delete_project_by_index(index: int) -> dict | None:
     db = get_db()
     projects = list(db.projects.find())
@@ -167,6 +218,39 @@ def delete_project_by_index(index: int) -> dict | None:
     doc = projects[index]
     db.projects.delete_one({'_id': doc['_id']})
     return _normalize_project(_strip_id(doc), get_geography())
+
+
+def delete_project_by_db_id(project_db_id: str) -> dict | None:
+    db = get_db()
+    object_id = _parse_object_id(project_db_id)
+    if not object_id:
+        return None
+    doc = db.projects.find_one_and_delete({'_id': object_id})
+    if not doc:
+        return None
+    return _normalize_project(_strip_id(doc), get_geography())
+
+
+def delete_projects_by_db_ids(project_db_ids: list[str]) -> dict:
+    db = get_db()
+    object_ids = []
+    for item in project_db_ids:
+        object_id = _parse_object_id(item)
+        if object_id:
+            object_ids.append(object_id)
+    if not object_ids:
+        return {'deleted_count': 0, 'deleted_ids': []}
+
+    docs = list(db.projects.find({'_id': {'$in': object_ids}}))
+    if not docs:
+        return {'deleted_count': 0, 'deleted_ids': []}
+
+    matched_ids = [doc['_id'] for doc in docs]
+    db.projects.delete_many({'_id': {'$in': matched_ids}})
+    return {
+        'deleted_count': len(matched_ids),
+        'deleted_ids': [str(item) for item in matched_ids],
+    }
 
 
 # Config / Geography

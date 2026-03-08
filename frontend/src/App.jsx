@@ -11,7 +11,6 @@ import { InputBase } from '@/components/base/input/input';
 import { Toggle } from '@/components/base/toggle/toggle';
 import { Select } from '@/components/base/select/select';
 import { TextArea } from '@/components/base/textarea/textarea';
-import { Badge, BadgeWithDot } from '@/components/base/badges/badges';
 import { ModalOverlay, Modal, Dialog } from '@/components/application/modals/modal';
 import { Table } from '@/components/application/table/table';
 import { Dropdown } from '@/components/base/dropdown/dropdown';
@@ -35,6 +34,33 @@ function colorFromSeed(seed = '') {
     return `hsl(${hash} 45% 46%)`;
 }
 
+function getProjectSeedKey(project = {}) {
+    return [
+        project?.source || '',
+        project?.project_id || '',
+        project?.project_url || '',
+        project?.document_url || '',
+        project?.project_name || '',
+        project?.project_description || '',
+        project?.project_sponsor || '',
+        project?.project_end_date || '',
+    ].join('::');
+}
+
+function attachProjectRowIds(items = []) {
+    const seen = new Map();
+    return items.map((project) => {
+        if (project?.__rowId) return project;
+        const seed = getProjectSeedKey(project);
+        const occurrence = (seen.get(seed) || 0) + 1;
+        seen.set(seed, occurrence);
+        return {
+            ...project,
+            __rowId: `${seed}__${occurrence}`,
+        };
+    });
+}
+
 
 function formatDisplayDate(value) {
     if (!value) return '-';
@@ -51,6 +77,19 @@ function formatDisplayDate(value) {
         return `${String(day).padStart(2, '0')}/${String(month).padStart(2, '0')}/${year}`;
     }
     return value;
+}
+
+function formatAdminDateTime(value) {
+    if (!value) return 'Never';
+    const dt = new Date(value);
+    if (Number.isNaN(dt.getTime())) return String(value);
+    return new Intl.DateTimeFormat('en-GB', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+    }).format(dt).replace(',', ' ·');
 }
 
 function toInputDate(value) {
@@ -120,6 +159,7 @@ function LoginPage({ onLogin, error, bootstrap }) {
                         <Mail01 className="auth-input-icon" />
                         <input
                             id="login-email"
+                            name="email"
                             className="auth-input"
                             type="email"
                             placeholder="your@email.com"
@@ -136,6 +176,7 @@ function LoginPage({ onLogin, error, bootstrap }) {
                         <Lock01 className="auth-input-icon" />
                         <input
                             id="login-password"
+                            name="password"
                             className="auth-input"
                             type="password"
                             placeholder="••••••••"
@@ -168,8 +209,8 @@ function ForcePasswordPage({ onSubmit, error }) {
             >
                 <h2>Change Password</h2>
                 <p className="auth-error">You must change your password to continue.</p>
-                <Input icon={Lock01} type="password" minLength={8} placeholder="New password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} isRequired />
-                <Input icon={Lock01} type="password" minLength={8} placeholder="Confirm password" value={confirm} onChange={(e) => setConfirm(e.target.value)} isRequired />
+                <Input icon={Lock01} name="newPassword" type="password" minLength={8} placeholder="New password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} autoComplete="new-password" isRequired />
+                <Input icon={Lock01} name="confirmPassword" type="password" minLength={8} placeholder="Confirm password" value={confirm} onChange={(e) => setConfirm(e.target.value)} autoComplete="new-password" isRequired />
                 {confirm && newPassword !== confirm ? <p className="auth-error">Passwords do not match.</p> : null}
                 {error ? <p className="auth-error">{error}</p> : null}
                 <Button color="primary" type="submit" className="w-full">Update Password</Button>
@@ -181,11 +222,11 @@ function ForcePasswordPage({ onSubmit, error }) {
 function PageHeader({ title, subtitle, action }) {
     return (
         <div className="layout-page-header">
-            <div>
+            <div className="layout-page-header-copy">
                 <h1 className="layout-page-title">{title}</h1>
                 {subtitle ? <p className="layout-page-subtitle">{subtitle}</p> : null}
             </div>
-            {action ? <div>{action}</div> : null}
+            {action ? <div className="layout-page-header-action">{action}</div> : null}
         </div>
     );
 }
@@ -214,11 +255,26 @@ function Sidebar({ user, route, onNavigate, collapsed, mobileOpen, onToggleColla
     return (
         <aside className={`layout-sidebar ${collapsed ? 'collapsed' : ''} ${mobileOpen ? 'open' : ''}`}>
             <div className="layout-sidebar-top">
-                <div className="layout-logo-row">
-                    <img className="logo-img" src="/forvis-mazars-logo.svg" alt="Forvis Mazars" />
-                    {!collapsed ? <span>Procurement Watch</span> : null}
+                <div className="layout-brand-card">
+                    <div className="layout-logo-row">
+                        <div className="layout-logo-mark">
+                            <img className="logo-img" src="/forvis-mazars-logo.svg" alt="Forvis Mazars" />
+                        </div>
+                        {!collapsed ? (
+                            <div className="layout-brand-copy">
+                                <span className="layout-brand-kicker">Workspace</span>
+                                <span className="layout-brand-name">Procurement Watch</span>
+                            </div>
+                        ) : null}
+                    </div>
+                    <button
+                        className="header-icon-btn layout-sidebar-toggle"
+                        onClick={onToggleCollapse}
+                        aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+                    >
+                        <Menu02 className="layout-topbar-icon" />
+                    </button>
                 </div>
-                <button className="header-icon-btn layout-sidebar-toggle" onClick={onToggleCollapse} aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}>{collapsed ? '>>' : '<<'}</button>
             </div>
 
             <nav className="layout-sidebar-nav">
@@ -239,13 +295,15 @@ function Sidebar({ user, route, onNavigate, collapsed, mobileOpen, onToggleColla
             </nav>
 
             <div className="layout-sidebar-footer">
-                <Avatar user={user} size={36} />
-                {!collapsed ? (
-                    <div>
-                        <strong>{user?.name}</strong>
-                        <p>{user?.role}</p>
-                    </div>
-                ) : null}
+                <div className="layout-sidebar-account">
+                    <Avatar user={user} size={40} />
+                    {!collapsed ? (
+                        <div className="layout-sidebar-account-copy">
+                            <strong>{user?.name}</strong>
+                            <p>{user?.role}</p>
+                        </div>
+                    ) : null}
+                </div>
             </div>
         </aside>
     );
@@ -259,6 +317,10 @@ function TopBar({ onOpenMobile, theme, onToggleTheme, user }) {
                     <button className="header-icon-btn layout-mobile-menu" onClick={onOpenMobile} aria-label="Open sidebar menu">
                         <Menu02 className="layout-topbar-icon" />
                     </button>
+                    <div className="layout-topbar-workspace">
+                        <span className="layout-topbar-kicker">Workspace</span>
+                        <span className="layout-topbar-name">Procurement Watch</span>
+                    </div>
                 </div>
                 <div className="layout-topbar-right">
                     {/*<button
@@ -269,7 +331,13 @@ function TopBar({ onOpenMobile, theme, onToggleTheme, user }) {
                     >
                         {theme === 'dark' ? <Sun className="layout-topbar-icon" /> : <Moon01 className="layout-topbar-icon" />}
                     </button>*/}
-                    <Avatar user={user} size={32} />
+                    <div className="layout-topbar-user">
+                        <Avatar user={user} size={34} />
+                        <div className="layout-topbar-user-copy">
+                            <strong>{user?.name}</strong>
+                            <span>{user?.role}</span>
+                        </div>
+                    </div>
                 </div>
             </div>
         </header>
@@ -288,7 +356,6 @@ function CommentsPanel({ open, entity, project, projectRegion, comments, mine, s
     const [savingDeadline, setSavingDeadline] = useState(false);
 
     useEffect(() => {
-        if (!open) return undefined;
         const onKey = (e) => {
             if (e.key === 'Escape') onClose();
         };
@@ -330,6 +397,9 @@ function CommentsPanel({ open, entity, project, projectRegion, comments, mine, s
 
     const currentUserName = currentUser?.name || '';
     const projectTitle = project?.project_name || project?.project_description || 'No project selected';
+    const projectDescription = project?.project_description && project?.project_description !== projectTitle
+        ? project.project_description
+        : '';
     const projectDecision = project?.decision || '';
     const projectVerified = project?.ai_verified === 'Yes';
     const canEditDeadline = currentUser?.role === 'admin';
@@ -348,7 +418,7 @@ function CommentsPanel({ open, entity, project, projectRegion, comments, mine, s
         if (!canEditDeadline) return;
         setSavingDeadline(true);
         try {
-            await onDeadlineSave?.(deadlineInput);
+            await onDeadlineSave(deadlineInput || null);
         } finally {
             setSavingDeadline(false);
         }
@@ -356,11 +426,13 @@ function CommentsPanel({ open, entity, project, projectRegion, comments, mine, s
 
     const handleFileChange = async (e) => {
         const files = Array.from(e.target.files || []);
-        if (!files.length) return;
+        if (!files.length || !entity?.id) return;
         setUploading(true);
         try {
             for (const file of files) {
                 const fd = new FormData();
+                fd.append('entityType', entity.type || 'project');
+                fd.append('entityId', entity.id);
                 fd.append('file', file);
                 const res = await apiFetch('/api/comments/upload', {
                     method: 'POST',
@@ -410,6 +482,13 @@ function CommentsPanel({ open, entity, project, projectRegion, comments, mine, s
                             {project?.source ? <span className="drawer-chip neutral">{project.source}</span> : null}
                         </div>
 
+                        {projectDescription ? (
+                            <div className="project-inspector-description">
+                                <h3>Description</h3>
+                                <p>{projectDescription}</p>
+                            </div>
+                        ) : null}
+
                         <div className="inspector-decision-block">
                             <div>
                                 <h3>Decision</h3>
@@ -458,8 +537,20 @@ function CommentsPanel({ open, entity, project, projectRegion, comments, mine, s
                                 <p>{canEditDeadline ? 'Override the scraped deadline when analyst review requires a correction.' : 'Only admins can edit the deadline.'}</p>
                             </div>
                             <div className="project-inspector-deadline-form">
-                                <input type="date" value={deadlineInput} onChange={(e) => setDeadlineInput(e.target.value)} disabled={!canEditDeadline || savingDeadline} />
-                                <button type="button" className="inspector-decision-btn" onClick={handleDeadlineSave} disabled={!canEditDeadline || savingDeadline}>
+                                <input
+                                    type="date"
+                                    name="manualDeadline"
+                                    aria-label="Manual deadline"
+                                    value={deadlineInput}
+                                    onChange={(e) => setDeadlineInput(e.target.value)}
+                                    disabled={!canEditDeadline || savingDeadline}
+                                />
+                                <button
+                                    type="button"
+                                    className="profile-btn profile-btn-primary"
+                                    onClick={handleDeadlineSave}
+                                    disabled={!canEditDeadline || savingDeadline}
+                                >
                                     {savingDeadline ? 'Saving...' : 'Save deadline'}
                                 </button>
                             </div>
@@ -517,6 +608,8 @@ function CommentsPanel({ open, entity, project, projectRegion, comments, mine, s
                                 <input
                                     className="chat-search-input compact"
                                     type="text"
+                                    name="discussionSearch"
+                                    aria-label="Search discussion messages"
                                     placeholder="Search messages..."
                                     value={search}
                                     onChange={(e) => setSearch(e.target.value)}
@@ -568,8 +661,9 @@ function CommentsPanel({ open, entity, project, projectRegion, comments, mine, s
                         ) : null}
 
                         <div className={`project-inspector-compose ${composerFocused || body.trim() ? 'is-focused' : ''}`}>
-                            <input ref={fileInputRef} type="file" multiple style={{ display: 'none' }} onChange={handleFileChange} />
+                            <input ref={fileInputRef} type="file" name="discussionAttachments" multiple style={{ display: 'none' }} onChange={handleFileChange} />
                             <button
+                                type="button"
                                 className="chat-tool-btn"
                                 onClick={() => fileInputRef.current?.click()}
                                 disabled={uploading}
@@ -578,6 +672,8 @@ function CommentsPanel({ open, entity, project, projectRegion, comments, mine, s
                             <textarea
                                 ref={textAreaRef}
                                 className="chat-input project-chat-input"
+                                name="discussionMessage"
+                                aria-label="Discussion message"
                                 value={body}
                                 onChange={(e) => setBody(e.target.value)}
                                 onKeyDown={handleKeyDown}
@@ -587,6 +683,7 @@ function CommentsPanel({ open, entity, project, projectRegion, comments, mine, s
                                 rows={1}
                             />
                             <button
+                                type="button"
                                 className="chat-send-btn chat-send-btn-icon"
                                 onClick={handleSubmit}
                                 disabled={(!body.trim() && !pendingFiles.length) || !entity?.id || uploading}
@@ -614,14 +711,13 @@ function ProfilePage({ user, apiFetch, onUserUpdate }) {
     const [msg, setMsg] = useState('');
     const [savingProfile, setSavingProfile] = useState(false);
     const [savingPassword, setSavingPassword] = useState(false);
-    const displayName = `${firstName} ${lastName}`.trim() || user?.name || 'User';
+    const name = `${firstName} ${lastName}`.trim() || 'User';
     const emailDomain = email?.split('@')[1] || 'No domain';
     const passwordMismatch = Boolean(newPassword && newPassword !== confirmPassword);
 
     const saveProfile = async () => {
         setSavingProfile(true);
         try {
-            const name = `${firstName} ${lastName}`.trim();
             const res = await apiFetch('/api/auth/profile', {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
@@ -636,7 +732,6 @@ function ProfilePage({ user, apiFetch, onUserUpdate }) {
     };
 
     const savePassword = async () => {
-        if (newPassword !== confirmPassword) return;
         setSavingPassword(true);
         try {
             await apiFetch('/api/auth/change-password', {
@@ -659,37 +754,44 @@ function ProfilePage({ user, apiFetch, onUserUpdate }) {
 
             <div className="profile-layout">
                 <aside className="panel-card profile-summary-card">
-                    <div className="profile-summary-accent" />
                     <div className="profile-summary-header">
-                        <div className="profile-summary-avatar">
-                            <Avatar user={{ ...user, name: displayName, email, avatarUrl }} size={84} />
+                        <div
+                            className="profile-summary-avatar"
+                            style={avatarUrl
+                                ? { backgroundImage: `url(${avatarUrl})`, backgroundSize: 'cover', backgroundPosition: 'center' }
+                                : { background: colorFromSeed(name || email) }}
+                            aria-hidden="true"
+                        >
+                            {!avatarUrl ? <span className="profile-summary-avatar-text">{initials(name, email)}</span> : null}
                         </div>
                         <div className="profile-summary-copy">
-                            <span className="profile-summary-eyebrow">Account</span>
-                            <h2 className="profile-summary-name">{displayName}</h2>
-                            <span className={`profile-hero-role-badge ${user?.role === 'admin' ? 'badge-admin' : 'badge-user'}`}>
-                                {user?.role === 'admin' ? 'Admin' : 'User'}
-                            </span>
+                            <h2 className="profile-summary-name">{name}</h2>
+                            <div className="profile-summary-secondary">
+                                <span className={`profile-summary-role-badge ${user?.role === 'admin' ? 'badge-admin' : 'badge-user'}`}>
+                                    {user?.role === 'admin' ? 'Admin' : 'User'}
+                                </span>
+                            </div>
                             <p className="profile-summary-email">{email || 'No email address'}</p>
                         </div>
                     </div>
 
-                    <div className="profile-summary-meta">
-                        <div className="profile-summary-meta-item">
-                            <span className="profile-summary-meta-label">Status</span>
-                            <span className={`profile-summary-status ${user?.isActive !== false ? 'is-active' : 'is-inactive'}`}>
+                    <dl className="profile-summary-meta">
+                        <div className="profile-summary-meta-row">
+                            <dt className="profile-summary-meta-label">Status</dt>
+                            <dd className={`profile-summary-status ${user?.isActive !== false ? 'is-active' : 'is-inactive'}`}>
+                                <span className="profile-summary-status-dot" />
                                 {user?.isActive !== false ? 'Active' : 'Inactive'}
-                            </span>
+                            </dd>
                         </div>
-                        <div className="profile-summary-meta-item">
-                            <span className="profile-summary-meta-label">Domain</span>
-                            <span className="profile-summary-meta-value">{emailDomain}</span>
+                        <div className="profile-summary-meta-row">
+                            <dt className="profile-summary-meta-label">Domain</dt>
+                            <dd className="profile-summary-meta-value">{emailDomain}</dd>
                         </div>
-                        <div className="profile-summary-meta-item">
-                            <span className="profile-summary-meta-label">Role</span>
-                            <span className="profile-summary-meta-value" style={{ textTransform: 'capitalize' }}>{user?.role || 'user'}</span>
+                        <div className="profile-summary-meta-row">
+                            <dt className="profile-summary-meta-label">Role</dt>
+                            <dd className="profile-summary-meta-value" style={{ textTransform: 'capitalize' }}>{user?.role || 'user'}</dd>
                         </div>
-                    </div>
+                    </dl>
                 </aside>
 
                 <div className="profile-content-column">
@@ -701,30 +803,37 @@ function ProfilePage({ user, apiFetch, onUserUpdate }) {
                             </div>
                         </div>
 
-                        <div className="profile-settings-grid">
-                            <div className="auth-field">
-                                <label className="auth-label" htmlFor="prof-firstname">First name</label>
-                                <input id="prof-firstname" className="auth-input" placeholder="First name" value={firstName} onChange={(e) => setFirstName(e.target.value)} />
+                        <form
+                            onSubmit={(event) => {
+                                event.preventDefault();
+                                saveProfile();
+                            }}
+                        >
+                            <div className="profile-settings-grid">
+                                <div className="auth-field">
+                                    <label className="auth-label" htmlFor="prof-firstname">First name</label>
+                                    <input id="prof-firstname" name="firstName" className="auth-input" placeholder="First name" value={firstName} onChange={(e) => setFirstName(e.target.value)} />
+                                </div>
+                                <div className="auth-field">
+                                    <label className="auth-label" htmlFor="prof-lastname">Last name</label>
+                                    <input id="prof-lastname" name="lastName" className="auth-input" placeholder="Last name" value={lastName} onChange={(e) => setLastName(e.target.value)} />
+                                </div>
+                                <div className="auth-field profile-field-span-2">
+                                    <label className="auth-label" htmlFor="prof-email">Email</label>
+                                    <input id="prof-email" name="email" className="auth-input" type="email" placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} />
+                                </div>
+                                <div className="auth-field profile-field-span-2">
+                                    <label className="auth-label" htmlFor="prof-avatar">Avatar URL</label>
+                                    <input id="prof-avatar" name="avatarUrl" className="auth-input" placeholder="https://..." value={avatarUrl} onChange={(e) => setAvatarUrl(e.target.value)} />
+                                    <span className="profile-field-hint">Use a direct image link to update the profile photo preview.</span>
+                                </div>
                             </div>
-                            <div className="auth-field">
-                                <label className="auth-label" htmlFor="prof-lastname">Last name</label>
-                                <input id="prof-lastname" className="auth-input" placeholder="Last name" value={lastName} onChange={(e) => setLastName(e.target.value)} />
-                            </div>
-                            <div className="auth-field profile-field-span-2">
-                                <label className="auth-label" htmlFor="prof-email">Email</label>
-                                <input id="prof-email" className="auth-input" type="email" placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} />
-                            </div>
-                            <div className="auth-field profile-field-span-2">
-                                <label className="auth-label" htmlFor="prof-avatar">Avatar URL</label>
-                                <input id="prof-avatar" className="auth-input" placeholder="https://..." value={avatarUrl} onChange={(e) => setAvatarUrl(e.target.value)} />
-                                <span className="profile-field-hint">Use a direct image link to update the profile photo preview.</span>
-                            </div>
-                        </div>
 
-                        <div className="profile-card-footer">
-                            <button type="button" className="profile-btn profile-btn-secondary" onClick={() => setAvatarUrl('')}>Remove avatar</button>
-                            <button type="button" className="profile-btn profile-btn-primary" onClick={saveProfile} disabled={savingProfile}>{savingProfile ? 'Saving...' : 'Save changes'}</button>
-                        </div>
+                            <div className="profile-card-footer">
+                                <button type="button" className="profile-btn profile-btn-secondary" onClick={() => setAvatarUrl('')}>Remove avatar</button>
+                                <button type="submit" className="profile-btn profile-btn-primary" disabled={savingProfile}>{savingProfile ? 'Saving...' : 'Save changes'}</button>
+                            </div>
+                        </form>
                     </section>
 
                     <section className="panel-card profile-settings-card">
@@ -735,35 +844,42 @@ function ProfilePage({ user, apiFetch, onUserUpdate }) {
                             </div>
                         </div>
 
-                        <div className="profile-password-stack">
-                            <div className="auth-field">
-                                <label className="auth-label" htmlFor="prof-curpwd">Current password</label>
-                                <input id="prof-curpwd" className="auth-input" type="password" placeholder="Current password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} />
-                            </div>
-                            <div className="profile-password-grid">
+                        <form
+                            onSubmit={(event) => {
+                                event.preventDefault();
+                                if (savingPassword || !currentPassword || !newPassword || passwordMismatch) return;
+                                savePassword();
+                            }}
+                        >
+                            <div className="profile-password-stack">
                                 <div className="auth-field">
-                                    <label className="auth-label" htmlFor="prof-newpwd">New password</label>
-                                    <input id="prof-newpwd" className="auth-input" type="password" placeholder="New password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} />
-                                    <span className="profile-field-hint">Minimum 8 characters.</span>
+                                    <label className="auth-label" htmlFor="prof-curpwd">Current password</label>
+                                    <input id="prof-curpwd" name="currentPassword" className="auth-input" type="password" placeholder="Current password" autoComplete="current-password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} />
                                 </div>
-                                <div className="auth-field">
-                                    <label className="auth-label" htmlFor="prof-confirmpwd">Confirm new password</label>
-                                    <input id="prof-confirmpwd" className="auth-input" type="password" placeholder="Confirm new password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} />
-                                    {passwordMismatch ? <span className="profile-pwd-mismatch">Passwords do not match.</span> : <span className="profile-field-hint">Re-enter the new password to confirm it.</span>}
+                                <div className="profile-password-grid">
+                                    <div className="auth-field">
+                                        <label className="auth-label" htmlFor="prof-newpwd">New password</label>
+                                        <input id="prof-newpwd" name="newPassword" className="auth-input" type="password" placeholder="New password" autoComplete="new-password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} />
+                                        <span className="profile-field-hint">Minimum 8 characters.</span>
+                                    </div>
+                                    <div className="auth-field">
+                                        <label className="auth-label" htmlFor="prof-confirmpwd">Confirm new password</label>
+                                        <input id="prof-confirmpwd" name="confirmPassword" className="auth-input" type="password" placeholder="Confirm new password" autoComplete="new-password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} />
+                                        {passwordMismatch ? <span className="profile-pwd-mismatch">Passwords do not match.</span> : <span className="profile-field-hint">Re-enter the new password to confirm it.</span>}
+                                    </div>
                                 </div>
                             </div>
-                        </div>
 
-                        <div className="profile-card-footer profile-card-footer-end">
-                            <button
-                                type="button"
-                                className="profile-btn profile-btn-primary"
-                                disabled={savingPassword || !currentPassword || !newPassword || passwordMismatch}
-                                onClick={savePassword}
-                            >
-                                {savingPassword ? 'Saving...' : 'Update password'}
-                            </button>
-                        </div>
+                            <div className="profile-card-footer profile-card-footer-end">
+                                <button
+                                    type="submit"
+                                    className="profile-btn profile-btn-primary"
+                                    disabled={savingPassword || !currentPassword || !newPassword || passwordMismatch}
+                                >
+                                    {savingPassword ? 'Saving...' : 'Update password'}
+                                </button>
+                            </div>
+                        </form>
                     </section>
                 </div>
             </div>
@@ -801,38 +917,51 @@ function UserDrawer({ open, mode, initialUser, onClose, onSave, saving }) {
             <div className="modal-card" onClick={(e) => e.stopPropagation()}>
                 <div className="modal-header">
                     <h2 className="modal-title">{mode === 'create' ? 'Create User' : 'Edit User'}</h2>
-                    <button className="modal-close-btn" onClick={onClose}>×</button>
+                    <button type="button" className="modal-close-btn" onClick={onClose} aria-label="Close user drawer"><X /></button>
                 </div>
 
+                <form
+                    onSubmit={(event) => {
+                        event.preventDefault();
+                        onSave({
+                            name: `${firstName} ${lastName}`.trim(),
+                            email: email.trim(),
+                            role,
+                            avatarUrl,
+                            password: tempPassword,
+                            isActive,
+                        });
+                    }}
+                >
                 <div className="modal-body">
                     <div className="modal-grid-2col">
                         <div className="auth-field">
                             <label className="auth-label" htmlFor="ud-first">First name</label>
-                            <input id="ud-first" className="auth-input" placeholder="First name" value={firstName} onChange={(e) => setFirstName(e.target.value)} />
+                            <input id="ud-first" name="firstName" className="auth-input" placeholder="First name" value={firstName} onChange={(e) => setFirstName(e.target.value)} />
                         </div>
                         <div className="auth-field">
                             <label className="auth-label" htmlFor="ud-last">Last name</label>
-                            <input id="ud-last" className="auth-input" placeholder="Last name" value={lastName} onChange={(e) => setLastName(e.target.value)} />
+                            <input id="ud-last" name="lastName" className="auth-input" placeholder="Last name" value={lastName} onChange={(e) => setLastName(e.target.value)} />
                         </div>
                     </div>
 
                     <div className="auth-field">
                         <label className="auth-label" htmlFor="ud-email">Email</label>
-                        <input id="ud-email" className="auth-input" type="email" placeholder="user@example.com" value={email} onChange={(e) => setEmail(e.target.value)} />
+                        <input id="ud-email" name="email" className="auth-input" type="email" placeholder="user@example.com" value={email} onChange={(e) => setEmail(e.target.value)} />
                     </div>
 
                     <div className="modal-grid-2col">
                         <div className="auth-field">
                             <label className="auth-label" htmlFor="ud-role">Role</label>
-                            <select id="ud-role" className="auth-input" value={role} onChange={(e) => setRole(e.target.value)}>
+                            <select id="ud-role" name="role" className="auth-input" value={role} onChange={(e) => setRole(e.target.value)}>
                                 <option value="user">User</option>
                                 <option value="admin">Admin</option>
                             </select>
                         </div>
                         <div className="auth-field">
-                            <label className="auth-label">Status</label>
-                            <label className="modal-toggle-row">
-                                <input type="checkbox" checked={isActive} onChange={(e) => setIsActive(e.target.checked)} />
+                            <label className="auth-label" htmlFor="ud-active">Status</label>
+                            <label className="modal-toggle-row" htmlFor="ud-active">
+                                <input id="ud-active" name="isActive" type="checkbox" checked={isActive} onChange={(e) => setIsActive(e.target.checked)} />
                                 <span className={`modal-toggle-label ${isActive ? 'active' : 'inactive'}`}>{isActive ? 'Active' : 'Disabled'}</span>
                             </label>
                         </div>
@@ -840,34 +969,28 @@ function UserDrawer({ open, mode, initialUser, onClose, onSave, saving }) {
 
                     <div className="auth-field">
                         <label className="auth-label" htmlFor="ud-avatar">Avatar URL</label>
-                        <input id="ud-avatar" className="auth-input" placeholder="https://..." value={avatarUrl} onChange={(e) => setAvatarUrl(e.target.value)} />
+                        <input id="ud-avatar" name="avatarUrl" className="auth-input" placeholder="https://..." value={avatarUrl} onChange={(e) => setAvatarUrl(e.target.value)} />
                     </div>
 
                     {mode === 'create' && (
                         <div className="auth-field">
                             <label className="auth-label" htmlFor="ud-pwd">Temporary password <span style={{ fontWeight: 400, color: 'var(--text-muted)' }}>(optional, auto-generated if empty)</span></label>
-                            <input id="ud-pwd" className="auth-input" type="password" placeholder="Temporary password" value={tempPassword} onChange={(e) => setTempPassword(e.target.value)} />
+                            <input id="ud-pwd" name="temporaryPassword" className="auth-input" type="password" placeholder="Temporary password" autoComplete="new-password" value={tempPassword} onChange={(e) => setTempPassword(e.target.value)} />
                         </div>
                     )}
                 </div>
 
                 <div className="modal-footer">
-                    <button className="profile-btn profile-btn-secondary" onClick={onClose}>Cancel</button>
+                    <button type="button" className="profile-btn profile-btn-secondary" onClick={onClose}>Cancel</button>
                     <button
+                        type="submit"
                         className="profile-btn profile-btn-primary"
                         disabled={saving || !email.trim()}
-                        onClick={() => onSave({
-                            name: `${firstName} ${lastName}`.trim(),
-                            email: email.trim(),
-                            role,
-                            avatarUrl,
-                            password: tempPassword,
-                            isActive,
-                        })}
                     >
-                        {saving ? 'Saving…' : mode === 'create' ? 'Create User' : 'Save Changes'}
+                        {saving ? 'Saving...' : mode === 'create' ? 'Create User' : 'Save Changes'}
                     </button>
                 </div>
+                </form>
             </div>
         </div>
     );
@@ -883,24 +1006,31 @@ function ResetPasswordModal({ open, user, onClose, onReset, saving, result }) {
             <div className="modal-card modal-card-sm" onClick={(e) => e.stopPropagation()}>
                 <div className="modal-header">
                     <h2 className="modal-title">Reset Password</h2>
-                    <button className="modal-close-btn" onClick={onClose}>×</button>
+                    <button type="button" className="modal-close-btn" aria-label="Close dialog" onClick={onClose}><X /></button>
                 </div>
-                <div className="modal-body">
-                    <p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: '0.88rem' }}>
-                        Reset password for <strong>{user.name || user.email}</strong>
-                    </p>
-                    <div className="auth-field">
-                        <label className="auth-label" htmlFor="rp-pwd">New password <span style={{ fontWeight: 400, color: 'var(--text-muted)' }}>(leave empty to auto-generate)</span></label>
-                        <input id="rp-pwd" className="auth-input" type="password" placeholder="Auto-generated if empty" value={password} onChange={(e) => setPassword(e.target.value)} />
+                <form
+                    onSubmit={(event) => {
+                        event.preventDefault();
+                        onReset(password || null);
+                    }}
+                >
+                    <div className="modal-body">
+                        <p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: '0.88rem' }}>
+                            Reset password for <strong>{user.name || user.email}</strong>
+                        </p>
+                        <div className="auth-field">
+                            <label className="auth-label" htmlFor="rp-pwd">New password <span style={{ fontWeight: 400, color: 'var(--text-muted)' }}>(leave empty to auto-generate)</span></label>
+                            <input id="rp-pwd" name="resetPassword" className="auth-input" type="password" placeholder="Auto-generated if empty" autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} />
+                        </div>
+                        {result && <p className="profile-success-msg">{result}</p>}
                     </div>
-                    {result && <p className="profile-success-msg">{result}</p>}
-                </div>
-                <div className="modal-footer">
-                    <button className="profile-btn profile-btn-secondary" onClick={onClose}>Cancel</button>
-                    <button className="profile-btn profile-btn-primary" disabled={saving} onClick={() => onReset(password || null)}>
-                        {saving ? 'Resetting…' : 'Reset Password'}
-                    </button>
-                </div>
+                    <div className="modal-footer">
+                        <button type="button" className="profile-btn profile-btn-secondary" onClick={onClose}>Cancel</button>
+                        <button type="submit" className="profile-btn profile-btn-primary" disabled={saving}>
+                            {saving ? 'Resetting...' : 'Reset Password'}
+                        </button>
+                    </div>
+                </form>
             </div>
         </div>
     );
@@ -923,16 +1053,23 @@ function AdminPage({ apiFetch }) {
     const [sortDir, setSortDir] = useState('asc');
     const [page, setPage] = useState(0);
     const [rowsPerPage, setRowsPerPage] = useState(25);
+    const handleSearchChange = useCallback((nextValue) => {
+        if (typeof nextValue === 'string') {
+            setQ(nextValue);
+            return;
+        }
+        setQ(nextValue?.target?.value ?? '');
+    }, []);
 
     const loadUsers = useCallback(async () => {
         setRefreshingUsers(true);
         try {
-            const res = await apiFetch(`/api/admin/users?q=${encodeURIComponent(q)}`);
+            const res = await apiFetch('/api/admin/users');
             setUsers(await res.json());
         } finally {
             setRefreshingUsers(false);
         }
-    }, [apiFetch, q]);
+    }, [apiFetch]);
 
     useEffect(() => {
         loadUsers();
@@ -956,7 +1093,7 @@ function AdminPage({ apiFetch }) {
     };
 
     const saveUser = async (form) => {
-        if (!drawer.user?.id) return;
+        if (!drawer.user) return;
         setSavingDrawer(true);
         try {
             await apiFetch(`/api/admin/users/${drawer.user.id}`, {
@@ -1002,12 +1139,20 @@ function AdminPage({ apiFetch }) {
         }
     };
 
-    const visibleUsers = useMemo(() => users.filter((u) => {
+    const filteredUsers = useMemo(() => users.filter((u) => {
+        const name = String(u?.name || '').toLowerCase();
+        const email = String(u?.email || '').toLowerCase();
+        const query = q.trim().toLowerCase();
+        if (query && !name.includes(query) && !email.includes(query)) return false;
         if (roleFilter !== 'all' && u.role !== roleFilter) return false;
         if (statusFilter === 'active' && !u.isActive) return false;
         if (statusFilter === 'disabled' && u.isActive) return false;
         return true;
-    }), [users, roleFilter, statusFilter]);
+    }), [users, q, roleFilter, statusFilter]);
+
+    useEffect(() => {
+        setPage(0);
+    }, [q, roleFilter, statusFilter]);
 
     const columns = [
         { key: '_user', label: 'User', type: 'string' },
@@ -1019,8 +1164,8 @@ function AdminPage({ apiFetch }) {
     ];
 
     const sorted = useMemo(() => {
-        if (!sortCol) return visibleUsers;
-        return [...visibleUsers].sort((a, b) => {
+        if (!sortCol) return filteredUsers;
+        return [...filteredUsers].sort((a, b) => {
             let valA, valB;
             switch (sortCol) {
                 case '_user': valA = a.name || ''; valB = b.name || ''; break;
@@ -1033,7 +1178,7 @@ function AdminPage({ apiFetch }) {
             const cmp = String(valA).localeCompare(String(valB), undefined, { sensitivity: 'base' });
             return sortDir === 'asc' ? cmp : -cmp;
         });
-    }, [visibleUsers, sortCol, sortDir]);
+    }, [filteredUsers, sortCol, sortDir]);
 
     const totalPages = Math.ceil(sorted.length / rowsPerPage);
     const pageData = sorted.slice(page * rowsPerPage, (page + 1) * rowsPerPage);
@@ -1050,35 +1195,83 @@ function AdminPage({ apiFetch }) {
     };
 
     return (
-        <div className="layout-stack">
+        <div className="layout-stack admin-users-page">
             <PageHeader
                 title="User Management"
                 subtitle="Create, edit, deactivate users, and reset passwords."
-                action={<Button color="primary" isDisabled={savingDrawer} onPress={() => setDrawer({ open: true, mode: 'create', user: null })}>Create User</Button>}
+                action={(
+                    <div className="admin-users-header-actions">
+                        <button
+                            type="button"
+                            className="profile-btn profile-btn-primary admin-toolbar-btn admin-users-create-btn"
+                            disabled={savingDrawer}
+                            onClick={() => setDrawer({ open: true, mode: 'create', user: null })}
+                        >
+                            Create User
+                        </button>
+                    </div>
+                )}
             />
 
-            <div className="table-wrapper table-surface">
-                <div className="table-toolbar">
-                    <div className="table-toolbar-row">
-                        <Input placeholder="Search name/email" value={q} onChange={(e) => setQ(e.target.value)} />
-                        <span className="toolbar-count"><strong>{visibleUsers.length}</strong> users</span>
-                    </div>
-                    <div className="table-toolbar-row table-toolbar-filters">
-                        <select className="filter-select filter-select-compact" value={roleFilter} onChange={(e) => setRoleFilter(e.target.value)}>
-                            <option value="all">All roles</option>
-                            <option value="admin">Admin</option>
-                            <option value="user">User</option>
-                        </select>
-                        <select className="filter-select filter-select-compact" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
-                            <option value="all">All status</option>
-                            <option value="active">Active</option>
-                            <option value="disabled">Disabled</option>
-                        </select>
-                        <Button color="secondary" onPress={loadUsers} isDisabled={refreshingUsers} isLoading={refreshingUsers}>Refresh</Button>
+            <div className="table-wrapper table-surface admin-users-surface">
+                <div className="table-toolbar admin-users-toolbar">
+                    <div className="admin-users-toolbar-row">
+                        <div className="admin-users-toolbar-controls">
+                            <div className="admin-users-search-slot">
+                                <Input
+                                    icon={SearchLg}
+                                    placeholder="Search users..."
+                                    value={q}
+                                    onChange={handleSearchChange}
+                                    className="admin-users-search-field"
+                                    wrapperClassName="admin-users-search-wrapper"
+                                    inputClassName="admin-users-search-input pl-11"
+                                    iconClassName="admin-users-search-icon"
+                                />
+                            </div>
+                            <div className="admin-users-filter-row">
+                                <select
+                                    className="filter-select filter-select-compact admin-users-filter-select"
+                                    name="admin-role-filter"
+                                    aria-label="Filter users by role"
+                                    value={roleFilter}
+                                    onChange={(e) => setRoleFilter(e.target.value)}
+                                >
+                                    <option value="all">All roles</option>
+                                    <option value="admin">Admin</option>
+                                    <option value="user">User</option>
+                                </select>
+                                <select
+                                    className="filter-select filter-select-compact admin-users-filter-select"
+                                    name="admin-status-filter"
+                                    aria-label="Filter users by status"
+                                    value={statusFilter}
+                                    onChange={(e) => setStatusFilter(e.target.value)}
+                                >
+                                    <option value="all">All status</option>
+                                    <option value="active">Active</option>
+                                    <option value="disabled">Disabled</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div className="admin-users-toolbar-actions">
+                            <span className="admin-users-toolbar-count">
+                                <strong>{filteredUsers.length}</strong>
+                                <span>{filteredUsers.length === 1 ? 'user' : 'users'}</span>
+                            </span>
+                            <button
+                                type="button"
+                                className="profile-btn profile-btn-secondary admin-toolbar-btn admin-users-refresh-btn"
+                                onClick={loadUsers}
+                                disabled={refreshingUsers}
+                            >
+                                {refreshingUsers ? 'Refreshing...' : 'Refresh'}
+                            </button>
+                        </div>
                     </div>
                 </div>
 
-                {message ? <p className="auth-muted" style={{ padding: '8px 16px', margin: 0 }}>{message}</p> : null}
+                {message ? <div className="admin-users-message">{message}</div> : null}
 
                 <Table
                     aria-label="Users table"
@@ -1090,6 +1283,7 @@ function AdminPage({ apiFetch }) {
                         {(col) => (
                             <Table.Head
                                 id={col.key}
+                                isRowHeader={col.key === '_user'}
                                 allowsSorting={col.type !== 'none'}
                                 className={col.key === '_actions' ? 'th-actions' : ''}
                             >
@@ -1103,47 +1297,62 @@ function AdminPage({ apiFetch }) {
                             <Table.Row
                                 id={u.id}
                                 columns={columns}
-                                className={!u.isActive ? 'row-disabled-user' : ''}
+                                className={u.isActive ? 'admin-users-row' : 'admin-users-row admin-users-row-inactive'}
                             >
                                 {(columnKey) => {
                                     const key = typeof columnKey === 'string' ? columnKey : (columnKey?.key || columnKey?.id || '');
                                     if (key === '_user') {
                                         return (
                                             <Table.Cell>
-                                                <div className="layout-user-cell">
-                                                    <Avatar user={u} size={36} />
-                                                    <span style={{ fontWeight: 500, color: 'var(--text-primary)' }}>{u.name}</span>
+                                                <div className="layout-user-cell admin-users-identity-cell">
+                                                    <Avatar user={u} size={40} />
+                                                    <div className="admin-users-identity-copy">
+                                                        <span className="admin-users-user-name">{u.name}</span>
+                                                    </div>
                                                 </div>
                                             </Table.Cell>
                                         );
                                     }
                                     if (key === '_email') {
-                                        return <Table.Cell>{u.email}</Table.Cell>;
+                                        return <Table.Cell><span className="admin-users-email">{u.email}</span></Table.Cell>;
                                     }
                                     if (key === '_role') {
-                                        return <Table.Cell><Badge color={u.role === 'admin' ? 'brand' : 'gray'}>{u.role}</Badge></Table.Cell>;
+                                        return (
+                                            <Table.Cell>
+                                                <span className={`admin-users-pill admin-users-role-pill role-${u.role}`}>
+                                                    {u.role === 'admin' ? 'Admin' : 'User'}
+                                                </span>
+                                            </Table.Cell>
+                                        );
                                     }
                                     if (key === '_status') {
-                                        return <Table.Cell><BadgeWithDot color={u.isActive ? 'success' : 'gray'}>{u.isActive ? 'Active' : 'Disabled'}</BadgeWithDot></Table.Cell>;
+                                        return (
+                                            <Table.Cell>
+                                                <span className={`admin-users-pill admin-users-status-pill ${u.isActive ? 'status-active' : 'status-disabled'}`}>
+                                                    <span className="admin-users-status-dot" />
+                                                    {u.isActive ? 'Active' : 'Disabled'}
+                                                </span>
+                                            </Table.Cell>
+                                        );
                                     }
                                     if (key === '_lastLogin') {
-                                        return <Table.Cell>{u.lastLoginAt ? new Date(u.lastLoginAt).toLocaleString() : '—'}</Table.Cell>;
+                                        return <Table.Cell><span className="admin-users-last-login">{formatAdminDateTime(u.lastLoginAt)}</span></Table.Cell>;
                                     }
                                     return (
-                                        <Table.Cell className="td-actions">
+                                        <Table.Cell className="td-actions admin-users-actions-cell">
                                             <Dropdown.Root>
-                                                <Dropdown.DotsButton />
-                                                <Dropdown.Popover className="w-min">
-                                                    <Dropdown.Menu onAction={(actionKey) => {
+                                                <Dropdown.DotsButton className="admin-users-dots-btn" />
+                                                <Dropdown.Popover className="w-min admin-users-popover">
+                                                    <Dropdown.Menu className="admin-users-menu" onAction={(actionKey) => {
                                                         if (actionKey === 'edit') setDrawer({ open: true, mode: 'edit', user: u });
                                                         if (actionKey === 'reset') { setResetResult(''); setResetModal({ open: true, user: u }); }
                                                         if (actionKey === 'toggle') toggleUser(u);
                                                     }}>
                                                         <Dropdown.Item id="edit" icon={Edit01}>Edit user</Dropdown.Item>
-                                                        <Dropdown.Item id="reset" icon={Key01}>{resettingUserId === u.id ? 'Resetting…' : 'Reset password'}</Dropdown.Item>
+                                                        <Dropdown.Item id="reset" icon={Key01}>{resettingUserId === u.id ? 'Resetting...' : 'Reset password'}</Dropdown.Item>
                                                         <Dropdown.Separator />
                                                         <Dropdown.Item id="toggle" icon={u.isActive ? UserX01 : UserCheck01}>
-                                                            {togglingUserId === u.id ? 'Updating…' : (u.isActive ? 'Deactivate' : 'Activate')}
+                                                            {togglingUserId === u.id ? 'Updating...' : (u.isActive ? 'Deactivate' : 'Activate')}
                                                         </Dropdown.Item>
                                                     </Dropdown.Menu>
                                                 </Dropdown.Popover>
@@ -1166,22 +1375,32 @@ function AdminPage({ apiFetch }) {
                 )}
 
                 {sorted.length > 0 && (
-                    <div className="pagination-bar">
-                        <div className="pagination-info">
+                    <div className="pagination-bar admin-users-pagination-bar">
+                        <div className="pagination-info admin-users-pagination-info">
                             Showing <strong>{startItem}-{endItem}</strong> of <strong>{sorted.length}</strong>
                         </div>
-                        <div className="pagination-controls">
-                            <button className="pagination-btn" disabled={page === 0} onClick={() => setPage(0)} title="First page">{'<<'}</button>
-                            <button className="pagination-btn" disabled={page === 0} onClick={() => setPage(page - 1)} title="Previous page">{'<'}</button>
-                            <span className="pagination-pages">
-                                Page <strong>{page + 1}</strong> of <strong>{totalPages}</strong>
-                            </span>
-                            <button className="pagination-btn" disabled={page >= totalPages - 1} onClick={() => setPage(page + 1)} title="Next page">{'>'}</button>
-                            <button className="pagination-btn" disabled={page >= totalPages - 1} onClick={() => setPage(totalPages - 1)} title="Last page">{'>>'}</button>
-                        </div>
-                        <div className="pagination-size">
-                            <label>Rows:</label>
-                            <select value={rowsPerPage} onChange={(e) => { setRowsPerPage(Number(e.target.value)); setPage(0); }}>
+                        {totalPages > 1 ? (
+                            <div className="pagination-controls admin-users-pagination-controls">
+                                <button className="pagination-btn" disabled={page === 0} onClick={() => setPage(0)} title="First page">{'<<'}</button>
+                                <button className="pagination-btn" disabled={page === 0} onClick={() => setPage(page - 1)} title="Previous page">{'<'}</button>
+                                <span className="pagination-pages">
+                                    Page <strong>{page + 1}</strong> of <strong>{totalPages}</strong>
+                                </span>
+                                <button className="pagination-btn" disabled={page >= totalPages - 1} onClick={() => setPage(page + 1)} title="Next page">{'>'}</button>
+                                <button className="pagination-btn" disabled={page >= totalPages - 1} onClick={() => setPage(totalPages - 1)} title="Last page">{'>>'}</button>
+                            </div>
+                        ) : (
+                            <div className="admin-users-pagination-static">Single page</div>
+                        )}
+                        <div className="pagination-size admin-users-pagination-size">
+                            <label htmlFor="admin-rows-per-page">Rows</label>
+                            <select
+                                id="admin-rows-per-page"
+                                name="admin-rows-per-page"
+                                aria-label="Users rows per page"
+                                value={rowsPerPage}
+                                onChange={(e) => { setRowsPerPage(Number(e.target.value)); setPage(0); }}
+                            >
                                 {[10, 25, 50].map((n) => <option key={n} value={n}>{n}</option>)}
                             </select>
                         </div>
@@ -1197,29 +1416,23 @@ function AdminPage({ apiFetch }) {
                 onSave={drawer.mode === 'create' ? createUser : saveUser}
                 saving={savingDrawer}
             />
-
             <ResetPasswordModal
                 open={resetModal.open}
                 user={resetModal.user}
                 onClose={() => setResetModal({ open: false, user: null })}
                 onReset={resetPassword}
-                saving={!!resettingUserId}
+                saving={resettingUserId === resetModal.user?.id}
                 result={resetResult}
             />
         </div>
     );
 }
+
 export default function App() {
-    const [projects, setProjects] = useState([]);
     const [loading, setLoading] = useState(true);
-    const [syncOpen, setSyncOpen] = useState(false);
-    const [configOpen, setConfigOpen] = useState(false);
-    const [scheduleOpen, setScheduleOpen] = useState(false);
+    const [projects, setProjects] = useState([]);
     const [regions, setRegions] = useState({});
     const [continents, setContinents] = useState([]);
-    const [newProjectIds, setNewProjectIds] = useState(new Set());
-    const preSyncIdsRef = useRef(new Set());
-
     const [chips, setChips] = useState([]);
     const [freeText, setFreeText] = useState('');
     const [source, setSource] = useState('');
@@ -1250,6 +1463,10 @@ export default function App() {
     const [commentsMine, setCommentsMine] = useState(false);
     const [commentsBody, setCommentsBody] = useState('');
     const [comments, setComments] = useState([]);
+    const [syncOpen, setSyncOpen] = useState(false);
+    const [configOpen, setConfigOpen] = useState(false);
+    const [scheduleOpen, setScheduleOpen] = useState(false);
+    const preSyncIdsRef = useRef(new Set());
 
     const apiFetch = useCallback(async (url, opts = {}, _isRetry = false) => {
         const headers = { ...(opts.headers || {}) };
@@ -1338,7 +1555,8 @@ export default function App() {
 
     const loadProjects = useCallback(async () => {
         const res = await apiFetch(`${API}/projects`);
-        setProjects(await res.json());
+        const data = await res.json();
+        setProjects(attachProjectRowIds(Array.isArray(data) ? data : []));
     }, [apiFetch]);
 
     useEffect(() => {
@@ -1503,6 +1721,7 @@ export default function App() {
     };
 
     const handleDecisionChange = async (index, nextDecision) => {
+        const project = projects[index];
         setProjects((prev) => {
             const next = [...prev];
             next[index] = { ...next[index], decision: nextDecision };
@@ -1511,42 +1730,113 @@ export default function App() {
         if (selectedProjectIndex === index) {
             setSelectedProject((prev) => (prev ? { ...prev, decision: nextDecision } : prev));
         }
-        await apiFetch(`${API}/projects/${index}/decision`, {
+        const res = await apiFetch(
+            project?.db_id
+                ? `${API}/projects/by-db-id/${encodeURIComponent(project.db_id)}/decision`
+                : `${API}/projects/${index}/decision`,
+            {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ decision: nextDecision }),
-        });
+            }
+        );
+        if (!res.ok) {
+            throw new Error('Failed to update project decision');
+        }
     };
 
 
     const handleDeadlineChange = async (index, manualDeadline) => {
-        const res = await apiFetch(`${API}/projects/${index}/deadline`, {
+        const project = projects[index];
+        const res = await apiFetch(
+            project?.db_id
+                ? `${API}/projects/by-db-id/${encodeURIComponent(project.db_id)}/deadline`
+                : `${API}/projects/${index}/deadline`,
+            {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ manualDeadline }),
-        });
+            }
+        );
         if (!res.ok) throw new Error('Failed to update deadline');
         const updated = await res.json();
         setProjects((prev) => {
             const next = [...prev];
-            next[index] = updated;
+            next[index] = { ...updated, __rowId: prev[index]?.__rowId || updated.__rowId };
             return next;
         });
         if (selectedProjectIndex === index) {
-            setSelectedProject(updated);
+            setSelectedProject((prev) => ({ ...(prev || {}), ...updated, __rowId: prev?.__rowId || updated.__rowId }));
         }
     };
 
-    const handleDelete = async (index) => {
-        const res = await apiFetch(`${API}/projects/${index}`, { method: 'DELETE' });
+    const handleDelete = async (projectOrIndex, fallbackIndex = null) => {
+        const project = typeof projectOrIndex === 'object' && projectOrIndex !== null ? projectOrIndex : null;
+        const index = typeof projectOrIndex === 'number' ? projectOrIndex : fallbackIndex;
+        const dbId = project?.db_id;
+        const res = dbId
+            ? await apiFetch(`${API}/projects/by-db-id/${encodeURIComponent(dbId)}`, { method: 'DELETE' })
+            : await apiFetch(`${API}/projects/${index}`, { method: 'DELETE' });
         if (res.ok) {
-            setProjects((prev) => prev.filter((_, i) => i !== index));
-            if (selectedProjectIndex === index) {
+            setProjects((prev) => {
+                const next = dbId
+                    ? prev.filter((item) => item.db_id !== dbId)
+                    : prev.filter((_, i) => i !== index);
+                if (selectedProject?.db_id && dbId && selectedProject.db_id === dbId) {
+                    setSelectedProject(null);
+                    setSelectedProjectIndex(null);
+                    setCommentsOpen(false);
+                } else if (selectedProject?.db_id) {
+                    const nextIndex = next.findIndex((item) => item.db_id === selectedProject.db_id);
+                    setSelectedProjectIndex(nextIndex >= 0 ? nextIndex : null);
+                    if (nextIndex < 0) {
+                        setSelectedProject(null);
+                        setCommentsOpen(false);
+                    }
+                }
+                return next;
+            });
+        }
+    };
+
+    const handleBulkDelete = async (selectedProjects) => {
+        const projectDbIds = [...new Set((selectedProjects || []).map((project) => project?.db_id).filter(Boolean))];
+        if (!projectDbIds.length) {
+            for (const project of selectedProjects || []) {
+                const projectIndex = projects.findIndex((item) => item.__rowId === project.__rowId);
+                if (projectIndex >= 0) {
+                    // Fallback only when db_id is unavailable.
+                    // eslint-disable-next-line no-await-in-loop
+                    await handleDelete(project, projectIndex);
+                }
+            }
+            return;
+        }
+
+        const res = await apiFetch(`${API}/projects/bulk-delete`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ projectDbIds }),
+        });
+        if (!res.ok) throw new Error('Failed to delete selected projects');
+        const data = await res.json();
+        const deletedIds = new Set((data.deletedIds || []).map(String));
+        setProjects((prev) => {
+            const next = prev.filter((item) => !deletedIds.has(String(item.db_id)));
+            if (selectedProject?.db_id && deletedIds.has(String(selectedProject.db_id))) {
                 setSelectedProject(null);
                 setSelectedProjectIndex(null);
                 setCommentsOpen(false);
+            } else if (selectedProject?.db_id) {
+                const nextIndex = next.findIndex((item) => item.db_id === selectedProject.db_id);
+                setSelectedProjectIndex(nextIndex >= 0 ? nextIndex : null);
+                if (nextIndex < 0) {
+                    setSelectedProject(null);
+                    setCommentsOpen(false);
+                }
             }
-        }
+            return next;
+        });
     };
 
     const snapshotBeforeSync = useCallback(() => {
@@ -1557,9 +1847,10 @@ export default function App() {
         const prevIds = preSyncIdsRef.current;
         const res = await apiFetch(`${API}/projects`);
         const data = await res.json();
-        setProjects(data);
+        const normalized = attachProjectRowIds(Array.isArray(data) ? data : []);
+        setProjects(normalized);
         const newIds = new Set();
-        data.forEach((p) => {
+        normalized.forEach((p) => {
             const key = `${p.project_id}__${p.project_name}`;
             if (!prevIds.has(key)) newIds.add(key);
         });
@@ -1692,6 +1983,7 @@ export default function App() {
                                         allProjects={projects}
                                         onDecisionChange={handleDecisionChange}
                                         onDelete={handleDelete}
+                                        onBulkDelete={handleBulkDelete}
                                         regions={regions}
                                         chips={chips}
                                         onChipsChange={setChips}
@@ -1765,4 +2057,8 @@ export default function App() {
         </div>
     );
 }
+
+
+
+
 

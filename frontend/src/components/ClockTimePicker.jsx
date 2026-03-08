@@ -144,6 +144,8 @@ export default function ClockTimePicker({ hour: initHour, minute: initMinute, on
                 <div className="ctp-header">
                     <input
                         className={`ctp-input ${mode === 'hour' ? 'active' : ''}`}
+                        name="clockHour"
+                        aria-label="Hour"
                         value={editingH !== null ? editingH : pad(hour)}
                         onFocus={() => { setEditingH(pad(hour)); setMode('hour'); }}
                         onChange={(e) => setEditingH(e.target.value.replace(/[^0-9]/g, '').slice(0, 2))}
@@ -155,6 +157,8 @@ export default function ClockTimePicker({ hour: initHour, minute: initMinute, on
                     <span className="ctp-colon">:</span>
                     <input
                         className={`ctp-input ${mode === 'minute' ? 'active' : ''}`}
+                        name="clockMinute"
+                        aria-label="Minute"
                         value={editingM !== null ? editingM : pad(minute)}
                         onFocus={() => { setEditingM(pad(minute)); setMode('minute'); }}
                         onChange={(e) => setEditingM(e.target.value.replace(/[^0-9]/g, '').slice(0, 2))}
@@ -227,8 +231,8 @@ export default function ClockTimePicker({ hour: initHour, minute: initMinute, on
 
                 {/* Actions */}
                 <div className="ctp-actions">
-                    <button className="ctp-btn ctp-cancel" onClick={onCancel}>Cancel</button>
-                    <button className="ctp-btn ctp-confirm" onClick={() => onConfirm(hour, minute)}>
+                    <button type="button" className="ctp-btn ctp-cancel" onClick={onCancel}>Cancel</button>
+                    <button type="button" className="ctp-btn ctp-confirm" onClick={() => onConfirm(hour, minute)}>
                         Confirm {pad(hour)}:{pad(minute)}
                     </button>
                 </div>

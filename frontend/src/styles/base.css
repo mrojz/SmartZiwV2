@@ -93,6 +93,18 @@ body {
   background: radial-gradient(circle at 16% -12%, var(--bg-page-top) 0%, var(--bg-page) 56%);
 }
 
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 #root,
 .app {
   min-height: 100vh;
