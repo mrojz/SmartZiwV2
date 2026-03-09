@@ -64,8 +64,30 @@ SYNC_SECRET = os.getenv("SYNC_SECRET", str(uuid.uuid4()))
 UPLOADS_DIR = BASE_DIR / "uploads"
 UPLOADS_DIR.mkdir(exist_ok=True)
 
+
+def _load_persistent_secret(env_name: str, fallback_filename: str) -> str:
+    configured = (os.getenv(env_name, "") or "").strip()
+    if configured:
+        return configured
+
+    secret_path = BASE_DIR / fallback_filename
+    try:
+        if secret_path.exists():
+            existing = secret_path.read_text(encoding="utf-8").strip()
+            if existing:
+                return existing
+
+        generated = secrets.token_urlsafe(64)
+        secret_path.write_text(generated, encoding="utf-8")
+        print(f"[auth] Generated persistent {env_name} at {secret_path}")
+        return generated
+    except Exception as exc:
+        generated = secrets.token_urlsafe(64)
+        print(f"[auth] Warning: failed to persist {env_name} ({exc}); falling back to process-local secret.")
+        return generated
+
 # JWT config
-JWT_SECRET = os.getenv("JWT_SECRET", secrets.token_urlsafe(64))
+JWT_SECRET = _load_persistent_secret("JWT_SECRET", ".jwt_secret")
 JWT_ALGORITHM = "HS256"
 JWT_ACCESS_MINUTES = int(os.getenv("JWT_ACCESS_MINUTES", "60"))
 JWT_REFRESH_DAYS = int(os.getenv("JWT_REFRESH_DAYS", "7"))
