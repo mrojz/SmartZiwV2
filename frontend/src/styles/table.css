@@ -227,9 +227,6 @@
   box-shadow: var(--shadow-focus);
 }
 
-[data-theme='dark'] .col-filter-date::-webkit-calendar-picker-indicator {
-  filter: invert(0.8);
-}
 
 .col-filter-sep {
   color: var(--text-muted);

@@ -4,7 +4,7 @@ import ProjectTable from './components/ProjectTable';
 import SyncPanel from './components/SyncPanel';
 import ConfigPanel from './components/ConfigPanel';
 import SchedulePanel from './components/SchedulePanel';
-import { HomeLine, Shield01, User01, LogOut01, Menu02, Moon01, Sun, X, Mail01, Lock01, Edit01, Key01, UserX01, UserCheck01, SearchLg, Settings01, Clock, RefreshCw01 } from '@untitledui/icons';
+import { HomeLine, Shield01, User01, LogOut01, Menu02, X, Mail01, Lock01, Edit01, Key01, UserX01, UserCheck01, SearchLg, Settings01, Clock, RefreshCw01 } from '@untitledui/icons';
 import { Button } from '@/components/base/buttons/button';
 import { Input } from '@/components/base/input/input';
 import { InputBase } from '@/components/base/input/input';
@@ -1140,63 +1140,63 @@ function UserDrawer({ open, mode, initialUser, onClose, onSave, saving }) {
                         });
                     }}
                 >
-                <div className="modal-body">
-                    <div className="modal-grid-2col">
-                        <div className="auth-field">
-                            <label className="auth-label" htmlFor="ud-first">First name</label>
-                            <input id="ud-first" name="firstName" className="auth-input" placeholder="First name" value={firstName} onChange={(e) => setFirstName(e.target.value)} />
+                    <div className="modal-body">
+                        <div className="modal-grid-2col">
+                            <div className="auth-field">
+                                <label className="auth-label" htmlFor="ud-first">First name</label>
+                                <input id="ud-first" name="firstName" className="auth-input" placeholder="First name" value={firstName} onChange={(e) => setFirstName(e.target.value)} />
+                            </div>
+                            <div className="auth-field">
+                                <label className="auth-label" htmlFor="ud-last">Last name</label>
+                                <input id="ud-last" name="lastName" className="auth-input" placeholder="Last name" value={lastName} onChange={(e) => setLastName(e.target.value)} />
+                            </div>
                         </div>
+
                         <div className="auth-field">
-                            <label className="auth-label" htmlFor="ud-last">Last name</label>
-                            <input id="ud-last" name="lastName" className="auth-input" placeholder="Last name" value={lastName} onChange={(e) => setLastName(e.target.value)} />
+                            <label className="auth-label" htmlFor="ud-email">Email</label>
+                            <input id="ud-email" name="email" className="auth-input" type="email" placeholder="user@example.com" value={email} onChange={(e) => setEmail(e.target.value)} />
                         </div>
+
+                        <div className="modal-grid-2col">
+                            <div className="auth-field">
+                                <label className="auth-label" htmlFor="ud-role">Role</label>
+                                <select id="ud-role" name="role" className="auth-input" value={role} onChange={(e) => setRole(e.target.value)}>
+                                    <option value="user">User</option>
+                                    <option value="admin">Admin</option>
+                                </select>
+                            </div>
+                            <div className="auth-field">
+                                <label className="auth-label" htmlFor="ud-active">Status</label>
+                                <label className="modal-toggle-row" htmlFor="ud-active">
+                                    <input id="ud-active" name="isActive" type="checkbox" checked={isActive} onChange={(e) => setIsActive(e.target.checked)} />
+                                    <span className={`modal-toggle-label ${isActive ? 'active' : 'inactive'}`}>{isActive ? 'Active' : 'Disabled'}</span>
+                                </label>
+                            </div>
+                        </div>
+
+                        <div className="auth-field">
+                            <label className="auth-label" htmlFor="ud-avatar">Avatar URL</label>
+                            <input id="ud-avatar" name="avatarUrl" className="auth-input" placeholder="https://..." value={avatarUrl} onChange={(e) => setAvatarUrl(e.target.value)} />
+                        </div>
+
+                        {mode === 'create' && (
+                            <div className="auth-field">
+                                <label className="auth-label" htmlFor="ud-pwd">Temporary password <span style={{ fontWeight: 400, color: 'var(--text-muted)' }}>(optional, auto-generated if empty)</span></label>
+                                <input id="ud-pwd" name="temporaryPassword" className="auth-input" type="password" placeholder="Temporary password" autoComplete="new-password" value={tempPassword} onChange={(e) => setTempPassword(e.target.value)} />
+                            </div>
+                        )}
                     </div>
 
-                    <div className="auth-field">
-                        <label className="auth-label" htmlFor="ud-email">Email</label>
-                        <input id="ud-email" name="email" className="auth-input" type="email" placeholder="user@example.com" value={email} onChange={(e) => setEmail(e.target.value)} />
+                    <div className="modal-footer">
+                        <button type="button" className="profile-btn profile-btn-secondary" onClick={onClose}>Cancel</button>
+                        <button
+                            type="submit"
+                            className="profile-btn profile-btn-primary"
+                            disabled={saving || !email.trim()}
+                        >
+                            {saving ? 'Saving...' : mode === 'create' ? 'Create User' : 'Save Changes'}
+                        </button>
                     </div>
-
-                    <div className="modal-grid-2col">
-                        <div className="auth-field">
-                            <label className="auth-label" htmlFor="ud-role">Role</label>
-                            <select id="ud-role" name="role" className="auth-input" value={role} onChange={(e) => setRole(e.target.value)}>
-                                <option value="user">User</option>
-                                <option value="admin">Admin</option>
-                            </select>
-                        </div>
-                        <div className="auth-field">
-                            <label className="auth-label" htmlFor="ud-active">Status</label>
-                            <label className="modal-toggle-row" htmlFor="ud-active">
-                                <input id="ud-active" name="isActive" type="checkbox" checked={isActive} onChange={(e) => setIsActive(e.target.checked)} />
-                                <span className={`modal-toggle-label ${isActive ? 'active' : 'inactive'}`}>{isActive ? 'Active' : 'Disabled'}</span>
-                            </label>
-                        </div>
-                    </div>
-
-                    <div className="auth-field">
-                        <label className="auth-label" htmlFor="ud-avatar">Avatar URL</label>
-                        <input id="ud-avatar" name="avatarUrl" className="auth-input" placeholder="https://..." value={avatarUrl} onChange={(e) => setAvatarUrl(e.target.value)} />
-                    </div>
-
-                    {mode === 'create' && (
-                        <div className="auth-field">
-                            <label className="auth-label" htmlFor="ud-pwd">Temporary password <span style={{ fontWeight: 400, color: 'var(--text-muted)' }}>(optional, auto-generated if empty)</span></label>
-                            <input id="ud-pwd" name="temporaryPassword" className="auth-input" type="password" placeholder="Temporary password" autoComplete="new-password" value={tempPassword} onChange={(e) => setTempPassword(e.target.value)} />
-                        </div>
-                    )}
-                </div>
-
-                <div className="modal-footer">
-                    <button type="button" className="profile-btn profile-btn-secondary" onClick={onClose}>Cancel</button>
-                    <button
-                        type="submit"
-                        className="profile-btn profile-btn-primary"
-                        disabled={saving || !email.trim()}
-                    >
-                        {saving ? 'Saving...' : mode === 'create' ? 'Create User' : 'Save Changes'}
-                    </button>
-                </div>
                 </form>
             </div>
         </div>
@@ -1681,8 +1681,6 @@ export default function App() {
     const [route, setRoute] = useState(normalizeRoute(window.location.hash.replace('#', '')));
     const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
     const [mobileNavOpen, setMobileNavOpen] = useState(false);
-    const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'dark');
-
     const [commentsOpen, setCommentsOpen] = useState(false);
     const [selectedProject, setSelectedProject] = useState(null);
     const [selectedProjectIndex, setSelectedProjectIndex] = useState(null);
@@ -1785,11 +1783,7 @@ export default function App() {
         return () => window.removeEventListener('hashchange', onHash);
     }, []);
 
-    useEffect(() => {
-        document.documentElement.setAttribute('data-theme', theme);
-        document.documentElement.classList.toggle('dark-mode', theme === 'dark');
-        localStorage.setItem('theme', theme);
-    }, [theme]);
+
 
     useEffect(() => {
         if (!notificationAudioRef.current) {
@@ -2143,9 +2137,9 @@ export default function App() {
                 ? `${API}/projects/by-db-id/${encodeURIComponent(project.db_id)}/decision`
                 : `${API}/projects/${index}/decision`,
             {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ decision: nextDecision }),
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ decision: nextDecision }),
             }
         );
         if (!res.ok) {
@@ -2161,9 +2155,9 @@ export default function App() {
                 ? `${API}/projects/by-db-id/${encodeURIComponent(project.db_id)}/deadline`
                 : `${API}/projects/${index}/deadline`,
             {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ manualDeadline }),
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ manualDeadline }),
             }
         );
         if (!res.ok) throw new Error('Failed to update deadline');

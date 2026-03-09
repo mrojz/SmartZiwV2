@@ -61,10 +61,6 @@
   -webkit-backdrop-filter: blur(10px);
 }
 
-[data-theme='dark'] .table-toolbar {
-  background: linear-gradient(170deg, rgba(9, 24, 42, 0.7), var(--bg-surface));
-}
-
 .table-toolbar-row {
   display: flex;
   align-items: center;
