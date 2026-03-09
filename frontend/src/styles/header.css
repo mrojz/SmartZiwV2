@@ -10,10 +10,6 @@
   padding: 0 var(--sp-8);
 }
 
-[data-theme='dark'] .header {
-  background: linear-gradient(160deg, rgba(10, 24, 43, 0.8), var(--bg-surface));
-}
-
 .header-inner {
   max-width: 1480px;
   margin: 0 auto;
@@ -147,105 +143,6 @@
 .header-icon-btn:hover {
   border-color: var(--accent);
   color: var(--accent);
-}
-
-.theme-switch {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--sp-2);
-  cursor: pointer;
-  user-select: none;
-}
-
-.theme-switch input {
-  position: absolute;
-  opacity: 0;
-  pointer-events: none;
-}
-
-.theme-switch-track {
-  width: 46px;
-  height: 26px;
-  position: relative;
-  overflow: hidden;
-  border-radius: 999px;
-  background: var(--bg-muted);
-  border: 1px solid var(--border);
-  box-shadow: inset 0 0 0 1px rgba(31, 123, 246, 0.06);
-  display: inline-flex;
-  align-items: center;
-  transition: all 160ms ease;
-}
-
-.theme-switch-sun,
-.theme-switch-moon {
-  position: absolute;
-  top: 50%;
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  transform: translateY(-50%);
-  transition: transform 220ms ease, opacity 220ms ease, filter 220ms ease;
-  pointer-events: none;
-}
-
-.theme-switch-sun {
-  left: 6px;
-  background: #ffc54d;
-  box-shadow:
-    0 0 0 2px rgba(255, 197, 77, 0.2),
-    0 0 8px rgba(255, 197, 77, 0.55);
-  opacity: 1;
-}
-
-.theme-switch-moon {
-  right: 7px;
-  background: #d9e7ff;
-  box-shadow: inset -2px -1px 0 rgba(161, 184, 224, 0.8);
-  opacity: 0.45;
-  transform: translateY(-50%) scale(0.86);
-}
-
-.theme-switch-thumb {
-  width: 20px;
-  height: 20px;
-  position: absolute;
-  top: 2px;
-  left: 2px;
-  border-radius: 50%;
-  background: var(--bg-surface);
-  border: 1px solid var(--border);
-  box-shadow: 0 1px 6px rgba(11, 33, 68, 0.24);
-  transition: transform 220ms ease, border-color 220ms ease, background-color 220ms ease;
-}
-
-.theme-switch input:checked + .theme-switch-track {
-  background: rgba(31, 123, 246, 0.2);
-  border-color: rgba(31, 123, 246, 0.45);
-}
-
-.theme-switch input:checked + .theme-switch-track .theme-switch-thumb {
-  transform: translateX(19px);
-  border-color: rgba(31, 123, 246, 0.35);
-}
-
-.theme-switch input:checked + .theme-switch-track .theme-switch-sun {
-  opacity: 0.45;
-  transform: translateY(-50%) scale(0.86);
-  filter: saturate(0.75);
-}
-
-.theme-switch input:checked + .theme-switch-track .theme-switch-moon {
-  opacity: 1;
-  transform: translateY(-50%) scale(1);
-}
-
-.theme-switch-label {
-  font-size: 0.82rem;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--text-muted);
 }
 
 @media (max-width: 1120px) {

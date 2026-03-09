@@ -58,38 +58,19 @@
   line-height: 1.6;
   color: var(--text-primary);
   background: var(--bg-page);
+  color-scheme: light;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-[data-theme='dark'] {
-  --bg-page: #071324;
-  --bg-page-top: #0a1b32;
-  --bg-surface: rgba(17, 34, 58, 0.82);
-  --bg-muted: #0f233d;
-  --bg-hover: #143056;
-  --bg-zebra: #0a2038;
-  --border: #26496f;
-  --border-light: #1b3a5d;
-  --text-primary: #eff7ff;
-  --text-secondary: #c3d7ef;
-  --text-muted: #90a9c7;
-  --accent: #58abff;
-  --accent-soft: rgba(88, 171, 255, 0.2);
-  --accent-hover: #78bbff;
-  --green-bg: rgba(15, 143, 99, 0.2);
-  --green-border: rgba(125, 225, 187, 0.35);
-  --red-bg: rgba(199, 56, 79, 0.22);
-  --red-border: rgba(250, 198, 208, 0.32);
-  --amber-bg: rgba(193, 122, 19, 0.2);
-  --amber-border: rgba(247, 223, 179, 0.3);
-  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.28);
-  --shadow-sm: 0 10px 26px rgba(0, 0, 0, 0.35);
-  --shadow-md: 0 20px 42px rgba(0, 0, 0, 0.42);
+html {
+  color-scheme: light;
+  background: var(--bg-page);
 }
 
 body {
   min-height: 100vh;
+  color-scheme: light;
   background: radial-gradient(circle at 16% -12%, var(--bg-page-top) 0%, var(--bg-page) 56%);
 }
 

@@ -153,7 +153,3 @@
   color: var(--text-muted);
   font-size: 0.8rem;
 }
-
-[data-theme='dark'] .filter-date-input::-webkit-calendar-picker-indicator {
-  filter: invert(0.8);
-}

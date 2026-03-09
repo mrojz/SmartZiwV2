@@ -40,36 +40,6 @@
   --src-ag-border: #f2dea7;
 }
 
-[data-theme='dark'] {
-  --src-iadb-bg: rgba(71, 149, 255, 0.15);
-  --src-iadb-text: #9fc7ff;
-  --src-iadb-border: rgba(71, 149, 255, 0.42);
-
-  --src-wb-bg: rgba(110, 101, 255, 0.16);
-  --src-wb-text: #c0bcff;
-  --src-wb-border: rgba(110, 101, 255, 0.44);
-
-  --src-gt-bg: rgba(17, 188, 157, 0.15);
-  --src-gt-text: #85efd8;
-  --src-gt-border: rgba(17, 188, 157, 0.4);
-
-  --src-giz-bg: rgba(245, 147, 73, 0.16);
-  --src-giz-text: #ffd0a4;
-  --src-giz-border: rgba(245, 147, 73, 0.42);
-
-  --src-devaid-bg: rgba(162, 95, 255, 0.16);
-  --src-devaid-text: #d9bbff;
-  --src-devaid-border: rgba(162, 95, 255, 0.42);
-
-  --src-dgm-bg: rgba(245, 88, 131, 0.16);
-  --src-dgm-text: #ffb5cc;
-  --src-dgm-border: rgba(245, 88, 131, 0.42);
-
-  --src-ag-bg: rgba(245, 189, 88, 0.16);
-  --src-ag-text: #ffd68d;
-  --src-ag-border: rgba(245, 189, 88, 0.42);
-}
-
 .badge-source {
   border: 1px solid var(--border-light);
   background: #fff;
