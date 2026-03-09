@@ -63,6 +63,18 @@ const TIMEZONES = [
     { value: 14, label: 'UTC+14' },
 ];
 
+function setModalScrollLock(locked) {
+    if (typeof document === 'undefined') return;
+    const body = document.body;
+    const html = document.documentElement;
+    const current = Number(body.dataset.modalLockCount || '0');
+    const next = locked ? current + 1 : Math.max(0, current - 1);
+    body.dataset.modalLockCount = String(next);
+    const shouldLock = next > 0;
+    body.classList.toggle('modal-scroll-locked', shouldLock);
+    html.classList.toggle('modal-scroll-locked', shouldLock);
+}
+
 function computeTimeUntil(hour, minute, frequency, dayOfWeek) {
     const now = new Date();
     const target = new Date(now);
@@ -89,6 +101,55 @@ function computeTimeUntil(hour, minute, frequency, dayOfWeek) {
     if (hours > 0) parts.push(`${hours}h`);
     if (mins > 0) parts.push(`${mins}m`);
     return parts.join(' ');
+}
+
+function formatUtcOffsetLabel(offset) {
+    const value = Number(offset) || 0;
+    const sign = value >= 0 ? '+' : '-';
+    const abs = Math.abs(value);
+    const hours = Math.floor(abs);
+    const minutes = Math.round((abs - hours) * 60);
+    if (minutes === 0) return `UTC${sign}${hours}`;
+    return `UTC${sign}${hours}:${String(minutes).padStart(2, '0')}`;
+}
+
+function convertToServerSchedule(hour, minute, selectedOffset, serverOffset, frequency, dayOfWeek) {
+    let totalMinutes = (Number(hour) * 60) + Number(minute) + ((Number(serverOffset) - Number(selectedOffset)) * 60);
+    let dayShift = 0;
+
+    while (totalMinutes < 0) {
+        totalMinutes += 1440;
+        dayShift -= 1;
+    }
+    while (totalMinutes >= 1440) {
+        totalMinutes -= 1440;
+        dayShift += 1;
+    }
+
+    const dayOrder = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
+    const dayLabels = {
+        mon: 'Monday',
+        tue: 'Tuesday',
+        wed: 'Wednesday',
+        thu: 'Thursday',
+        fri: 'Friday',
+        sat: 'Saturday',
+        sun: 'Sunday',
+    };
+    const result = {
+        hour: Math.floor(totalMinutes / 60),
+        minute: totalMinutes % 60,
+        dayLabel: '',
+        dayShift,
+    };
+
+    if (frequency === 'weekly') {
+        const currentIndex = dayOrder.indexOf(dayOfWeek);
+        const nextIndex = currentIndex === -1 ? 0 : (currentIndex + dayShift + 7) % 7;
+        result.dayLabel = dayLabels[dayOrder[nextIndex]];
+    }
+
+    return result;
 }
 
 function formatCountdown(ms) {
@@ -162,6 +223,7 @@ export default function SchedulePanel({ open, onClose, apiFetch }) {
 
     const [serverTime, setServerTime] = useState(null);
     const [serverOffset, setServerOffset] = useState(0);
+    const [serverTimezoneOffset, setServerTimezoneOffset] = useState(0);
     const [countdown, setCountdown] = useState(null);
     const timerRef = useRef(null);
 
@@ -211,7 +273,7 @@ export default function SchedulePanel({ open, onClose, apiFetch }) {
                 liveLogIndexRef.current = nextIndex;
                 setLiveLogs((prev) => [...prev, data.message]);
             } else if (data.type === 'done') {
-                stopSyncStream(true);
+                stopSyncStream(false);
                 apiFetch('/api/schedule/logs')
                     .then((r) => (r.ok ? r.json() : []))
                     .then((fresh) => setLogs(Array.isArray(fresh) ? fresh : []))
@@ -240,7 +302,10 @@ export default function SchedulePanel({ open, onClose, apiFetch }) {
             return;
         }
 
-        stopSyncStream(true);
+        if (lines.length > 0) {
+            hydrateLiveLogs(lines);
+        }
+        stopSyncStream(false);
     };
 
     const loadScheduleData = async () => {
@@ -280,6 +345,7 @@ export default function SchedulePanel({ open, onClose, apiFetch }) {
             const localMs = Date.now();
             setServerOffset(serverMs - localMs);
             setServerTime(serverMs);
+            setServerTimezoneOffset(Number(timeData.server_timezone_offset_hours ?? 0));
 
             setLogs(Array.isArray(logsData) ? logsData : []);
             syncFromStatus(statusData);
@@ -296,6 +362,12 @@ export default function SchedulePanel({ open, onClose, apiFetch }) {
             return;
         }
         loadScheduleData();
+    }, [open]);
+
+    useEffect(() => {
+        if (!open) return undefined;
+        setModalScrollLock(true);
+        return () => setModalScrollLock(false);
     }, [open]);
 
     useEffect(() => {
@@ -398,6 +470,18 @@ export default function SchedulePanel({ open, onClose, apiFetch }) {
 
     const tzLabel = TIMEZONES.find((tz) => tz.value === schedule.timezone)?.label || `UTC+${schedule.timezone}`;
     const timeUntilStr = computeTimeUntil(schedule.hour, schedule.minute, schedule.frequency, schedule.day_of_week);
+    const translatedServerSchedule = convertToServerSchedule(
+        schedule.hour,
+        schedule.minute,
+        schedule.timezone,
+        serverTimezoneOffset,
+        schedule.frequency,
+        schedule.day_of_week,
+    );
+    const serverExecutionTime = `${String(translatedServerSchedule.hour).padStart(2, '0')}:${String(translatedServerSchedule.minute).padStart(2, '0')}`;
+    const serverExecutionLabel = translatedServerSchedule.dayLabel
+        ? `${translatedServerSchedule.dayLabel} at ${serverExecutionTime}`
+        : serverExecutionTime;
     const selectedSourceCount = SOURCE_LIST.filter((src) => schedule.sources?.[src.key] ?? true).length;
 
     return (
@@ -424,17 +508,17 @@ export default function SchedulePanel({ open, onClose, apiFetch }) {
                         </div>
                     ) : (
                         <>
-                            {syncRunning && (
+                            {(syncRunning || liveLogs.length > 0) && (
                                 <div className="schedule-ongoing sync-card">
                                     <div className="schedule-ongoing-header">
                                         <span className="btn-spinner" />
-                                        Sync in progress...
+                                        {syncRunning ? 'Sync in progress...' : 'Recent sync output'}
                                     </div>
                                     <pre className="schedule-ongoing-output">
                                         {liveLogs.length > 0
                                             ? liveLogs.slice(-30).join('\n')
                                             : 'Waiting for output...'}
-                                        <div ref={liveLogEndRef} />
+                                        <span ref={liveLogEndRef} />
                                     </pre>
                                 </div>
                             )}
@@ -560,6 +644,9 @@ export default function SchedulePanel({ open, onClose, apiFetch }) {
                                 <div className="schedule-time-preview">
                                     <span className="meta-icon" aria-hidden="true">i</span> Runs in <strong>{timeUntilStr}</strong> <span className="schedule-tz-note">({tzLabel})</span>
                                 </div>
+                                <div className="schedule-time-preview">
+                                    <span className="meta-icon" aria-hidden="true">i</span> Executes on the server at <strong>{serverExecutionLabel}</strong> <span className="schedule-tz-note">({formatUtcOffsetLabel(serverTimezoneOffset)} server time)</span>
+                                </div>
                             </div>
 
                             <div className="sync-card">
@@ -657,7 +744,7 @@ export default function SchedulePanel({ open, onClose, apiFetch }) {
                                                     </span>
                                                     <span className="schedule-log-date">{formatDateTime(log.started_at)}</span>
                                                     <span className="schedule-log-duration">{formatDuration(log.started_at, log.finished_at)}</span>
-                                                    <span className="schedule-log-projects">{log.project_count ?? '?'} projects</span>
+                                                    <span className="schedule-log-projects">{log.new_project_count ?? log.summary?.new_projects ?? 0} new</span>
                                                     <span className="schedule-log-expand">{expandedLog === i ? '-' : '+'}</span>
                                                 </div>
                                                 {expandedLog === i && (
@@ -699,13 +786,20 @@ export default function SchedulePanel({ open, onClose, apiFetch }) {
 
                 <div className="sync-footer">
                     <div className="sync-footer-meta">
-                        <span>{schedule.enabled ? 'Schedule enabled' : 'Schedule disabled'}</span>
+                        <div className="sync-footer-copy">
+                            <strong>{schedule.enabled ? 'Schedule enabled' : 'Schedule disabled'}</strong>
+                            <span>
+                                {schedule.enabled && nextRun
+                                    ? `Next run ${formatDateTime(nextRun)}`
+                                    : `${selectedSourceCount} source${selectedSourceCount === 1 ? '' : 's'} configured`}
+                            </span>
+                        </div>
                     </div>
                     <div className="sync-footer-actions">
-                        <Button color="secondary" onPress={onClose} isDisabled={saving}>Close</Button>
+                        <Button color="secondary" className="sync-footer-btn sync-footer-btn-secondary" onPress={onClose} isDisabled={saving}>Close</Button>
                         <Button
                             color="primary"
-                            className="sync-primary-btn"
+                            className="sync-footer-btn sync-primary-btn"
                             onPress={handleSave}
                             isDisabled={saving || !!loadError}
                             isLoading={saving}

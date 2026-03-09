@@ -321,6 +321,7 @@ def get_schedule() -> dict:
     if doc:
         doc.pop('_id', None)
         doc.pop('_type', None)
+        doc.setdefault('timezone', 0)
         return doc
     return {
         'enabled': False,
@@ -338,6 +339,7 @@ def get_schedule() -> dict:
         },
         'no_ai': False,
         'include_expired': False,
+        'timezone': 0,
     }
 
 

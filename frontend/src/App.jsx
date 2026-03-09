@@ -4,7 +4,7 @@ import ProjectTable from './components/ProjectTable';
 import SyncPanel from './components/SyncPanel';
 import ConfigPanel from './components/ConfigPanel';
 import SchedulePanel from './components/SchedulePanel';
-import { HomeLine, Shield01, User01, LogOut01, Menu02, Moon01, Sun, X, Mail01, Lock01, Edit01, Key01, UserX01, UserCheck01, SearchLg } from '@untitledui/icons';
+import { HomeLine, Shield01, User01, LogOut01, Menu02, Moon01, Sun, X, Mail01, Lock01, Edit01, Key01, UserX01, UserCheck01, SearchLg, Settings01, Clock, RefreshCw01 } from '@untitledui/icons';
 import { Button } from '@/components/base/buttons/button';
 import { Input } from '@/components/base/input/input';
 import { InputBase } from '@/components/base/input/input';
@@ -16,6 +16,14 @@ import { Table } from '@/components/application/table/table';
 import { Dropdown } from '@/components/base/dropdown/dropdown';
 
 const API = '/api';
+
+function buildNotificationStreamUrl() {
+    const token = localStorage.getItem('pw_access_token');
+    const params = new URLSearchParams();
+    if (token) params.set('access_token', token);
+    const query = params.toString();
+    return query ? `${API}/notifications/stream?${query}` : `${API}/notifications/stream`;
+}
 
 function normalizeRoute(rawRoute = '') {
     return rawRoute === 'comments' ? 'dashboard' : (rawRoute || 'dashboard');
@@ -107,6 +115,157 @@ function toInputDate(value) {
         return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
     }
     return '';
+}
+
+function setModalScrollLock(locked) {
+    if (typeof document === 'undefined') return;
+    const body = document.body;
+    const html = document.documentElement;
+    const current = Number(body.dataset.modalLockCount || '0');
+    const next = locked ? current + 1 : Math.max(0, current - 1);
+    body.dataset.modalLockCount = String(next);
+    const shouldLock = next > 0;
+    body.classList.toggle('modal-scroll-locked', shouldLock);
+    html.classList.toggle('modal-scroll-locked', shouldLock);
+}
+
+const BOOLEAN_QUERY_FIELDS = new Set(['source', 'decision', 'region', 'continent', 'verified', 'ai', 'country', 'keyword', 'signals', 'id', 'published_date', 'deadline', 'last_scraped']);
+
+function tokenizeBooleanQuery(input) {
+    const source = String(input || '');
+    const tokens = [];
+    let index = 0;
+
+    while (index < source.length) {
+        const char = source[index];
+        if (/\s/.test(char)) {
+            index += 1;
+            continue;
+        }
+        if (char === '(') {
+            tokens.push({ type: 'LPAREN' });
+            index += 1;
+            continue;
+        }
+        if (char === ')') {
+            tokens.push({ type: 'RPAREN' });
+            index += 1;
+            continue;
+        }
+
+        const operatorMatch = source.slice(index).match(/^(AND|OR|NOT)\b/i);
+        if (operatorMatch) {
+            tokens.push({ type: operatorMatch[1].toUpperCase() });
+            index += operatorMatch[0].length;
+            continue;
+        }
+
+        const fieldMatch = source.slice(index).match(/^([a-z_][a-z0-9_]*)\s*:/i);
+        if (!fieldMatch) {
+            throw new Error(`Unexpected token near "${source.slice(index, index + 16)}"`);
+        }
+
+        const field = fieldMatch[1].toLowerCase();
+        if (!BOOLEAN_QUERY_FIELDS.has(field)) {
+            throw new Error(`Unknown field "${field}"`);
+        }
+        index += fieldMatch[0].length;
+
+        while (index < source.length && /\s/.test(source[index])) index += 1;
+
+        let value = '';
+        if (source[index] === '"') {
+            index += 1;
+            const start = index;
+            while (index < source.length && source[index] !== '"') index += 1;
+            if (index >= source.length) throw new Error('Missing closing quote in advanced query');
+            value = source.slice(start, index);
+            index += 1;
+        } else {
+            const start = index;
+            while (index < source.length && !/[\s()]/.test(source[index])) index += 1;
+            value = source.slice(start, index);
+        }
+
+        const normalizedValue = value.trim();
+        if (!normalizedValue) throw new Error(`Missing value for "${field}"`);
+        tokens.push({ type: 'CONDITION', field, value: normalizedValue });
+    }
+
+    return tokens;
+}
+
+function parseBooleanQuery(input) {
+    const tokens = tokenizeBooleanQuery(input);
+    let cursor = 0;
+
+    const peek = () => tokens[cursor];
+    const consume = (type) => {
+        const token = tokens[cursor];
+        if (!token || token.type !== type) {
+            throw new Error(type === 'RPAREN' ? 'Missing closing parenthesis' : `Expected ${type}`);
+        }
+        cursor += 1;
+        return token;
+    };
+
+    const parsePrimary = () => {
+        const token = peek();
+        if (!token) throw new Error('Incomplete expression');
+        if (token.type === 'CONDITION') {
+            cursor += 1;
+            return { type: 'condition', field: token.field, value: token.value };
+        }
+        if (token.type === 'LPAREN') {
+            consume('LPAREN');
+            const expression = parseOr();
+            consume('RPAREN');
+            return expression;
+        }
+        throw new Error(`Unexpected token "${token.type}"`);
+    };
+
+    const parseUnary = () => {
+        if (peek()?.type === 'NOT') {
+            consume('NOT');
+            return { type: 'not', node: parseUnary() };
+        }
+        return parsePrimary();
+    };
+
+    const parseAnd = () => {
+        let node = parseUnary();
+        while (peek()?.type === 'AND') {
+            consume('AND');
+            node = { type: 'and', left: node, right: parseUnary() };
+        }
+        return node;
+    };
+
+    const parseOr = () => {
+        let node = parseAnd();
+        while (peek()?.type === 'OR') {
+            consume('OR');
+            node = { type: 'or', left: node, right: parseAnd() };
+        }
+        return node;
+    };
+
+    if (!tokens.length) return null;
+    const ast = parseOr();
+    if (cursor < tokens.length) {
+        throw new Error(`Unexpected token "${tokens[cursor].type}"`);
+    }
+    return ast;
+}
+
+function evaluateBooleanQuery(ast, evaluateCondition) {
+    if (!ast) return true;
+    if (ast.type === 'condition') return evaluateCondition(ast);
+    if (ast.type === 'not') return !evaluateBooleanQuery(ast.node, evaluateCondition);
+    if (ast.type === 'and') return evaluateBooleanQuery(ast.left, evaluateCondition) && evaluateBooleanQuery(ast.right, evaluateCondition);
+    if (ast.type === 'or') return evaluateBooleanQuery(ast.left, evaluateCondition) || evaluateBooleanQuery(ast.right, evaluateCondition);
+    return true;
 }
 
 function Avatar({ user, size = 34 }) {
@@ -219,14 +378,16 @@ function ForcePasswordPage({ onSubmit, error }) {
     );
 }
 
-function PageHeader({ title, subtitle, action }) {
+function PageHeader({ title, subtitle, action, className = '' }) {
     return (
-        <div className="layout-page-header">
-            <div className="layout-page-header-copy">
-                <h1 className="layout-page-title">{title}</h1>
-                {subtitle ? <p className="layout-page-subtitle">{subtitle}</p> : null}
+        <div className={`layout-page-header ${className}`.trim()}>
+            <div className="layout-page-title-row">
+                <div className="layout-page-header-copy">
+                    <h1 className="layout-page-title">{title}</h1>
+                </div>
+                {action ? <div className="layout-page-header-action">{action}</div> : null}
             </div>
-            {action ? <div className="layout-page-header-action">{action}</div> : null}
+            {subtitle ? <p className="layout-page-subtitle">{subtitle}</p> : null}
         </div>
     );
 }
@@ -262,7 +423,7 @@ function Sidebar({ user, route, onNavigate, collapsed, mobileOpen, onToggleColla
                         </div>
                         {!collapsed ? (
                             <div className="layout-brand-copy">
-                                <span className="layout-brand-kicker">Workspace</span>
+                                <span className="layout-brand-kicker">Forvis Mazars</span>
                                 <span className="layout-brand-name">Procurement Watch</span>
                             </div>
                         ) : null}
@@ -306,41 +467,6 @@ function Sidebar({ user, route, onNavigate, collapsed, mobileOpen, onToggleColla
                 </div>
             </div>
         </aside>
-    );
-}
-
-function TopBar({ onOpenMobile, theme, onToggleTheme, user }) {
-    return (
-        <header className="layout-topbar">
-            <div className="layout-shell-container layout-topbar-inner">
-                <div className="layout-topbar-left">
-                    <button className="header-icon-btn layout-mobile-menu" onClick={onOpenMobile} aria-label="Open sidebar menu">
-                        <Menu02 className="layout-topbar-icon" />
-                    </button>
-                    <div className="layout-topbar-workspace">
-                        <span className="layout-topbar-kicker">Workspace</span>
-                        <span className="layout-topbar-name">Procurement Watch</span>
-                    </div>
-                </div>
-                <div className="layout-topbar-right">
-                    {/*<button
-                        className="header-icon-btn theme-toggle-btn"
-                        onClick={onToggleTheme}
-                        title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
-                        aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
-                    >
-                        {theme === 'dark' ? <Sun className="layout-topbar-icon" /> : <Moon01 className="layout-topbar-icon" />}
-                    </button>*/}
-                    <div className="layout-topbar-user">
-                        <Avatar user={user} size={34} />
-                        <div className="layout-topbar-user-copy">
-                            <strong>{user?.name}</strong>
-                            <span>{user?.role}</span>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </header>
     );
 }
 function CommentsPanel({ open, entity, project, projectRegion, comments, mine, setMine, body, setBody, onSubmit, onClose, currentUser, apiFetch, onDecisionChange, onDeadlineSave }) {
@@ -910,6 +1036,12 @@ function UserDrawer({ open, mode, initialUser, onClose, onSave, saving }) {
         setIsActive(initialUser?.isActive ?? true);
     }, [open, initialUser]);
 
+    useEffect(() => {
+        if (!open) return undefined;
+        setModalScrollLock(true);
+        return () => setModalScrollLock(false);
+    }, [open]);
+
     if (!open) return null;
 
     return (
@@ -999,6 +1131,11 @@ function UserDrawer({ open, mode, initialUser, onClose, onSave, saving }) {
 function ResetPasswordModal({ open, user, onClose, onReset, saving, result }) {
     const [password, setPassword] = useState('');
     useEffect(() => { if (open) setPassword(''); }, [open]);
+    useEffect(() => {
+        if (!open) return undefined;
+        setModalScrollLock(true);
+        return () => setModalScrollLock(false);
+    }, [open]);
     if (!open || !user) return null;
 
     return (
@@ -1435,6 +1572,20 @@ export default function App() {
     const [continents, setContinents] = useState([]);
     const [chips, setChips] = useState([]);
     const [freeText, setFreeText] = useState('');
+    const [advancedQuery, setAdvancedQuery] = useState(() => {
+        try {
+            return sessionStorage.getItem('pw_advanced_query') || '';
+        } catch {
+            return '';
+        }
+    });
+    const [advancedQueryEnabled, setAdvancedQueryEnabled] = useState(() => {
+        try {
+            return sessionStorage.getItem('pw_advanced_query_enabled') === '1';
+        } catch {
+            return false;
+        }
+    });
     const [source, setSource] = useState('');
     const [verified, setVerified] = useState('Yes');
     const [region, setRegion] = useState('');
@@ -1467,6 +1618,18 @@ export default function App() {
     const [configOpen, setConfigOpen] = useState(false);
     const [scheduleOpen, setScheduleOpen] = useState(false);
     const preSyncIdsRef = useRef(new Set());
+    const notificationAudioRef = useRef(null);
+    const notificationStreamRef = useRef(null);
+    const notificationAudioUnlockedRef = useRef(false);
+
+    useEffect(() => {
+        try {
+            sessionStorage.setItem('pw_advanced_query', advancedQuery);
+            sessionStorage.setItem('pw_advanced_query_enabled', advancedQueryEnabled ? '1' : '0');
+        } catch {
+            // Ignore sessionStorage access issues.
+        }
+    }, [advancedQuery, advancedQueryEnabled]);
 
     const apiFetch = useCallback(async (url, opts = {}, _isRetry = false) => {
         const headers = { ...(opts.headers || {}) };
@@ -1553,6 +1716,97 @@ export default function App() {
         localStorage.setItem('theme', theme);
     }, [theme]);
 
+    useEffect(() => {
+        if (!notificationAudioRef.current) {
+            const audio = new Audio('/notif.mp3');
+            audio.preload = 'auto';
+            notificationAudioRef.current = audio;
+        }
+    }, []);
+
+    useEffect(() => {
+        if (!authUser || authUser.mustChangePassword || notificationAudioUnlockedRef.current) return undefined;
+
+        const unlockAudio = () => {
+            const audio = notificationAudioRef.current;
+            if (!audio || notificationAudioUnlockedRef.current) return;
+            try {
+                audio.muted = true;
+                const playPromise = audio.play();
+                if (playPromise?.then) {
+                    playPromise
+                        .then(() => {
+                            audio.pause();
+                            audio.currentTime = 0;
+                            audio.muted = false;
+                            notificationAudioUnlockedRef.current = true;
+                        })
+                        .catch(() => {
+                            audio.muted = false;
+                        });
+                } else {
+                    audio.pause();
+                    audio.currentTime = 0;
+                    audio.muted = false;
+                    notificationAudioUnlockedRef.current = true;
+                }
+            } catch {
+                audio.muted = false;
+            }
+        };
+
+        const opts = { capture: true, passive: true };
+        window.addEventListener('pointerdown', unlockAudio, opts);
+        window.addEventListener('keydown', unlockAudio, true);
+        window.addEventListener('touchstart', unlockAudio, opts);
+
+        return () => {
+            window.removeEventListener('pointerdown', unlockAudio, opts);
+            window.removeEventListener('keydown', unlockAudio, true);
+            window.removeEventListener('touchstart', unlockAudio, opts);
+        };
+    }, [authUser]);
+
+    useEffect(() => {
+        if (notificationStreamRef.current) {
+            notificationStreamRef.current.close();
+            notificationStreamRef.current = null;
+        }
+        if (!authUser || authUser.mustChangePassword) return undefined;
+
+        const eventSource = new EventSource(buildNotificationStreamUrl());
+        notificationStreamRef.current = eventSource;
+
+        eventSource.onmessage = (event) => {
+            try {
+                const data = JSON.parse(event.data);
+                if (data?.type !== 'new_projects' || !(data?.count > 0)) return;
+                if (document.visibilityState !== 'visible' || !document.hasFocus()) return;
+                const audio = notificationAudioRef.current;
+                if (!audio) return;
+                audio.currentTime = 0;
+                audio.play().catch(() => {
+                    notificationAudioUnlockedRef.current = false;
+                });
+            } catch {
+                // Ignore malformed notification payloads.
+            }
+        };
+
+        eventSource.onerror = () => {
+            // Let EventSource handle automatic reconnects; no-op here.
+        };
+
+        return () => {
+            if (notificationStreamRef.current === eventSource) {
+                eventSource.close();
+                notificationStreamRef.current = null;
+            } else {
+                eventSource.close();
+            }
+        };
+    }, [authUser]);
+
     const loadProjects = useCallback(async () => {
         const res = await apiFetch(`${API}/projects`);
         const data = await res.json();
@@ -1619,6 +1873,16 @@ export default function App() {
         }
         return '';
     }, [regions]);
+
+    const advancedQueryResult = useMemo(() => {
+        const query = advancedQuery.trim();
+        if (!advancedQueryEnabled || !query) return { ast: null, error: '' };
+        try {
+            return { ast: parseBooleanQuery(query), error: '' };
+        } catch (error) {
+            return { ast: null, error: error.message || 'Invalid advanced query' };
+        }
+    }, [advancedQuery, advancedQueryEnabled]);
 
     const filtered = useMemo(() => {
         const ft = freeText.toLowerCase();
@@ -1698,15 +1962,84 @@ export default function App() {
             const scrapedAt = parseFilterDate(p.scraped_at);
             if (scrapedFromDate && (!scrapedAt || scrapedAt < scrapedFromDate)) return false;
             if (scrapedToDate && (!scrapedAt || scrapedAt > scrapedToDate)) return false;
+            if (advancedQueryEnabled && advancedQuery.trim() && !advancedQueryResult.error) {
+                const projectRegions = (p.region_names || []).map((name) => String(name).toLowerCase());
+                const projectContinents = [
+                    ...(p.continent_codes || []).map((code) => String(code).toLowerCase()),
+                    ...(p.continent_names_en || []).map((name) => String(name).toLowerCase()),
+                    ...(p.continent_names_fr || []).map((name) => String(name).toLowerCase()),
+                ];
+                const projectCountries = [
+                    ...(p.country_names_en || []).map((name) => String(name).toLowerCase()),
+                    ...(p.country_names_fr || []).map((name) => String(name).toLowerCase()),
+                    String(p.project_sponsor || '').toLowerCase(),
+                ];
+                const projectKeywords = String(p.matched_keywords || '')
+                    .split(',')
+                    .map((keywordValue) => keywordValue.trim().toLowerCase())
+                    .filter(Boolean);
+                const isVerified = p.ai_verified === 'Yes';
+                const normalizedDecision = p.decision ? String(p.decision).toLowerCase() : 'undecided';
+                const matchesAdvancedCondition = ({ field, value }) => {
+                    const queryValue = String(value || '').toLowerCase();
+                    switch (field) {
+                        case 'source':
+                            return String(p.source || '').toLowerCase().includes(queryValue);
+                        case 'decision':
+                            return normalizedDecision === queryValue;
+                        case 'region':
+                            return projectRegions.some((regionValue) => regionValue.includes(queryValue));
+                        case 'continent':
+                        case 'country':
+                            return (field === 'continent' ? projectContinents : projectCountries)
+                                .some((entry) => entry.includes(queryValue));
+                        case 'verified':
+                        case 'ai': {
+                            const positive = ['yes', 'true', 'verified', '1'];
+                            const negative = ['no', 'false', 'unverified', '0'];
+                            if (positive.includes(queryValue)) return isVerified;
+                            if (negative.includes(queryValue)) return !isVerified;
+                            return false;
+                        }
+                        case 'keyword':
+                        case 'signals':
+                            return projectKeywords.some((keywordValue) => keywordValue.includes(queryValue));
+                        case 'id':
+                            return String(p.project_id || '').toLowerCase().includes(queryValue);
+                        case 'published_date':
+                            return [
+                                String(p.project_start_date || '').toLowerCase(),
+                                formatDisplayDate(p.project_start_date).toLowerCase(),
+                            ].some((entry) => entry.includes(queryValue));
+                        case 'deadline': {
+                            const deadlineValue = p.effective_deadline || p.manual_deadline || p.scraped_deadline || p.project_end_date || '';
+                            return [
+                                String(deadlineValue).toLowerCase(),
+                                formatDisplayDate(deadlineValue).toLowerCase(),
+                            ].some((entry) => entry.includes(queryValue));
+                        }
+                        case 'last_scraped':
+                            return [
+                                String(p.scraped_at || '').toLowerCase(),
+                                formatDisplayDate(p.scraped_at).toLowerCase(),
+                            ].some((entry) => entry.includes(queryValue));
+                        default:
+                            return false;
+                    }
+                };
+                if (!evaluateBooleanQuery(advancedQueryResult.ast, matchesAdvancedCondition)) return false;
+            }
             return true;
         });
-    }, [projects, chips, freeText, source, verified, region, continent, regions, decision, endDateFrom, endDateTo, scrapedFrom, scrapedTo, getRegion]);
+    }, [projects, chips, freeText, source, verified, region, continent, regions, decision, endDateFrom, endDateTo, scrapedFrom, scrapedTo, getRegion, advancedQueryEnabled, advancedQuery, advancedQueryResult]);
 
     const sources = useMemo(() => [...new Set(projects.map((p) => p.source).filter(Boolean))].sort(), [projects]);
 
     const clearFilters = () => {
         setChips([]);
         setFreeText('');
+        setAdvancedQuery('');
+        setAdvancedQueryEnabled(false);
         setSource('');
         setVerified('Yes');
         setRegion('');
@@ -1774,28 +2107,93 @@ export default function App() {
         const project = typeof projectOrIndex === 'object' && projectOrIndex !== null ? projectOrIndex : null;
         const index = typeof projectOrIndex === 'number' ? projectOrIndex : fallbackIndex;
         const dbId = project?.db_id;
-        const res = dbId
-            ? await apiFetch(`${API}/projects/by-db-id/${encodeURIComponent(dbId)}`, { method: 'DELETE' })
-            : await apiFetch(`${API}/projects/${index}`, { method: 'DELETE' });
-        if (res.ok) {
-            setProjects((prev) => {
-                const next = dbId
-                    ? prev.filter((item) => item.db_id !== dbId)
-                    : prev.filter((_, i) => i !== index);
-                if (selectedProject?.db_id && dbId && selectedProject.db_id === dbId) {
-                    setSelectedProject(null);
-                    setSelectedProjectIndex(null);
-                    setCommentsOpen(false);
-                } else if (selectedProject?.db_id) {
-                    const nextIndex = next.findIndex((item) => item.db_id === selectedProject.db_id);
-                    setSelectedProjectIndex(nextIndex >= 0 ? nextIndex : null);
-                    if (nextIndex < 0) {
-                        setSelectedProject(null);
-                        setCommentsOpen(false);
-                    }
-                }
-                return next;
+        const rowId = project?.__rowId;
+        const started = performance.now();
+        const selectedProjectSnapshot = selectedProject;
+        const selectedProjectIndexSnapshot = selectedProjectIndex;
+        const commentsOpenSnapshot = commentsOpen;
+        const removedIndex = dbId
+            ? projects.findIndex((item) => item.db_id === dbId)
+            : (rowId
+                ? projects.findIndex((item) => item.__rowId === rowId)
+                : index);
+        const removedProject = removedIndex >= 0 ? projects[removedIndex] : null;
+
+        if (!removedProject) {
+            console.warn('[delete] unable to resolve row for deletion', { dbId, rowId, index });
+            return;
+        }
+
+        setProjects((prev) => {
+            const removedKey = removedProject?.db_id || removedProject?.__rowId;
+            const next = prev.filter((item, i) => {
+                const itemKey = item?.db_id || item?.__rowId;
+                if (removedKey) return itemKey !== removedKey;
+                return i !== removedIndex;
             });
+            const selectedKey = selectedProjectSnapshot?.db_id || selectedProjectSnapshot?.__rowId;
+
+            if (selectedKey && removedKey && selectedKey === removedKey) {
+                setSelectedProject(null);
+                setSelectedProjectIndex(null);
+                setCommentsOpen(false);
+            } else if (selectedKey) {
+                const nextIndex = next.findIndex((item) => (item.db_id || item.__rowId) === selectedKey);
+                setSelectedProjectIndex(nextIndex >= 0 ? nextIndex : null);
+                if (nextIndex < 0) {
+                    setSelectedProject(null);
+                    setCommentsOpen(false);
+                }
+            }
+            return next;
+        });
+
+        console.debug('[delete] optimistic row removal', {
+            dbId,
+            rowId,
+            optimisticMs: Math.round(performance.now() - started),
+        });
+
+        const requestStarted = performance.now();
+        try {
+            const res = dbId
+                ? await apiFetch(`${API}/projects/by-db-id/${encodeURIComponent(dbId)}`, { method: 'DELETE' })
+                : await apiFetch(`${API}/projects/${index}`, { method: 'DELETE' });
+
+            if (!res.ok) {
+                const data = await res.json().catch(() => ({}));
+                throw new Error(data?.detail || 'Failed to delete project');
+            }
+
+            console.debug('[delete] server response received', {
+                dbId,
+                rowId,
+                requestMs: Math.round(performance.now() - requestStarted),
+                totalMs: Math.round(performance.now() - started),
+            });
+        } catch (error) {
+            console.error('[delete] rollback after failed delete', {
+                dbId,
+                rowId,
+                error: error?.message || error,
+                requestMs: Math.round(performance.now() - requestStarted),
+            });
+
+            if (removedProject) {
+                setProjects((prev) => {
+                    const exists = prev.some((item) => (item.db_id && removedProject.db_id ? item.db_id === removedProject.db_id : item.__rowId === removedProject.__rowId));
+                    if (exists) return prev;
+                    const next = [...prev];
+                    const insertAt = Math.max(0, Math.min(removedIndex, next.length));
+                    next.splice(insertAt, 0, removedProject);
+                    return next;
+                });
+            }
+
+            setSelectedProject(selectedProjectSnapshot);
+            setSelectedProjectIndex(selectedProjectIndexSnapshot);
+            setCommentsOpen(commentsOpenSnapshot);
+            window.alert(error?.message || 'Failed to delete project');
         }
     };
 
@@ -1948,12 +2346,6 @@ export default function App() {
                 onCloseMobile={() => setMobileNavOpen(false)}
             />
             <div className="layout-main">
-                <TopBar
-                    onOpenMobile={() => setMobileNavOpen(true)}
-                    theme={theme}
-                    onToggleTheme={() => setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'))}
-                    user={authUser}
-                />
                 <div className="layout-page-scroll">
                     <div className="layout-shell-container layout-page-container">
                         {route === 'dashboard' ? (
@@ -1962,17 +2354,21 @@ export default function App() {
                                     <PageHeader
                                         title="Procurement Watch"
                                         subtitle="Track tenders, review sources, and manage decisions."
+                                        className="layout-page-header-compact"
                                         action={(
-                                            <div className="header-actions">
-                                                <div className="header-buttons">
-                                                    <button type="button" className="header-secondary-btn" onClick={() => setConfigOpen(true)}>
-                                                        Settings / Parameters
-                                                    </button>
-                                                    <button type="button" className="sync-btn" onClick={() => setSyncOpen(true)}>
-                                                        Sync
+                                            <div className="header-actions dashboard-header-actions">
+                                                <div className="header-buttons dashboard-header-buttons">
+                                                    <button type="button" className="header-tertiary-btn" onClick={() => setConfigOpen(true)}>
+                                                        <Settings01 className="header-btn-icon" />
+                                                        <span>Settings</span>
                                                     </button>
                                                     <button type="button" className="header-secondary-btn" onClick={() => setScheduleOpen(true)}>
+                                                        <Clock className="header-btn-icon" />
                                                         Schedule
+                                                    </button>
+                                                    <button type="button" className="sync-btn" onClick={() => setSyncOpen(true)}>
+                                                        <RefreshCw01 className="header-btn-icon" />
+                                                        Sync
                                                     </button>
                                                 </div>
                                             </div>
@@ -1989,6 +2385,11 @@ export default function App() {
                                         onChipsChange={setChips}
                                         freeText={freeText}
                                         onFreeTextChange={setFreeText}
+                                        advancedQuery={advancedQuery}
+                                        onAdvancedQueryChange={setAdvancedQuery}
+                                        advancedQueryEnabled={advancedQueryEnabled}
+                                        onAdvancedQueryEnabledChange={setAdvancedQueryEnabled}
+                                        advancedQueryError={advancedQueryResult.error}
                                         source={source}
                                         onSourceChange={setSource}
                                         region={region}

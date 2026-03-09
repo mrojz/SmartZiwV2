@@ -72,6 +72,11 @@ JWT_REFRESH_DAYS = int(os.getenv("JWT_REFRESH_DAYS", "7"))
 
 scheduler = BackgroundScheduler()
 SCHEDULER_JOB_ID = "scheduled_sync"
+SERVER_TZ = datetime.now().astimezone().tzinfo or timezone.utc
+DAY_ORDER = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
+_excel_export_lock = threading.Lock()
+_excel_export_running = False
+_excel_export_pending = False
 
 
 # Auth helpers
@@ -230,19 +235,59 @@ def _scheduled_sync_job():
     threading.Thread(target=_run_sync_subprocess, args=(cmd, "scheduled"), daemon=True).start()
 
 
+def _server_timezone_offset_hours() -> float:
+    offset = datetime.now(SERVER_TZ).utcoffset() or timedelta()
+    return offset.total_seconds() / 3600
+
+
+def _translate_schedule_to_server_time(schedule: dict) -> dict:
+    hour = int(schedule.get("hour", 6))
+    minute = int(schedule.get("minute", 0))
+    selected_offset = float(schedule.get("timezone", 0))
+    server_offset = _server_timezone_offset_hours()
+
+    local_minutes = (hour * 60) + minute
+    server_minutes = int(round(local_minutes + ((server_offset - selected_offset) * 60)))
+    day_shift = 0
+    while server_minutes < 0:
+        server_minutes += 1440
+        day_shift -= 1
+    while server_minutes >= 1440:
+        server_minutes -= 1440
+        day_shift += 1
+
+    translated = {
+        "hour": server_minutes // 60,
+        "minute": server_minutes % 60,
+        "day_of_week": schedule.get("day_of_week", "mon"),
+        "server_timezone_offset_hours": server_offset,
+    }
+
+    if schedule.get("frequency", "daily") == "weekly":
+        current_day = schedule.get("day_of_week", "mon")
+        try:
+            index = DAY_ORDER.index(current_day)
+        except ValueError:
+            index = 0
+        translated["day_of_week"] = DAY_ORDER[(index + day_shift) % 7]
+
+    return translated
+
+
 def _configure_scheduler():
     schedule = db_get_schedule()
     if scheduler.get_job(SCHEDULER_JOB_ID):
         scheduler.remove_job(SCHEDULER_JOB_ID)
     if not schedule.get("enabled"):
         return
-    hour = schedule.get("hour", 6)
-    minute = schedule.get("minute", 0)
+    translated = _translate_schedule_to_server_time(schedule)
+    hour = translated["hour"]
+    minute = translated["minute"]
     frequency = schedule.get("frequency", "daily")
     if frequency == "weekly":
-        trigger = CronTrigger(day_of_week=schedule.get("day_of_week", "mon"), hour=hour, minute=minute)
+        trigger = CronTrigger(day_of_week=translated["day_of_week"], hour=hour, minute=minute, timezone=SERVER_TZ)
     else:
-        trigger = CronTrigger(hour=hour, minute=minute)
+        trigger = CronTrigger(hour=hour, minute=minute, timezone=SERVER_TZ)
     scheduler.add_job(_scheduled_sync_job, trigger=trigger, id=SCHEDULER_JOB_ID, replace_existing=True)
 
 
@@ -268,15 +313,15 @@ app.add_middleware(
 )
 
 
-_notification_queues: list[asyncio.Queue] = []
+_notification_queues: list[tuple[asyncio.AbstractEventLoop, asyncio.Queue]] = []
 _notification_lock = threading.Lock()
 
 
 def _broadcast_notification(event: dict):
     with _notification_lock:
-        for q in _notification_queues:
+        for loop, q in list(_notification_queues):
             try:
-                q.put_nowait(event)
+                loop.call_soon_threadsafe(q.put_nowait, event)
             except Exception:
                 pass
 
@@ -321,6 +366,56 @@ class SyncState:
 sync_state = SyncState()
 
 
+def _is_live_sync_noise_line(line: str) -> bool:
+    text = (line or "").strip()
+    if not text:
+        return True
+
+    lower = text.lower()
+    noise_prefixes = (
+        "127.0.0.1:",
+        "[proxy]",
+        "auth:",
+        "<< ",
+        ">> ",
+        "waiting... ",
+    )
+    if lower.startswith(noise_prefixes):
+        return True
+
+    noise_contains = (
+        " http/2.0",
+        "peer closed connection",
+        "mwctoken",
+        "saved 1 token",
+        "saved 1 token(s)",
+        "optimizationguide-pa.googleapis.com",
+        "content.powerapps.com",
+        "analysis.windows.net",
+        "dc.services.visualstudio.com",
+        "clarity.ms",
+        "mtalk.google.com",
+        "appsource.powerbi.com",
+        "android.clients.google.com",
+        "telemetry/certifiedevents",
+        "privacyportal.onetrust.com",
+        "pbivisuals.powerbi.com",
+        "c.bing.com/c.gif",
+        "j.clarity.ms/collect",
+        "accepted cookies.",
+        "scrolling to load power bi content",
+        "scrolled down 500px",
+        "watch the output above for mwctoken captures",
+    )
+    if any(fragment in lower for fragment in noise_contains):
+        return True
+
+    if text.startswith("============================================================"):
+        return True
+
+    return False
+
+
 def _save_to_excel(projects: list[dict]):
     try:
         from shared_excel import save_to_excel
@@ -329,9 +424,40 @@ def _save_to_excel(projects: list[dict]):
         print(f"[!] Excel save failed: {e}")
 
 
+def _queue_excel_export(reason: str = "mutation"):
+    global _excel_export_running, _excel_export_pending
+
+    with _excel_export_lock:
+        if _excel_export_running:
+            _excel_export_pending = True
+            print(f"[excel] queued follow-up export ({reason})")
+            return
+        _excel_export_running = True
+
+    def worker():
+        global _excel_export_running, _excel_export_pending
+        started = time.perf_counter()
+        try:
+            projects = get_all_projects()
+            _save_to_excel(projects)
+            elapsed_ms = (time.perf_counter() - started) * 1000
+            print(f"[excel] background export complete ({reason}) in {elapsed_ms:.1f}ms for {len(projects)} projects")
+        finally:
+            rerun = False
+            with _excel_export_lock:
+                rerun = _excel_export_pending
+                _excel_export_pending = False
+                _excel_export_running = False
+            if rerun:
+                _queue_excel_export("coalesced")
+
+    threading.Thread(target=worker, daemon=True).start()
+
+
 def _run_sync_subprocess(cmd: list[str], trigger: str = "manual"):
     started_at = datetime.now(timezone.utc).isoformat()
     all_log_lines = []
+    display_log_lines = []
     success = False
     try:
         proc = subprocess.Popen(cmd, cwd=str(BASE_DIR), stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
@@ -354,7 +480,9 @@ def _run_sync_subprocess(cmd: list[str], trigger: str = "manual"):
                 except Exception:
                     pass
             else:
-                sync_state.add_line(stripped)
+                if not _is_live_sync_noise_line(stripped):
+                    sync_state.add_line(stripped)
+                    display_log_lines.append(stripped)
         proc.wait()
         success = proc.returncode == 0
         sync_state.finish(success)
@@ -366,6 +494,10 @@ def _run_sync_subprocess(cmd: list[str], trigger: str = "manual"):
     finally:
         finished_at = datetime.now(timezone.utc).isoformat()
         project_count = len(get_all_projects())
+        summary = sync_state.summary if isinstance(sync_state.summary, dict) else {}
+        new_project_count = summary.get("new_projects")
+        if new_project_count is None:
+            new_project_count = max(0, project_count - sync_state.project_count_before)
         scraper_details = {}
         with sync_state.lock:
             for key, info in sync_state.scraper_logs.items():
@@ -375,9 +507,11 @@ def _run_sync_subprocess(cmd: list[str], trigger: str = "manual"):
             "finished_at": finished_at,
             "success": success,
             "project_count": project_count,
-            "log_lines": all_log_lines,
+            "new_project_count": new_project_count,
+            "log_lines": display_log_lines,
+            "raw_log_lines": all_log_lines,
             "trigger": trigger,
-            "summary": sync_state.summary,
+            "summary": summary,
             "scraper_logs": scraper_details,
         })
 
@@ -470,6 +604,7 @@ class ScheduleUpdate(BaseModel):
     sources: dict = {}
     no_ai: bool = False
     include_expired: bool = False
+    timezone: float = 0
 
 
 class DecisionUpdate(BaseModel):
@@ -751,28 +886,40 @@ def list_projects():
 
 @app.delete("/api/projects/{index}")
 def delete_project(index: int):
+    started = time.perf_counter()
     result = delete_project_by_index(index)
+    db_ms = (time.perf_counter() - started) * 1000
     if result is None:
         raise HTTPException(status_code=404, detail="Project index out of range")
-    _save_to_excel(get_all_projects())
+    _queue_excel_export("single-delete:index")
+    total_ms = (time.perf_counter() - started) * 1000
+    print(f"[delete] index={index} db={db_ms:.1f}ms response={total_ms:.1f}ms")
     return {"deleted": True, "project": result}
 
 
 @app.delete("/api/projects/by-db-id/{project_db_id}")
 def delete_project_by_id(project_db_id: str):
+    started = time.perf_counter()
     result = delete_project_by_db_id(project_db_id)
+    db_ms = (time.perf_counter() - started) * 1000
     if result is None:
         raise HTTPException(status_code=404, detail="Project not found")
-    _save_to_excel(get_all_projects())
+    _queue_excel_export("single-delete:db-id")
+    total_ms = (time.perf_counter() - started) * 1000
+    print(f"[delete] db_id={project_db_id} db={db_ms:.1f}ms response={total_ms:.1f}ms")
     return {"deleted": True, "project": result}
 
 
 @app.post("/api/projects/bulk-delete")
 def bulk_delete_projects(body: BulkProjectDeleteRequest):
+    started = time.perf_counter()
     result = delete_projects_by_db_ids(body.projectDbIds)
+    db_ms = (time.perf_counter() - started) * 1000
     if result["deleted_count"] == 0:
         return {"deleted": True, "count": 0, "deletedIds": []}
-    _save_to_excel(get_all_projects())
+    _queue_excel_export("bulk-delete")
+    total_ms = (time.perf_counter() - started) * 1000
+    print(f"[delete-bulk] count={result['deleted_count']} db={db_ms:.1f}ms response={total_ms:.1f}ms")
     return {
         "deleted": True,
         "count": result["deleted_count"],
@@ -867,6 +1014,7 @@ def get_schedule():
     schedule = db_get_schedule()
     job = scheduler.get_job(SCHEDULER_JOB_ID)
     schedule["next_run"] = job.next_run_time.isoformat() if job and job.next_run_time else None
+    schedule["server_schedule"] = _translate_schedule_to_server_time(schedule)
     return schedule
 
 
@@ -877,7 +1025,7 @@ def update_schedule(body: ScheduleUpdate):
     _configure_scheduler()
     job = scheduler.get_job(SCHEDULER_JOB_ID)
     next_run = job.next_run_time.isoformat() if job and job.next_run_time else None
-    return {"status": "saved", "next_run": next_run}
+    return {"status": "saved", "next_run": next_run, "server_schedule": _translate_schedule_to_server_time(schedule_data)}
 
 
 @app.get("/api/schedule/logs")
@@ -887,7 +1035,11 @@ def schedule_logs():
 
 @app.get("/api/server-time")
 def server_time():
-    return {"server_time": datetime.now(timezone.utc).isoformat()}
+    return {
+        "server_time": datetime.now(timezone.utc).isoformat(),
+        "server_timezone_offset_hours": _server_timezone_offset_hours(),
+        "server_timezone_name": str(SERVER_TZ),
+    }
 
 
 @app.patch("/api/projects/{index}/decision")
@@ -957,21 +1109,23 @@ def download_filtered_excel(body: dict):
 @app.get("/api/notifications/stream")
 async def notification_stream():
     queue: asyncio.Queue = asyncio.Queue()
+    loop = asyncio.get_running_loop()
     with _notification_lock:
-        _notification_queues.append(queue)
+        _notification_queues.append((loop, queue))
 
     async def event_generator():
         try:
             while True:
                 try:
                     event = await asyncio.wait_for(queue.get(), timeout=30)
-                    yield f"data: {json.dumps(event)}\\n\\n"
+                    yield f"data: {json.dumps(event)}\n\n"
                 except asyncio.TimeoutError:
-                    yield ": keepalive\\n\\n"
+                    yield ": keepalive\n\n"
         finally:
             with _notification_lock:
-                if queue in _notification_queues:
-                    _notification_queues.remove(queue)
+                for item in list(_notification_queues):
+                    if item[1] is queue:
+                        _notification_queues.remove(item)
 
     return StreamingResponse(event_generator(), media_type="text/event-stream", headers={"Cache-Control": "no-cache", "Connection": "keep-alive", "X-Accel-Buffering": "no"})
 

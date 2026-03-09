@@ -27,6 +27,17 @@ from shared_excel import save_to_excel, is_expired
 
 OUTPUT_XLSX = "projects.xlsx"
 
+
+def _configure_stdio():
+    for stream_name in ("stdout", "stderr", "__stdout__", "__stderr__"):
+        stream = getattr(sys, stream_name, None)
+        reconfigure = getattr(stream, "reconfigure", None)
+        if callable(reconfigure):
+            try:
+                reconfigure(encoding="utf-8", errors="replace")
+            except Exception:
+                pass
+
 # ── Scraper definitions ───────────────────────────────────────────────────────
 
 SCRAPERS = {
@@ -126,6 +137,8 @@ def _run_single_scraper(key: str, info: dict) -> dict:
 
 
 def main():
+    _configure_stdio()
+
     parser = argparse.ArgumentParser(
         description="Procurement Notice Scraper — IADB, World Bank, Global Tenders & GIZ"
     )
