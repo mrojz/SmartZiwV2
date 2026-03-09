@@ -356,23 +356,98 @@ function LoginPage({ onLogin, error, bootstrap }) {
 function ForcePasswordPage({ onSubmit, error }) {
     const [newPassword, setNewPassword] = useState('');
     const [confirm, setConfirm] = useState('');
+    const [showNewPassword, setShowNewPassword] = useState(false);
+    const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+    const passwordMismatch = Boolean(confirm && newPassword !== confirm);
+    const passwordStrength = useMemo(() => {
+        const value = String(newPassword || '');
+        if (!value) return { label: 'Use at least 8 characters.', tone: 'muted' };
+        let score = 0;
+        if (value.length >= 8) score += 1;
+        if (/[A-Z]/.test(value) && /[a-z]/.test(value)) score += 1;
+        if (/\d/.test(value) || /[^A-Za-z0-9]/.test(value)) score += 1;
+        if (score <= 1) return { label: 'Password strength: weak', tone: 'weak' };
+        if (score === 2) return { label: 'Password strength: medium', tone: 'medium' };
+        return { label: 'Password strength: strong', tone: 'strong' };
+    }, [newPassword]);
+    const canSubmit = newPassword.length >= 8 && newPassword === confirm;
 
     return (
-        <div className="auth-wrap">
+        <div className="auth-wrap force-password-shell">
             <form
-                className="auth-card"
+                className="auth-card force-password-card"
                 onSubmit={(e) => {
                     e.preventDefault();
-                    if (newPassword === confirm) onSubmit(newPassword);
+                    if (canSubmit) onSubmit(newPassword);
                 }}
             >
-                <h2>Change Password</h2>
-                <p className="auth-error">You must change your password to continue.</p>
-                <Input icon={Lock01} name="newPassword" type="password" minLength={8} placeholder="New password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} autoComplete="new-password" isRequired />
-                <Input icon={Lock01} name="confirmPassword" type="password" minLength={8} placeholder="Confirm password" value={confirm} onChange={(e) => setConfirm(e.target.value)} autoComplete="new-password" isRequired />
-                {confirm && newPassword !== confirm ? <p className="auth-error">Passwords do not match.</p> : null}
-                {error ? <p className="auth-error">{error}</p> : null}
-                <Button color="primary" type="submit" className="w-full">Update Password</Button>
+                <div className="force-password-header">
+                    <span className="force-password-eyebrow">Account security</span>
+                    <h2 className="force-password-title">Change your password</h2>
+                    <p className="force-password-copy">For security reasons, you must set a new password before continuing.</p>
+                </div>
+
+                <div className="force-password-fields">
+                    <div className="force-password-field">
+                        <label className="force-password-label" htmlFor="force-password-new">New password</label>
+                        <div className="force-password-input-wrap">
+                            <input
+                                id="force-password-new"
+                                name="newPassword"
+                                className="force-password-input"
+                                type={showNewPassword ? 'text' : 'password'}
+                                minLength={8}
+                                placeholder="Enter a new password"
+                                value={newPassword}
+                                onChange={(e) => setNewPassword(e.target.value)}
+                                autoComplete="new-password"
+                                required
+                            />
+                            <button
+                                type="button"
+                                className="force-password-toggle"
+                                onClick={() => setShowNewPassword((value) => !value)}
+                                aria-label={showNewPassword ? 'Hide new password' : 'Show new password'}
+                            >
+                                {showNewPassword ? 'Hide' : 'Show'}
+                            </button>
+                        </div>
+                        <span className={`force-password-hint is-${passwordStrength.tone}`}>{passwordStrength.label}</span>
+                    </div>
+
+                    <div className="force-password-field">
+                        <label className="force-password-label" htmlFor="force-password-confirm">Confirm password</label>
+                        <div className="force-password-input-wrap">
+                            <input
+                                id="force-password-confirm"
+                                name="confirmPassword"
+                                className="force-password-input"
+                                type={showConfirmPassword ? 'text' : 'password'}
+                                minLength={8}
+                                placeholder="Re-enter the new password"
+                                value={confirm}
+                                onChange={(e) => setConfirm(e.target.value)}
+                                autoComplete="new-password"
+                                required
+                            />
+                            <button
+                                type="button"
+                                className="force-password-toggle"
+                                onClick={() => setShowConfirmPassword((value) => !value)}
+                                aria-label={showConfirmPassword ? 'Hide confirm password' : 'Show confirm password'}
+                            >
+                                {showConfirmPassword ? 'Hide' : 'Show'}
+                            </button>
+                        </div>
+                        {passwordMismatch ? <p className="force-password-error">Passwords do not match.</p> : <span className="force-password-hint">Use the same password in both fields.</span>}
+                    </div>
+                </div>
+
+                {error ? <p className="force-password-error">{error}</p> : null}
+
+                <button type="submit" className="force-password-submit" disabled={!canSubmit}>
+                    Update password
+                </button>
             </form>
         </div>
     );
