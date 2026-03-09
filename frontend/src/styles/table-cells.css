@@ -5,15 +5,15 @@
 .project-cell {
   display: flex;
   flex-direction: column;
-  gap: var(--sp-1);
+  gap: 4px;
   min-width: 0;
 }
 
 .project-cell-name {
-  font-weight: 700;
+  font-weight: 600;
   color: var(--text-primary);
-  font-size: 0.98rem;
-  line-height: 1.45;
+  font-size: 0.9rem;
+  line-height: 1.35;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
@@ -24,13 +24,13 @@
 .project-cell-meta {
   display: flex;
   align-items: center;
-  gap: var(--sp-2);
+  gap: 6px;
   margin-top: 2px;
 }
 
 .project-cell-id {
   font-family: 'Consolas', 'Courier New', monospace;
-  font-size: 0.74rem;
+  font-size: 0.7rem;
   color: var(--text-muted);
   font-weight: 600;
 }
@@ -47,7 +47,7 @@
 }
 
 .country-cell-name {
-  font-size: 0.92rem;
+  font-size: 0.84rem;
   color: var(--text-secondary);
   white-space: nowrap;
   overflow: hidden;
@@ -55,13 +55,13 @@
 }
 
 .country-cell-region {
-  font-size: 0.76rem;
-  color: var(--accent);
-  font-weight: 700;
+  font-size: 0.72rem;
+  color: color-mix(in srgb, var(--accent) 72%, #475467);
+  font-weight: 600;
 }
 
 .td-date {
-  font-size: 0.9rem;
+  font-size: 0.84rem;
   color: var(--text-secondary);
   white-space: nowrap;
 }
@@ -76,11 +76,11 @@
 
 .keyword-tag {
   display: inline-block;
-  padding: var(--sp-1) var(--sp-3);
-  border-radius: var(--radius-pill);
-  font-size: 0.74rem;
+  padding: 3px 8px;
+  border-radius: 8px;
+  font-size: 0.7rem;
   font-weight: 600;
-  background: var(--bg-muted);
+  background: #fff;
   color: var(--text-secondary);
   border: 1px solid var(--border-light);
 }
@@ -103,11 +103,11 @@
 }
 
 .status-dot {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
   flex-shrink: 0;
-  box-shadow: 0 0 0 3px rgba(31, 123, 246, 0.08);
+  box-shadow: none;
 }
 
 .status-dot-positive {
@@ -128,34 +128,34 @@
 }
 
 .status-badge {
-  font-size: 0.75rem;
+  font-size: 0.72rem;
   font-weight: 700;
-  padding: var(--sp-1) var(--sp-3);
-  border-radius: var(--radius-pill);
+  padding: 3px 8px;
+  border-radius: 8px;
   letter-spacing: 0.02em;
   border: 1px solid transparent;
 }
 
 .status-go {
-  background: var(--green-bg);
-  color: var(--green);
-  border-color: var(--green-border);
+  background: color-mix(in srgb, var(--green) 8%, white);
+  color: color-mix(in srgb, var(--green) 74%, #243041);
+  border-color: color-mix(in srgb, var(--green) 18%, var(--border-light));
 }
 
 .status-nogo {
-  background: var(--red-bg);
-  color: var(--red);
-  border-color: var(--red-border);
+  background: color-mix(in srgb, var(--red) 7%, white);
+  color: color-mix(in srgb, var(--red) 68%, #243041);
+  border-color: color-mix(in srgb, var(--red) 16%, var(--border-light));
 }
 
 .status-pending {
-  background: var(--amber-bg);
-  color: var(--amber);
-  border-color: var(--amber-border);
+  background: color-mix(in srgb, var(--amber) 8%, white);
+  color: color-mix(in srgb, var(--amber) 82%, #5b4a12);
+  border-color: color-mix(in srgb, var(--amber) 18%, var(--border-light));
 }
 
 .td-scraped {
   white-space: nowrap;
-  font-size: 0.86rem;
+  font-size: 0.82rem;
   color: var(--text-muted);
 }

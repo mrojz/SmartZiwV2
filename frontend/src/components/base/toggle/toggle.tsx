@@ -18,22 +18,22 @@ export const ToggleBase = ({ className, isHovered, isDisabled, isFocusVisible, i
     const styles = {
         default: {
             sm: {
-                root: "h-5 w-9 p-0.5",
+                root: "h-5 w-9 p-[2px]",
                 switch: cx("size-4", isSelected && "translate-x-4"),
             },
             md: {
-                root: "h-6 w-11 p-0.5",
-                switch: cx("size-5", isSelected && "translate-x-5"),
+                root: "h-[22px] w-10 p-[2px]",
+                switch: cx("size-[18px]", isSelected && "translate-x-[18px]"),
             },
         },
         slim: {
             sm: {
-                root: "h-4 w-8",
+                root: "h-5 w-9 p-[2px]",
                 switch: cx("size-4", isSelected && "translate-x-4"),
             },
             md: {
-                root: "h-5 w-10",
-                switch: cx("size-5", isSelected && "translate-x-5"),
+                root: "h-[22px] w-10 p-[2px]",
+                switch: cx("size-[18px]", isSelected && "translate-x-[18px]"),
             },
         },
     };
@@ -43,30 +43,26 @@ export const ToggleBase = ({ className, isHovered, isDisabled, isFocusVisible, i
     return (
         <div
             className={cx(
-                "cursor-pointer rounded-full bg-tertiary outline-focus-ring transition duration-150 ease-linear",
-                isSelected && "bg-brand-solid",
-                isSelected && isHovered && "bg-brand-solid_hover",
-                isDisabled && "cursor-not-allowed bg-disabled",
-                isFocusVisible && "outline-2 outline-offset-2",
+                "cursor-pointer rounded-full border border-[#d7dde7] bg-[#e5e9f0] transition-[background-color,border-color,box-shadow] duration-200 ease-out",
+                isHovered && !isSelected && !isDisabled && "border-[#c8d1de] bg-[#dde3ec]",
+                isSelected && "border-[var(--accent)] bg-[var(--accent)]",
+                isSelected && isHovered && "brightness-95",
+                isDisabled && "cursor-not-allowed border-[#e3e7ee] bg-[#edf1f6] opacity-70",
+                isFocusVisible && "outline outline-2 outline-offset-2 outline-[var(--accent)]",
 
-                slim && "ring-1 ring-secondary ring-inset",
-                slim && isSelected && "ring-transparent",
+                slim && "shadow-none",
                 classes.root,
                 className,
             )}
         >
             <div
                 style={{
-                    transition: "transform 0.15s ease-in-out, translate 0.15s ease-in-out, border-color 0.1s linear, background-color 0.1s linear",
+                    transition: "transform 0.18s ease-out, translate 0.18s ease-out, border-color 0.18s ease-out, background-color 0.18s ease-out",
                 }}
                 className={cx(
-                    "rounded-full bg-fg-white shadow-sm",
-                    isDisabled && "bg-toggle-button-fg_disabled",
-
-                    slim && "shadow-xs",
-                    slim && "border border-toggle-border",
-                    slim && isSelected && "border-toggle-slim-border_pressed",
-                    slim && isSelected && isHovered && "border-toggle-slim-border_pressed-hover",
+                    "rounded-full border border-[#d4dbe6] bg-white shadow-[0_1px_2px_rgba(15,23,42,0.14)]",
+                    isSelected && "border-white/80",
+                    isDisabled && "border-[#dde3eb] bg-white",
 
                     classes.switch,
                 )}

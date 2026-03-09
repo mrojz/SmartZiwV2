@@ -65,6 +65,257 @@ function getProjectRowId(project, fallbackIndex = -1) {
   return project?.__rowId || `${getProjectBaseKey(project)}__fallback_${fallbackIndex}`;
 }
 
+const ADVANCED_QUERY_FIELDS = [
+  { key: 'source', label: 'source:', desc: 'Data source' },
+  { key: 'decision', label: 'decision:', desc: 'Go / No Go / Undecided' },
+  { key: 'region', label: 'region:', desc: 'Region name' },
+  { key: 'continent', label: 'continent:', desc: 'Continent' },
+  { key: 'verified', label: 'verified:', desc: 'Verified / Unverified' },
+  { key: 'country', label: 'country:', desc: 'Country / sponsor' },
+  { key: 'signals', label: 'signals:', desc: 'Matched signal keyword' },
+  { key: 'published_date', label: 'published_date:', desc: 'Published date' },
+  { key: 'deadline', label: 'deadline:', desc: 'Effective deadline' },
+  { key: 'last_scraped', label: 'last_scraped:', desc: 'Scraped date' },
+  { key: 'id', label: 'id:', desc: 'Project ID' },
+];
+
+function quoteAdvancedValue(value) {
+  return /\s/.test(String(value || '')) ? `"${value}"` : String(value || '');
+}
+
+function getAdvancedQueryContext(text, caret) {
+  const beforeCaret = String(text || '').slice(0, caret);
+  const valueMatch = beforeCaret.match(/([a-z_][a-z0-9_]*)\s*:\s*(?:"([^"]*)|([^\s()]*))$/i);
+  if (valueMatch) {
+    const fullMatch = valueMatch[0];
+    const rawField = String(valueMatch[1] || '').toLowerCase();
+    const quotedPartial = valueMatch[2];
+    const plainPartial = valueMatch[3];
+    const partial = quotedPartial ?? plainPartial ?? '';
+    return {
+      phase: 'value',
+      field: rawField,
+      partial: partial.toLowerCase(),
+      quoted: quotedPartial !== undefined,
+      replaceStart: beforeCaret.length - partial.length,
+      segmentStart: beforeCaret.length - fullMatch.length,
+    };
+  }
+
+  const fieldMatch = beforeCaret.match(/(?:^|[\s(])(?:AND|OR|NOT)?\s*([a-z_][a-z0-9_]*)$/i);
+  if (fieldMatch) {
+    const partial = fieldMatch[1] || '';
+    return {
+      phase: 'field',
+      partial: partial.toLowerCase(),
+      replaceStart: beforeCaret.length - partial.length,
+    };
+  }
+
+  return { phase: 'none', partial: '', replaceStart: caret };
+}
+
+function AdvancedQueryInput({
+  value,
+  onChange,
+  error,
+  sources,
+  regions,
+  continents,
+  projects,
+}) {
+  const inputRef = useRef(null);
+  const wrapperRef = useRef(null);
+  const [caret, setCaret] = useState(String(value || '').length);
+  const [open, setOpen] = useState(false);
+  const [selectedIndex, setSelectedIndex] = useState(0);
+
+  const valueMap = useMemo(() => {
+    const countries = new Set();
+    const keywords = new Set();
+    const ids = new Set();
+    const publishedDates = new Set();
+    const deadlines = new Set();
+    const scrapedDates = new Set();
+
+    (projects || []).forEach((project) => {
+      (project.country_names_en || []).forEach((name) => name && countries.add(name));
+      (project.country_names_fr || []).forEach((name) => name && countries.add(name));
+      if (!(project.country_names_en || []).length && !(project.country_names_fr || []).length && project.project_sponsor) {
+        countries.add(project.project_sponsor);
+      }
+      String(project.matched_keywords || '')
+        .split(',')
+        .map((item) => item.trim())
+        .filter(Boolean)
+        .forEach((item) => keywords.add(item));
+      if (project.project_id) ids.add(project.project_id);
+      if (project.project_start_date) publishedDates.add(formatDisplayDate(project.project_start_date));
+      const deadlineValue = project.effective_deadline || project.manual_deadline || project.scraped_deadline || project.project_end_date;
+      if (deadlineValue) deadlines.add(formatDisplayDate(deadlineValue));
+      if (project.scraped_at) scrapedDates.add(formatDisplayDate(project.scraped_at));
+    });
+
+    return {
+      source: [...new Set((sources || []).filter(Boolean))].sort(),
+      decision: ['Go', 'No Go', 'Undecided'],
+      region: Object.keys(regions || {}).sort(),
+      continent: (continents || []).map((item) => item.name_en).filter(Boolean).sort(),
+      verified: ['Verified', 'Unverified'],
+      country: [...countries].sort(),
+      signals: [...keywords].sort(),
+      published_date: [...publishedDates].sort(),
+      deadline: [...deadlines].sort(),
+      last_scraped: [...scrapedDates].sort(),
+      id: [...ids].sort(),
+    };
+  }, [sources, regions, continents, projects]);
+
+  const context = useMemo(() => getAdvancedQueryContext(value, caret), [value, caret]);
+
+  const suggestions = useMemo(() => {
+    if (context.phase === 'field') {
+      const query = context.partial;
+      return ADVANCED_QUERY_FIELDS
+        .filter((field) => !query || field.key.startsWith(query))
+        .map((field) => ({
+          type: 'field',
+          label: field.label,
+          desc: field.desc,
+          insertValue: `${field.key}:`,
+        }));
+    }
+
+    if (context.phase === 'value') {
+      const options = valueMap[context.field] || [];
+      const query = context.partial;
+      return options
+        .filter((option) => !query || String(option).toLowerCase().includes(query))
+        .slice(0, 12)
+        .map((option) => ({
+          type: 'value',
+          label: String(option),
+          desc: context.field,
+          insertValue: quoteAdvancedValue(option),
+        }));
+    }
+
+    return [];
+  }, [context, valueMap]);
+
+  useEffect(() => {
+    setSelectedIndex(0);
+    setOpen(suggestions.length > 0 && (context.phase === 'field' || context.phase === 'value'));
+  }, [suggestions.length, context.phase]);
+
+  useEffect(() => {
+    const handlePointerDown = (event) => {
+      if (wrapperRef.current && !wrapperRef.current.contains(event.target)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handlePointerDown);
+    return () => document.removeEventListener('mousedown', handlePointerDown);
+  }, []);
+
+  const commitSuggestion = useCallback((suggestion) => {
+    const text = String(value || '');
+    const before = text.slice(0, context.replaceStart);
+    const after = text.slice(caret);
+    const nextValue = `${before}${suggestion.insertValue}${after}`;
+    const nextCaret = before.length + suggestion.insertValue.length;
+    onChange(nextValue);
+    setOpen(false);
+    requestAnimationFrame(() => {
+      if (!inputRef.current) return;
+      inputRef.current.focus();
+      inputRef.current.setSelectionRange(nextCaret, nextCaret);
+      setCaret(nextCaret);
+    });
+  }, [value, context.replaceStart, caret, onChange]);
+
+  const updateCaret = useCallback((event) => {
+    const nextCaret = event.target.selectionStart ?? String(event.target.value || '').length;
+    setCaret(nextCaret);
+  }, []);
+
+  const handleKeyDown = (event) => {
+    event.stopPropagation();
+
+    if (open && suggestions.length > 0) {
+      if (event.key === 'ArrowDown') {
+        event.preventDefault();
+        setSelectedIndex((prev) => (prev + 1) % suggestions.length);
+        return;
+      }
+      if (event.key === 'ArrowUp') {
+        event.preventDefault();
+        setSelectedIndex((prev) => (prev - 1 + suggestions.length) % suggestions.length);
+        return;
+      }
+      if (event.key === 'Enter' || event.key === 'Tab') {
+        event.preventDefault();
+        commitSuggestion(suggestions[selectedIndex]);
+        return;
+      }
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        setOpen(false);
+        return;
+      }
+    }
+
+    if (event.key === 'Escape') {
+      event.stopPropagation();
+    }
+  };
+
+  return (
+    <div className="advanced-query-editor" ref={wrapperRef}>
+      <input
+        ref={inputRef}
+        type="text"
+        name="advancedQuery"
+        aria-label="Advanced filter query"
+        className={`advanced-query-input ${error ? 'has-error' : ''}`}
+        placeholder='source:DGMarket AND decision:"No Go"'
+        value={value}
+        onChange={(event) => {
+          onChange(event.target.value);
+          updateCaret(event);
+        }}
+        onClick={updateCaret}
+        onKeyUp={updateCaret}
+        onSelect={updateCaret}
+        onFocus={() => setOpen(suggestions.length > 0)}
+        onKeyDown={handleKeyDown}
+        autoCorrect="off"
+        autoCapitalize="none"
+        spellCheck={false}
+      />
+      {open && suggestions.length > 0 ? (
+        <div className="advanced-query-dropdown">
+          {suggestions.map((suggestion, index) => (
+            <button
+              key={`${suggestion.type}-${suggestion.label}-${index}`}
+              type="button"
+              className={`advanced-query-option ${index === selectedIndex ? 'is-selected' : ''}`}
+              onMouseEnter={() => setSelectedIndex(index)}
+              onMouseDown={(event) => {
+                event.preventDefault();
+                commitSuggestion(suggestion);
+              }}
+            >
+              <span className={`advanced-query-option-label ${suggestion.type === 'field' ? 'is-field' : ''}`}>{suggestion.label}</span>
+              <span className="advanced-query-option-desc">{suggestion.desc}</span>
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 export default function ProjectTable({
   projects,
   allProjects,
@@ -76,6 +327,11 @@ export default function ProjectTable({
   onChipsChange,
   freeText,
   onFreeTextChange,
+  advancedQuery,
+  onAdvancedQueryChange,
+  advancedQueryEnabled,
+  onAdvancedQueryEnabledChange,
+  advancedQueryError,
   source,
   onSourceChange,
   verified,
@@ -110,6 +366,13 @@ export default function ProjectTable({
   const [focusedRowIndex, setFocusedRowIndex] = useState(null);
   const [contextMenu, setContextMenu] = useState(null);
   const [openHeaderFilter, setOpenHeaderFilter] = useState(null);
+  const [filtersCollapsed, setFiltersCollapsed] = useState(() => {
+    try {
+      return sessionStorage.getItem('pw_filters_collapsed') === '1';
+    } catch {
+      return false;
+    }
+  });
   const [deadlineDraft, setDeadlineDraft] = useState({ from: deadlineFrom, to: deadlineTo });
   const [scrapedDraft, setScrapedDraft] = useState({ from: scrapedFrom, to: scrapedTo });
   const headerFilterRef = useRef(null);
@@ -130,6 +393,14 @@ export default function ProjectTable({
   useEffect(() => {
     setScrapedDraft({ from: scrapedFrom, to: scrapedTo });
   }, [scrapedFrom, scrapedTo]);
+
+  useEffect(() => {
+    try {
+      sessionStorage.setItem('pw_filters_collapsed', filtersCollapsed ? '1' : '0');
+    } catch {
+      // Ignore sessionStorage access issues.
+    }
+  }, [filtersCollapsed]);
 
   useEffect(() => {
     if (!openHeaderFilter) return undefined;
@@ -321,7 +592,7 @@ export default function ProjectTable({
     setSelectedRowIds(new Set());
   };
 
-  const hasAnyFilter = chips?.length > 0 || freeText || source || region || continent || verified || decision || deadlineFrom || deadlineTo || scrapedFrom || scrapedTo;
+  const hasAnyFilter = chips?.length > 0 || freeText || source || region || continent || verified || decision || deadlineFrom || deadlineTo || scrapedFrom || scrapedTo || (advancedQueryEnabled && advancedQuery.trim());
   const activeFilters = [
     source ? { key: 'source', label: `Source: ${source}`, clear: () => onSourceChange('') } : null,
     region ? { key: 'region', label: `Region: ${region}`, clear: () => onRegionChange('') } : null,
@@ -330,6 +601,13 @@ export default function ProjectTable({
     decision ? { key: 'decision', label: `Decision: ${decision}`, clear: () => onDecisionChangeFilter('') } : null,
     deadlineFrom || deadlineTo ? { key: 'deadline', label: `Deadline: ${formatDisplayDate(deadlineFrom) === '-' ? 'Any' : formatDisplayDate(deadlineFrom)} to ${formatDisplayDate(deadlineTo) === '-' ? 'Any' : formatDisplayDate(deadlineTo)}`, clear: () => { onDeadlineFromChange(''); onDeadlineToChange(''); } } : null,
     scrapedFrom || scrapedTo ? { key: 'scraped', label: `Last scraped: ${formatDisplayDate(scrapedFrom) === '-' ? 'Any' : formatDisplayDate(scrapedFrom)} to ${formatDisplayDate(scrapedTo) === '-' ? 'Any' : formatDisplayDate(scrapedTo)}`, clear: () => { onScrapedFromChange(''); onScrapedToChange(''); } } : null,
+    advancedQueryEnabled && advancedQuery.trim() ? { key: 'advancedQuery', label: 'Advanced logic active', clear: () => { onAdvancedQueryChange(''); onAdvancedQueryEnabledChange(false); } } : null,
+  ].filter(Boolean);
+  const collapsedSummary = [
+    freeText ? `Search: ${freeText}` : null,
+    chips.length ? `${chips.length} structured filter${chips.length === 1 ? '' : 's'}` : null,
+    activeFilters.length ? `${activeFilters.length} dropdown/date filter${activeFilters.length === 1 ? '' : 's'} active` : null,
+    advancedQueryEnabled && advancedQuery.trim() ? `Logic: ${advancedQuery}` : null,
   ].filter(Boolean);
 
   const openProject = useCallback((project, realIndex) => {
@@ -356,9 +634,9 @@ export default function ProjectTable({
   const handleTableKeyDown = (e) => {
     const target = e.target;
     const activeElement = document.activeElement;
-    const searchIsActive = (target instanceof Element && target.closest('.smart-search'))
-      || (activeElement instanceof Element && activeElement.closest('.smart-search'));
-    if (searchIsActive) return;
+    const editorIsActive = (element) => element instanceof Element
+      && element.closest('.smart-search, .advanced-query-editor, input, textarea, select, [contenteditable="true"]');
+    if (editorIsActive(target) || editorIsActive(activeElement)) return;
     if (!pageData.length) return;
     const realIndexes = pageData
       .map((item) => {
@@ -495,59 +773,111 @@ export default function ProjectTable({
     <div className="table-wrapper table-surface table-workspace" tabIndex={0} onKeyDown={handleTableKeyDown}>
       <div className="table-toolbar table-toolbar-card">
         <div className="table-toolbar-row table-toolbar-row-primary">
-          <SmartSearch
-            chips={chips}
-            onChipsChange={onChipsChange}
-            freeText={freeText}
-            onFreeTextChange={onFreeTextChange}
-            projects={allProjects}
-            regions={regions}
-            continents={continents}
-          />
-          <div className="table-toolbar-meta">
-            <span className="toolbar-count"><strong>{projects.length}</strong> results</span>
-            <span className="toolbar-hint">Click row to inspect, Space selects, J/K moves</span>
+          <div className="table-toolbar-primary-copy">
+            <div className="table-toolbar-search-wrap">
+              <SmartSearch
+                chips={chips}
+                onChipsChange={onChipsChange}
+                freeText={freeText}
+                onFreeTextChange={onFreeTextChange}
+                projects={allProjects}
+                regions={regions}
+                continents={continents}
+              />
+            </div>
+            <div className="table-toolbar-meta">
+              <span className="toolbar-count"><strong>{projects.length}</strong> results</span>
+              <span className="toolbar-hint">Click row to inspect, Space selects, J/K moves</span>
+            </div>
+          </div>
+          <div className="table-toolbar-controls">
+            <button
+              type="button"
+              className={`toolbar-toggle-btn ${advancedQueryEnabled ? 'is-active' : ''}`}
+              onClick={() => onAdvancedQueryEnabledChange(!advancedQueryEnabled)}
+            >
+              <span>Advanced query</span>
+            </button>
+            <button
+              type="button"
+              className={`toolbar-toggle-btn toolbar-collapse-btn ${filtersCollapsed ? 'is-collapsed' : ''}`}
+              onClick={() => setFiltersCollapsed((prev) => !prev)}
+            >
+              <span>{filtersCollapsed ? 'Show filters' : 'Hide filters'}</span>
+              <span className="toolbar-chevron" aria-hidden="true">⌄</span>
+            </button>
           </div>
         </div>
-        <div className="table-toolbar-row table-toolbar-filters">
-          <div className="filter-group">
-            <span className="filter-group-label">Filters</span>
-            <select className="filter-select filter-select-compact" name="sourceFilter" aria-label="Filter by source" value={source} onChange={(e) => onSourceChange(e.target.value)}>
-              <option value="">Source</option>
-              {(sources || []).map((s) => <option key={s} value={s}>{s}</option>)}
-            </select>
-            <select className="filter-select filter-select-compact" name="regionFilter" aria-label="Filter by region" value={region} onChange={(e) => onRegionChange(e.target.value)}>
-              <option value="">Region</option>
-              {Object.keys(regions || {}).sort().map((r) => <option key={r} value={r}>{r}</option>)}
-            </select>
-            <select className="filter-select filter-select-compact" name="continentFilter" aria-label="Filter by continent" value={continent} onChange={(e) => onContinentChange(e.target.value)}>
-              <option value="">Continent</option>
-              {(continents || []).map((item) => <option key={item.code} value={item.name_en}>{item.name_en}</option>)}
-            </select>
-            <select className="filter-select filter-select-compact" name="verificationFilter" aria-label="Filter by verification status" value={verified} onChange={(e) => onVerifiedChange(e.target.value)}>
-              <option value="">Verification</option>
-              <option value="Yes">Verified</option>
-              <option value="No">Not Verified</option>
-            </select>
-            <select className="filter-select filter-select-compact" name="decisionFilter" aria-label="Filter by decision" value={decision} onChange={(e) => onDecisionChangeFilter(e.target.value)}>
-              <option value="">Decision</option>
-              <option value="Go">Go</option>
-              <option value="No Go">No Go</option>
-              <option value="Undecided">Undecided</option>
-            </select>
+        {filtersCollapsed ? (
+          <div className="table-toolbar-row table-toolbar-collapsed-summary">
+            {collapsedSummary.length ? collapsedSummary.map((item) => (
+              <span key={item} className="collapsed-filter-summary">{item}</span>
+            )) : <span className="collapsed-filter-summary is-empty">No active search or filters</span>}
           </div>
-          {hasAnyFilter ? <button className="clear-btn clear-btn-sm" onClick={onClearFilters}>Clear all</button> : null}
-        </div>
-        {activeFilters.length > 0 ? (
-          <div className="table-toolbar-row table-toolbar-active-filters">
-            {activeFilters.map((filter) => (
-              <button key={filter.key} className="active-filter-chip" onClick={filter.clear}>
-                {filter.label}
-                <span aria-hidden="true">x</span>
-              </button>
-            ))}
-          </div>
-        ) : null}
+        ) : (
+          <>
+            {advancedQueryEnabled ? (
+              <div className="table-toolbar-row table-toolbar-advanced">
+                <div className="advanced-query-card">
+                <div className="advanced-query-header">
+                  <span className="advanced-query-title">Advanced logic</span>
+                  <span className="advanced-query-hint">Use AND, OR, NOT, parentheses, and quoted values. Example: (NOT source:DGMarket AND decision:&quot;Go&quot;) OR source:IADB</span>
+                </div>
+                  <AdvancedQueryInput
+                    value={advancedQuery}
+                    onChange={onAdvancedQueryChange}
+                    error={advancedQueryError}
+                    sources={sources}
+                    regions={regions}
+                    continents={continents}
+                    projects={allProjects}
+                  />
+                  {advancedQueryError ? <div className="advanced-query-error">{advancedQueryError}</div> : null}
+                  {!advancedQueryError && advancedQuery.trim() ? <div className="advanced-query-preview">Active logic: {advancedQuery}</div> : null}
+                </div>
+              </div>
+            ) : null}
+            <div className="table-toolbar-row table-toolbar-filters">
+              <div className="filter-group">
+                <span className="filter-group-label">Filters</span>
+                <select className="filter-select filter-select-compact" name="sourceFilter" aria-label="Filter by source" value={source} onChange={(e) => onSourceChange(e.target.value)}>
+                  <option value="">Source</option>
+                  {(sources || []).map((s) => <option key={s} value={s}>{s}</option>)}
+                </select>
+                <select className="filter-select filter-select-compact" name="regionFilter" aria-label="Filter by region" value={region} onChange={(e) => onRegionChange(e.target.value)}>
+                  <option value="">Region</option>
+                  {Object.keys(regions || {}).sort().map((r) => <option key={r} value={r}>{r}</option>)}
+                </select>
+                <select className="filter-select filter-select-compact" name="continentFilter" aria-label="Filter by continent" value={continent} onChange={(e) => onContinentChange(e.target.value)}>
+                  <option value="">Continent</option>
+                  {(continents || []).map((item) => <option key={item.code} value={item.name_en}>{item.name_en}</option>)}
+                </select>
+                <select className="filter-select filter-select-compact" name="verificationFilter" aria-label="Filter by verification status" value={verified} onChange={(e) => onVerifiedChange(e.target.value)}>
+                  <option value="">Verification</option>
+                  <option value="Yes">Verified</option>
+                  <option value="No">Not Verified</option>
+                </select>
+                <select className="filter-select filter-select-compact" name="decisionFilter" aria-label="Filter by decision" value={decision} onChange={(e) => onDecisionChangeFilter(e.target.value)}>
+                  <option value="">Decision</option>
+                  <option value="Go">Go</option>
+                  <option value="No Go">No Go</option>
+                  <option value="Undecided">Undecided</option>
+                </select>
+              </div>
+              {hasAnyFilter ? <button className="clear-btn clear-btn-sm" onClick={onClearFilters}>Clear all</button> : null}
+            </div>
+            {activeFilters.length > 0 ? (
+              <div className="table-toolbar-row table-toolbar-active-filters">
+                {activeFilters.map((filter) => (
+                  <button key={filter.key} className="active-filter-chip" onClick={filter.clear}>
+                    {filter.label}
+                    <span aria-hidden="true">x</span>
+                  </button>
+                ))}
+              </div>
+            ) : null}
+          </>
+        )}
       </div>
 
       {selectedRowIds.size > 0 ? (

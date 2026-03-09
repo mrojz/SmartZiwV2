@@ -11,6 +11,7 @@ Only processes new AI-verified projects.
 import json
 import os
 import re
+import sys
 import time
 import random
 import hashlib
@@ -49,6 +50,24 @@ DOC_EXTENSIONS = {".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx"}
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
 
+def _safe_log(message: str = ""):
+    text = str(message)
+    stream = getattr(sys, "stdout", None) or getattr(sys, "__stdout__", None)
+    if stream is None:
+        return
+    try:
+        stream.write(text + "\n")
+        stream.flush()
+    except UnicodeEncodeError:
+        encoding = getattr(stream, "encoding", None) or "utf-8"
+        safe = (text + "\n").encode(encoding, "replace").decode(encoding, "replace")
+        try:
+            stream.write(safe)
+            stream.flush()
+        except Exception:
+            pass
+
+
 def _deepseek_request(client, system_prompt: str, user_prompt: str,
                       max_tokens: int = 4000, temperature: float = 0.0,
                       label: str = "") -> str | None:
@@ -56,10 +75,10 @@ def _deepseek_request(client, system_prompt: str, user_prompt: str,
     tag = f"[{label}] " if label else ""
 
     print(f"\n      {tag}─── PROMPT TO DEEPSEEK ───")
-    print(f"      {tag}System: {system_prompt[:200]}...")
-    print(f"      {tag}User:")
+    _safe_log(f"      {tag}System: {system_prompt[:200]}...")
+    _safe_log(f"      {tag}User:")
     for line in user_prompt.split("\n"):
-        print(f"      {tag}  {line}")
+        _safe_log(f"      {tag}  {line}")
     print(f"      {tag}──────────────────────────")
 
     for attempt in range(MAX_RETRIES):
@@ -78,13 +97,13 @@ def _deepseek_request(client, system_prompt: str, user_prompt: str,
 
             print(f"\n      {tag}─── AI RESPONSE ───")
             for line in content.split("\n"):
-                print(f"      {tag}  {line}")
+                _safe_log(f"      {tag}  {line}")
             print(f"      {tag}────────────────────")
 
             return content
 
         except Exception as e:
-            print(f"      {tag}[!] DeepSeek API error (attempt {attempt + 1}): {e}")
+            _safe_log(f"      {tag}[!] DeepSeek API error (attempt {attempt + 1}): {e}")
             if attempt < MAX_RETRIES - 1:
                 wait = (2 ** attempt) + random.uniform(1, 3)
                 time.sleep(wait)

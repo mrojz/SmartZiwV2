@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { X } from '@untitledui/icons';
 import { Button } from '@/components/base/buttons/button';
 import { Toggle } from '@/components/base/toggle/toggle';
@@ -21,6 +21,18 @@ const SOURCES = [
   { key: 'africagateway', label: 'Africa Gateway' },
 ];
 
+function setModalScrollLock(locked) {
+  if (typeof document === 'undefined') return;
+  const body = document.body;
+  const html = document.documentElement;
+  const current = Number(body.dataset.modalLockCount || '0');
+  const next = locked ? current + 1 : Math.max(0, current - 1);
+  body.dataset.modalLockCount = String(next);
+  const shouldLock = next > 0;
+  body.classList.toggle('modal-scroll-locked', shouldLock);
+  html.classList.toggle('modal-scroll-locked', shouldLock);
+}
+
 export default function SyncPanel({ open, onClose, onSyncDone, onSyncStart, apiFetch }) {
   const [iadb, setIadb] = useState(true);
   const [worldbank, setWorldbank] = useState(true);
@@ -35,6 +47,119 @@ export default function SyncPanel({ open, onClose, onSyncDone, onSyncStart, apiF
   const [logs, setLogs] = useState([]);
   const [result, setResult] = useState(null);
   const logsEndRef = useRef(null);
+  const eventSourceRef = useRef(null);
+  const pollRef = useRef(null);
+  const logIndexRef = useRef(-1);
+
+  const stopSyncTracking = () => {
+    if (eventSourceRef.current) {
+      eventSourceRef.current.close();
+      eventSourceRef.current = null;
+    }
+    if (pollRef.current) {
+      window.clearInterval(pollRef.current);
+      pollRef.current = null;
+    }
+  };
+
+  const hydrateLogs = (lines = []) => {
+    const nextLines = Array.isArray(lines) ? lines : [];
+    logIndexRef.current = nextLines.length - 1;
+    setLogs(nextLines);
+  };
+
+  const startSyncTracking = () => {
+    if (eventSourceRef.current) return;
+    const eventSource = new EventSource(buildSyncStreamUrl());
+    eventSourceRef.current = eventSource;
+    setSyncing(true);
+
+    eventSource.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+
+      if (data.type === 'log') {
+        const nextIndex = typeof data.index === 'number' ? data.index : logIndexRef.current + 1;
+        if (nextIndex <= logIndexRef.current) return;
+        logIndexRef.current = nextIndex;
+        setLogs((prev) => [...prev, data.message]);
+        setTimeout(scrollToBottom, 50);
+      } else if (data.type === 'done') {
+        setResult({
+          success: data.success,
+          message: data.success ? 'Sync completed successfully' : 'Sync finished with errors',
+          project_count: data.project_count,
+          summary: data.summary || null,
+        });
+        setSyncing(false);
+        stopSyncTracking();
+        onSyncDone?.();
+      }
+    };
+
+    eventSource.onerror = () => {
+      if (eventSourceRef.current === eventSource) {
+        eventSource.close();
+        eventSourceRef.current = null;
+      }
+    };
+
+    pollRef.current = window.setInterval(async () => {
+      try {
+        const status = await hydrateFromStatus();
+        if (status?.finished && !status?.running) {
+          stopSyncTracking();
+        }
+      } catch {
+        // Ignore transient polling issues while sync is active.
+      }
+    }, 1500);
+  };
+
+  useEffect(() => () => stopSyncTracking(), []);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    setModalScrollLock(true);
+    return () => setModalScrollLock(false);
+  }, [open]);
+
+  const hydrateFromStatus = async () => {
+    if (!apiFetch) return null;
+    const res = await apiFetch('/api/sync/status');
+    if (!res.ok) return null;
+    const data = await res.json();
+    const nextLines = Array.isArray(data.lines) ? data.lines : [];
+    hydrateLogs(nextLines);
+    if (!data.running && data.finished) {
+      setSyncing(false);
+    }
+    return data;
+  };
+
+  useEffect(() => {
+    if (!open || !apiFetch) return undefined;
+
+    let cancelled = false;
+
+    const attachToRunningSync = async () => {
+      try {
+        const status = await hydrateFromStatus();
+        if (cancelled || !status) return;
+        if (status.running) {
+          startSyncTracking();
+        }
+      } catch {
+        // Keep modal usable even if status hydration fails.
+      }
+    };
+
+    attachToRunningSync();
+
+    return () => {
+      cancelled = true;
+      stopSyncTracking();
+    };
+  }, [open, apiFetch]);
 
   if (!open) return null;
 
@@ -59,6 +184,7 @@ export default function SyncPanel({ open, onClose, onSyncDone, onSyncStart, apiF
     setLogs([]);
     setResult(null);
     onSyncStart?.();
+    stopSyncTracking();
 
     try {
       const startRes = await apiFetch('/api/sync/manual', {
@@ -84,34 +210,12 @@ export default function SyncPanel({ open, onClose, onSyncDone, onSyncStart, apiF
         return;
       }
 
-      const eventSource = new EventSource(buildSyncStreamUrl());
-      eventSource.onmessage = (event) => {
-        const data = JSON.parse(event.data);
-
-        if (data.type === 'log') {
-          setLogs((prev) => [...prev, data.message]);
-          setTimeout(scrollToBottom, 50);
-        } else if (data.type === 'done') {
-          setResult({
-            success: data.success,
-            message: data.success ? 'Sync completed successfully' : 'Sync finished with errors',
-            project_count: data.project_count,
-            summary: data.summary || null,
-          });
-          setSyncing(false);
-          eventSource.close();
-          onSyncDone();
-        }
-      };
-
-      eventSource.onerror = () => {
-        eventSource.close();
-        setSyncing(false);
-        setResult({ success: false, message: 'Connection to sync stream lost' });
-      };
+      await hydrateFromStatus();
+      startSyncTracking();
     } catch (err) {
       setResult({ success: false, message: `Network error: ${err.message}` });
       setSyncing(false);
+      stopSyncTracking();
     }
   };
 
@@ -168,11 +272,9 @@ export default function SyncPanel({ open, onClose, onSyncDone, onSyncStart, apiF
                 </div>
               </div>
               <pre className="sync-output">
-                {logs.map((line, i) => (
-                  <div key={i}>{line}</div>
-                ))}
-                {syncing && <div className="sync-cursor">|</div>}
-                <div ref={logsEndRef} />
+                {logs.length > 0 ? logs.join('\n') : (syncing ? 'Waiting for output...' : '')}
+                {syncing && <span className="sync-cursor">|</span>}
+                <span ref={logsEndRef} />
               </pre>
             </div>
           )}
@@ -227,13 +329,16 @@ export default function SyncPanel({ open, onClose, onSyncDone, onSyncStart, apiF
 
         <div className="sync-footer">
           <div className="sync-footer-meta">
-            <span>{selectedSourceCount} source{selectedSourceCount === 1 ? '' : 's'} ready</span>
+            <div className="sync-footer-copy">
+              <strong>{selectedSourceCount} source{selectedSourceCount === 1 ? '' : 's'} ready</strong>
+              <span>Manual run with the current source and processing options.</span>
+            </div>
           </div>
           <div className="sync-footer-actions">
-            <Button color="secondary" onPress={onClose} isDisabled={syncing}>Close</Button>
+            <Button color="secondary" className="sync-footer-btn sync-footer-btn-secondary" onPress={onClose} isDisabled={syncing}>Close</Button>
             <Button
               color="primary"
-              className="sync-primary-btn"
+              className="sync-footer-btn sync-primary-btn"
               onPress={handleSync}
               isDisabled={syncing || selectedSourceCount === 0}
               isLoading={syncing}
