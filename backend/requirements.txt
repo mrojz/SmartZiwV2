@@ -16,5 +16,6 @@ mitmproxy>=10.0.0
 selenium>=4.15.0
 webdriver-manager>=4.0.0
 bcrypt>=4.1.0
+PyJWT>=2.8.0
 email-validator>=2.2.0
 pytest>=8.0.0
