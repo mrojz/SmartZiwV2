@@ -64,12 +64,6 @@ function compareVersionStrings(a = '0', b = '0') {
     return 0;
 }
 
-function getUnseenReleaseNotes(lastSeenVersion) {
-    return DEFAULT_RELEASE_NOTES
-        .filter((note) => compareVersionStrings(note.version, lastSeenVersion || '0') > 0)
-        .sort((a, b) => compareVersionStrings(b.version, a.version));
-}
-
 function buildNotificationStreamUrl() {
     const token = localStorage.getItem('pw_access_token');
     const params = new URLSearchParams();
@@ -2361,6 +2355,11 @@ export default function App() {
         };
     }, [authUser]);
 
+    const latestReleaseVersion = useMemo(
+        () => releaseNotes[0]?.version || APP_RELEASE_VERSION,
+        [releaseNotes],
+    );
+
     useEffect(() => {
         if (!authUser || authUser.mustChangePassword) return;
         let seenVersion = '0';
@@ -2369,10 +2368,10 @@ export default function App() {
         } catch {
             seenVersion = '0';
         }
-        if (compareVersionStrings(APP_RELEASE_VERSION, seenVersion) > 0) {
+        if (compareVersionStrings(latestReleaseVersion, seenVersion) > 0) {
             setReleaseNotesOpen(true);
         }
-    }, [authUser]);
+    }, [authUser, latestReleaseVersion]);
 
     const loadProjects = useCallback(async () => {
         const res = await apiFetch(`${API}/projects`);
@@ -2435,26 +2434,31 @@ export default function App() {
         setAuthUser(null);
     };
 
-    const unseenReleaseNotes = useMemo(() => {
+    const latestReleaseNote = useMemo(() => {
+        if (!releaseNotes.length) return DEFAULT_RELEASE_NOTES[0];
+        return releaseNotes[0];
+    }, [releaseNotes]);
+
+    const modalReleaseNotes = useMemo(() => {
         let seenVersion = '0';
         try {
             seenVersion = localStorage.getItem(RELEASE_NOTES_STORAGE_KEY) || '0';
         } catch {
             seenVersion = '0';
         }
-        const notes = releaseNotes
-            .filter((note) => compareVersionStrings(note.version, seenVersion || '0') > 0)
-            .sort((a, b) => compareVersionStrings(b.version, a.version));
-        return notes.length ? notes : [releaseNotes[0] || DEFAULT_RELEASE_NOTES[0]];
-    }, [releaseNotesOpen, authUser, releaseNotes]);
+        if (compareVersionStrings(latestReleaseNote?.version || '0', seenVersion) > 0) {
+            return latestReleaseNote ? [latestReleaseNote] : [];
+        }
+        return latestReleaseNote ? [latestReleaseNote] : [];
+    }, [latestReleaseNote]);
 
     const markReleaseNotesSeen = useCallback(() => {
         try {
-            localStorage.setItem(RELEASE_NOTES_STORAGE_KEY, APP_RELEASE_VERSION);
+            localStorage.setItem(RELEASE_NOTES_STORAGE_KEY, latestReleaseVersion);
         } catch {
             // Ignore localStorage access issues.
         }
-    }, []);
+    }, [latestReleaseVersion]);
 
     const closeReleaseNotes = useCallback(() => {
         markReleaseNotesSeen();
@@ -3054,7 +3058,7 @@ export default function App() {
             <SchedulePanel open={scheduleOpen} onClose={() => setScheduleOpen(false)} apiFetch={apiFetch} />
             <ReleaseNotesModal
                 open={releaseNotesOpen}
-                releases={unseenReleaseNotes}
+                releases={modalReleaseNotes}
                 onClose={closeReleaseNotes}
                 onOpenFull={() => {
                     closeReleaseNotes();
