@@ -276,6 +276,22 @@ def save_config(keywords: list[str], regions: dict[str, list[str]]):
     )
 
 
+def get_release_notes() -> list[dict]:
+    db = get_db()
+    doc = db.config.find_one({'_type': 'release_notes'}) or {}
+    notes = doc.get('notes') or []
+    return notes if isinstance(notes, list) else []
+
+
+def save_release_notes(notes: list[dict]):
+    db = get_db()
+    db.config.update_one(
+        {'_type': 'release_notes'},
+        {'$set': {'notes': notes}},
+        upsert=True,
+    )
+
+
 def get_geography() -> dict:
     db = get_db()
     continents = [_strip_id(doc) for doc in db.continents.find({}, {'_id': 0}).sort('code', 1)]
@@ -322,6 +338,16 @@ def get_schedule() -> dict:
         doc.pop('_id', None)
         doc.pop('_type', None)
         doc.setdefault('timezone', 0)
+        doc.setdefault('sources', {})
+        doc['sources'].setdefault('iadb', True)
+        doc['sources'].setdefault('worldbank', True)
+        doc['sources'].setdefault('globaltenders', True)
+        doc['sources'].setdefault('giz', True)
+        doc['sources'].setdefault('devaid', True)
+        doc['sources'].setdefault('dgmarket', True)
+        doc['sources'].setdefault('africagateway', True)
+        doc['sources'].setdefault('isdb', True)
+        doc['sources'].setdefault('badea', True)
         return doc
     return {
         'enabled': False,
@@ -336,6 +362,9 @@ def get_schedule() -> dict:
             'giz': True,
             'devaid': True,
             'dgmarket': True,
+            'africagateway': True,
+            'isdb': True,
+            'badea': True,
         },
         'no_ai': False,
         'include_expired': False,

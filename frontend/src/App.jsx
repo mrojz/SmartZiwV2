@@ -16,6 +16,59 @@ import { Table } from '@/components/application/table/table';
 import { Dropdown } from '@/components/base/dropdown/dropdown';
 
 const API = '/api';
+const APP_RELEASE_VERSION = '1.2';
+const RELEASE_NOTES_STORAGE_KEY = 'pw_release_notes_seen';
+const DEFAULT_RELEASE_NOTES = [
+    {
+        version: '1.2',
+        title: 'More sources and richer discussion previews',
+        summary: 'Added new scraping sources and improved the in-app file experience in Discussion.',
+        items: [
+            'Added IsDB and BADEA as new scraping sources.',
+            'Improved comments when sending images so image attachments display directly in the thread.',
+            'PDF files now open directly inside the app instead of downloading automatically.',
+        ],
+    },
+    {
+        version: '1.1',
+        title: 'Authentication and major UI refresh',
+        summary: 'Introduced login plus broad UI improvements and bug-fix work across the product.',
+        items: [
+            'Added user login and protected access to the application.',
+            'Delivered major UI updates across the dashboard and workflow surfaces.',
+            'Included general bug fixes and UX improvements.',
+        ],
+    },
+    {
+        version: '1.0',
+        title: 'Initial procurement intelligence release',
+        summary: 'First production release of the scraping and review workflow.',
+        items: [
+            'Project scraping from IADB, Global Tenders, World Bank, GIZ, Development Aid, DGMarket, and Africa Gateway.',
+            'Procurement Watch table and review workflow.',
+            'Scheduled sync support.',
+        ],
+    },
+];
+
+function compareVersionStrings(a = '0', b = '0') {
+    const left = String(a).replace(/^v/i, '').split('.').map((part) => Number(part) || 0);
+    const right = String(b).replace(/^v/i, '').split('.').map((part) => Number(part) || 0);
+    const length = Math.max(left.length, right.length);
+    for (let index = 0; index < length; index += 1) {
+        const l = left[index] || 0;
+        const r = right[index] || 0;
+        if (l > r) return 1;
+        if (l < r) return -1;
+    }
+    return 0;
+}
+
+function getUnseenReleaseNotes(lastSeenVersion) {
+    return DEFAULT_RELEASE_NOTES
+        .filter((note) => compareVersionStrings(note.version, lastSeenVersion || '0') > 0)
+        .sort((a, b) => compareVersionStrings(b.version, a.version));
+}
 
 function buildNotificationStreamUrl() {
     const token = localStorage.getItem('pw_access_token');
@@ -34,6 +87,85 @@ function initials(name = '', email = '') {
     if (parts.length >= 2) return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
     if (parts.length === 1) return parts[0][0].toUpperCase();
     return (email[0] || '?').toUpperCase();
+}
+
+const COMMENT_IMAGE_UPLOAD_TARGET_BYTES = 1.5 * 1024 * 1024;
+const COMMENT_IMAGE_UPLOAD_RETRY_BYTES = 900 * 1024;
+const COMMENT_IMAGE_MAX_DIMENSION = 1800;
+
+function isCompressibleImage(file) {
+    return Boolean(file?.type && file.type.startsWith('image/') && !file.type.includes('svg') && !file.type.includes('gif'));
+}
+
+function loadImageFromFile(file) {
+    return new Promise((resolve, reject) => {
+        const url = URL.createObjectURL(file);
+        const img = new Image();
+        img.onload = () => {
+            URL.revokeObjectURL(url);
+            resolve(img);
+        };
+        img.onerror = () => {
+            URL.revokeObjectURL(url);
+            reject(new Error('Failed to read image'));
+        };
+        img.src = url;
+    });
+}
+
+async function compressImageForCommentUpload(file, targetBytes = COMMENT_IMAGE_UPLOAD_TARGET_BYTES) {
+    if (!isCompressibleImage(file)) return file;
+    if (file.size <= targetBytes) return file;
+
+    const image = await loadImageFromFile(file);
+    const largestSide = Math.max(image.width, image.height) || 1;
+    const scale = Math.min(1, COMMENT_IMAGE_MAX_DIMENSION / largestSide);
+    const width = Math.max(1, Math.round(image.width * scale));
+    const height = Math.max(1, Math.round(image.height * scale));
+
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext('2d', { alpha: true });
+    if (!context) return file;
+    context.drawImage(image, 0, 0, width, height);
+
+    const outputType = 'image/webp';
+    const qualitySteps = [0.9, 0.82, 0.74, 0.66, 0.58, 0.5, 0.42];
+
+    for (const quality of qualitySteps) {
+        const blob = await new Promise((resolve) => canvas.toBlob(resolve, outputType, quality));
+        if (!blob) continue;
+        const ext = file.name && file.name.includes('.') ? file.name.replace(/\.[^.]+$/, '.webp') : `${file.name || 'image'}.webp`;
+        const compressed = new File([blob], ext, { type: outputType, lastModified: file.lastModified || Date.now() });
+        if (compressed.size <= targetBytes || quality === qualitySteps[qualitySteps.length - 1]) {
+            return compressed.size < file.size ? compressed : file;
+        }
+    }
+
+    return file;
+}
+
+async function prepareCommentUploadFile(file, targetBytes = COMMENT_IMAGE_UPLOAD_TARGET_BYTES) {
+    if (!file) return file;
+    if (isCompressibleImage(file)) {
+        return compressImageForCommentUpload(file, targetBytes);
+    }
+    return file;
+}
+
+function isImageAttachment(att = {}) {
+    const mime = String(att?.mimeType || '').toLowerCase();
+    if (mime.startsWith('image/')) return true;
+    const name = String(att?.originalName || att?.url || '').toLowerCase();
+    return /\.(png|jpe?g|webp|gif|bmp|svg)$/i.test(name);
+}
+
+function isPdfAttachment(att = {}) {
+    const mime = String(att?.mimeType || '').toLowerCase();
+    if (mime === 'application/pdf') return true;
+    const name = String(att?.originalName || att?.url || '').toLowerCase();
+    return /\.pdf($|\?)/i.test(name);
 }
 
 function colorFromSeed(seed = '') {
@@ -453,6 +585,96 @@ function ForcePasswordPage({ onSubmit, error }) {
     );
 }
 
+function ReleaseNotesModal({ open, releases, onClose, onOpenFull }) {
+    useEffect(() => {
+        if (!open) return undefined;
+        setModalScrollLock(true);
+        const onKeyDown = (event) => {
+            if (event.key === 'Escape') onClose();
+        };
+        window.addEventListener('keydown', onKeyDown);
+        return () => {
+            window.removeEventListener('keydown', onKeyDown);
+            setModalScrollLock(false);
+        };
+    }, [open, onClose]);
+
+    if (!open) return null;
+
+    const latest = releases[0] || DEFAULT_RELEASE_NOTES[0];
+
+    return (
+        <div className="modal-overlay release-notes-overlay" onClick={onClose}>
+            <div className="release-notes-modal" onClick={(event) => event.stopPropagation()}>
+                <div className="release-notes-modal-header">
+                    <div className="release-notes-modal-copy">
+                        <span className="release-notes-eyebrow">App updated</span>
+                        <h2>What&apos;s new in v{latest.version}</h2>
+                        <p>{latest.summary}</p>
+                    </div>
+                    <button type="button" className="modal-close-btn" onClick={onClose} aria-label="Close release notes">
+                        <X />
+                    </button>
+                </div>
+                <div className="release-notes-modal-body">
+                    {releases.map((note) => (
+                        <section key={note.version} className="release-note-card">
+                            <div className="release-note-card-header">
+                                <div>
+                                    <span className="release-note-version">v{note.version}</span>
+                                    <h3>{note.title}</h3>
+                                </div>
+                            </div>
+                            <ul className="release-note-list">
+                                {note.items.map((item) => <li key={item}>{item}</li>)}
+                            </ul>
+                        </section>
+                    ))}
+                </div>
+                <div className="release-notes-modal-footer">
+                    <button type="button" className="release-link-btn" onClick={onOpenFull}>
+                        View full release notes
+                    </button>
+                    <button type="button" className="sync-btn release-primary-btn" onClick={onClose}>
+                        Continue
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+function ReleaseNotesPage({ releases, onBack }) {
+    return (
+        <div className="release-notes-page">
+            <div className="release-notes-page-header">
+                <div>
+                    <h1 className="layout-page-title">Release Notes</h1>
+                    <p className="layout-page-subtitle">Track major platform updates and newly delivered capabilities.</p>
+                </div>
+                <button type="button" className="header-secondary-btn" onClick={onBack}>Back</button>
+            </div>
+            <div className="release-notes-timeline">
+                {releases.map((note) => (
+                    <article key={note.version} className="release-note-card page">
+                        <div className="release-note-card-header">
+                            <div>
+                                <span className="release-note-version">v{note.version}</span>
+                                <h3>{note.title}</h3>
+                            </div>
+                            {note.version === APP_RELEASE_VERSION ? <span className="release-note-current">Current</span> : null}
+                        </div>
+                        <p className="release-note-summary">{note.summary}</p>
+                        <ul className="release-note-list">
+                            {note.items.map((item) => <li key={item}>{item}</li>)}
+                        </ul>
+                    </article>
+                ))}
+            </div>
+        </div>
+    );
+}
+
 function PageHeader({ title, subtitle, action, className = '' }) {
     return (
         <div className={`layout-page-header ${className}`.trim()}>
@@ -474,6 +696,8 @@ function SidebarIcon({ type }) {
             ? Shield01
             : type === 'profile'
                 ? User01
+                : type === 'release-notes'
+                    ? Edit01
                 : type === 'logout'
                     ? LogOut01
                     : null;
@@ -485,6 +709,7 @@ function Sidebar({ user, route, onNavigate, collapsed, mobileOpen, onToggleColla
         { key: 'dashboard', label: 'Dashboard', icon: 'dashboard' },
         ...(user?.role === 'admin' ? [{ key: 'admin', label: 'Admin', icon: 'admin' }] : []),
         { key: 'profile', label: 'Profile', icon: 'profile' },
+        { key: 'release-notes', label: 'Release Notes', icon: 'release-notes' },
         { key: 'logout', label: 'Logout', icon: 'logout' },
     ];
 
@@ -555,6 +780,7 @@ function CommentsPanel({ open, entity, project, projectRegion, comments, mine, s
     const [search, setSearch] = useState('');
     const [deadlineInput, setDeadlineInput] = useState('');
     const [savingDeadline, setSavingDeadline] = useState(false);
+    const [previewAttachment, setPreviewAttachment] = useState(null);
 
     useEffect(() => {
         const onKey = (e) => {
@@ -577,6 +803,7 @@ function CommentsPanel({ open, entity, project, projectRegion, comments, mine, s
             setSearch('');
             setSearchOpen(false);
             setDeadlineInput(toInputDate(project?.manual_deadline));
+            setPreviewAttachment(null);
         }
     }, [open, entity?.id, project?.manual_deadline]);
 
@@ -631,18 +858,37 @@ function CommentsPanel({ open, entity, project, projectRegion, comments, mine, s
         setUploading(true);
         try {
             for (const file of files) {
-                const fd = new FormData();
-                fd.append('entityType', entity.type || 'project');
-                fd.append('entityId', entity.id);
-                fd.append('file', file);
-                const res = await apiFetch('/api/comments/upload', {
-                    method: 'POST',
-                    body: fd,
-                });
+                let uploadFile = await prepareCommentUploadFile(file);
+
+                const sendUpload = async (currentFile) => {
+                    const fd = new FormData();
+                    fd.append('entityType', entity.type || 'project');
+                    fd.append('entityId', entity.id);
+                    fd.append('file', currentFile);
+                    return apiFetch('/api/comments/upload', {
+                        method: 'POST',
+                        body: fd,
+                    });
+                };
+
+                let res = await sendUpload(uploadFile);
+
+                if (res.status === 413 && isCompressibleImage(file)) {
+                    uploadFile = await prepareCommentUploadFile(file, COMMENT_IMAGE_UPLOAD_RETRY_BYTES);
+                    res = await sendUpload(uploadFile);
+                }
+
                 if (res.ok) {
                     const att = await res.json();
                     setPendingFiles((prev) => [...prev, att]);
+                    continue;
                 }
+
+                const err = await res.json().catch(() => ({}));
+                const message = res.status === 413
+                    ? 'Image is too large for the server upload limit. Try a smaller image.'
+                    : (err.detail || `Upload failed (${res.status})`);
+                window.alert(message);
             }
         } finally {
             setUploading(false);
@@ -661,6 +907,7 @@ function CommentsPanel({ open, entity, project, projectRegion, comments, mine, s
         : comments;
 
     return (
+        <>
         <div className="project-drawer-backdrop" onClick={onClose}>
             <aside className="project-drawer" onClick={(e) => e.stopPropagation()}>
                 <div className="project-drawer-head">
@@ -838,9 +1085,42 @@ function CommentsPanel({ open, entity, project, projectRegion, comments, mine, s
                                             <div className="chat-body">
                                                 {c.body ? <p>{c.body}</p> : null}
                                                 {(c.attachments || []).map((att) => (
-                                                    <a key={att.fileId} className="chat-attachment" href={att.url} target="_blank" rel="noreferrer" download={att.originalName}>
-                                                        {att.originalName}
-                                                    </a>
+                                                    isImageAttachment(att) ? (
+                                                        <button
+                                                            key={att.fileId}
+                                                            type="button"
+                                                            className="chat-attachment chat-attachment-image-link"
+                                                            onClick={() => setPreviewAttachment({ ...att, kind: 'image' })}
+                                                        >
+                                                            <img
+                                                                className="chat-attachment-image"
+                                                                src={att.url}
+                                                                alt={att.originalName || 'attachment'}
+                                                                loading="lazy"
+                                                            />
+                                                        </button>
+                                                    ) : isPdfAttachment(att) ? (
+                                                        <button
+                                                            key={att.fileId}
+                                                            type="button"
+                                                            className="chat-attachment chat-attachment-pdf"
+                                                            onClick={() => setPreviewAttachment({ ...att, kind: 'pdf' })}
+                                                        >
+                                                            <span className="chat-attachment-pdf-icon">PDF</span>
+                                                            <span className="chat-attachment-pdf-name">{att.originalName}</span>
+                                                        </button>
+                                                    ) : (
+                                                        <a
+                                                            key={att.fileId}
+                                                            className="chat-attachment"
+                                                            href={att.url}
+                                                            target="_blank"
+                                                            rel="noreferrer"
+                                                            download={att.originalName}
+                                                        >
+                                                            {att.originalName}
+                                                        </a>
+                                                    )
                                                 ))}
                                             </div>
                                             <span className="chat-time">{dateStr}{" "}{timeStr}</span>
@@ -897,6 +1177,51 @@ function CommentsPanel({ open, entity, project, projectRegion, comments, mine, s
                 </div>
             </aside>
         </div>
+        {previewAttachment ? (
+            <div className="image-preview-backdrop" onClick={() => setPreviewAttachment(null)}>
+                <div className={`image-preview-dialog ${previewAttachment.kind === 'pdf' ? 'is-pdf' : ''}`} onClick={(e) => e.stopPropagation()}>
+                    <div className="image-preview-toolbar">
+                        <span className="image-preview-name">{previewAttachment.originalName || 'Attachment'}</span>
+                        <div className="image-preview-actions">
+                            <a
+                                className="image-preview-download"
+                                href={previewAttachment.url}
+                                download={previewAttachment.originalName || 'attachment'}
+                                aria-label="Download attachment"
+                                title="Download"
+                            >
+                                ↓
+                            </a>
+                            <button
+                                type="button"
+                                className="image-preview-close"
+                                onClick={() => setPreviewAttachment(null)}
+                                aria-label="Close attachment preview"
+                                title="Close"
+                            >
+                                ×
+                            </button>
+                        </div>
+                    </div>
+                    <div className="image-preview-body">
+                        {previewAttachment.kind === 'pdf' ? (
+                            <iframe
+                                className="pdf-preview-frame"
+                                src={previewAttachment.url}
+                                title={previewAttachment.originalName || 'PDF preview'}
+                            />
+                        ) : (
+                            <img
+                                className="image-preview-image"
+                                src={previewAttachment.url}
+                                alt={previewAttachment.originalName || 'attachment'}
+                            />
+                        )}
+                    </div>
+                </div>
+            </div>
+        ) : null}
+        </>
     );
 }
 
@@ -1249,6 +1574,7 @@ function ResetPasswordModal({ open, user, onClose, onReset, saving, result }) {
 }
 
 function AdminPage({ apiFetch }) {
+    const [adminTab, setAdminTab] = useState('users');
     const [users, setUsers] = useState([]);
     const [q, setQ] = useState('');
     const [roleFilter, setRoleFilter] = useState('all');
@@ -1265,6 +1591,10 @@ function AdminPage({ apiFetch }) {
     const [sortDir, setSortDir] = useState('asc');
     const [page, setPage] = useState(0);
     const [rowsPerPage, setRowsPerPage] = useState(25);
+    const [releaseNotes, setReleaseNotes] = useState([]);
+    const [selectedReleaseVersion, setSelectedReleaseVersion] = useState('');
+    const [releaseForm, setReleaseForm] = useState({ version: '', title: '', summary: '', itemsText: '' });
+    const [savingReleaseNotes, setSavingReleaseNotes] = useState(false);
     const handleSearchChange = useCallback((nextValue) => {
         if (typeof nextValue === 'string') {
             setQ(nextValue);
@@ -1283,9 +1613,34 @@ function AdminPage({ apiFetch }) {
         }
     }, [apiFetch]);
 
+    const loadReleaseNotes = useCallback(async () => {
+        const res = await apiFetch('/api/admin/release-notes');
+        const data = await res.json();
+        const notes = Array.isArray(data?.notes) && data.notes.length ? data.notes : DEFAULT_RELEASE_NOTES;
+        const sortedNotes = [...notes].sort((a, b) => compareVersionStrings(b.version, a.version));
+        setReleaseNotes(sortedNotes);
+        setSelectedReleaseVersion((current) => current || sortedNotes[0]?.version || '');
+    }, [apiFetch]);
+
     useEffect(() => {
         loadUsers();
     }, [loadUsers]);
+
+    useEffect(() => {
+        if (adminTab !== 'release-notes') return;
+        loadReleaseNotes();
+    }, [adminTab, loadReleaseNotes]);
+
+    useEffect(() => {
+        const note = releaseNotes.find((item) => item.version === selectedReleaseVersion);
+        if (!note) return;
+        setReleaseForm({
+            version: note.version || '',
+            title: note.title || '',
+            summary: note.summary || '',
+            itemsText: Array.isArray(note.items) ? note.items.join('\n') : '',
+        });
+    }, [selectedReleaseVersion, releaseNotes]);
 
     const createUser = async (form) => {
         setSavingDrawer(true);
@@ -1406,25 +1761,105 @@ function AdminPage({ apiFetch }) {
         setSortDir(descriptor?.direction === 'descending' ? 'desc' : 'asc');
     };
 
+    const startNewReleaseNote = () => {
+        setSelectedReleaseVersion('__new__');
+        setReleaseForm({ version: '', title: '', summary: '', itemsText: '' });
+    };
+
+    const saveReleaseNotes = async () => {
+        const nextNote = {
+            version: releaseForm.version.trim(),
+            title: releaseForm.title.trim(),
+            summary: releaseForm.summary.trim(),
+            items: releaseForm.itemsText.split(/\r?\n/).map((item) => item.trim()).filter(Boolean),
+        };
+        if (!nextNote.version || !nextNote.title) {
+            setMessage('Version and title are required for a release note.');
+            return;
+        }
+        const nextNotes = selectedReleaseVersion === '__new__'
+            ? [nextNote, ...releaseNotes]
+            : releaseNotes.map((note) => (note.version === selectedReleaseVersion ? nextNote : note));
+        const normalized = [];
+        const seen = new Set();
+        nextNotes
+            .sort((a, b) => compareVersionStrings(b.version, a.version))
+            .forEach((note) => {
+                if (!note.version || seen.has(note.version)) return;
+                seen.add(note.version);
+                normalized.push(note);
+            });
+        setSavingReleaseNotes(true);
+        try {
+            const res = await apiFetch('/api/admin/release-notes', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ notes: normalized }),
+            });
+            if (!res.ok) throw new Error('Failed to save release notes');
+            setReleaseNotes(normalized);
+            setSelectedReleaseVersion(nextNote.version);
+            setMessage('Release notes saved.');
+        } finally {
+            setSavingReleaseNotes(false);
+        }
+    };
+
+    const deleteReleaseNote = async () => {
+        if (!selectedReleaseVersion || selectedReleaseVersion === '__new__') return;
+        const nextNotes = releaseNotes.filter((note) => note.version !== selectedReleaseVersion);
+        setSavingReleaseNotes(true);
+        try {
+            const res = await apiFetch('/api/admin/release-notes', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ notes: nextNotes }),
+            });
+            if (!res.ok) throw new Error('Failed to delete release note');
+            setReleaseNotes(nextNotes);
+            setSelectedReleaseVersion(nextNotes[0]?.version || '');
+            setMessage('Release note deleted.');
+        } finally {
+            setSavingReleaseNotes(false);
+        }
+    };
+
     return (
         <div className="layout-stack admin-users-page">
             <PageHeader
-                title="User Management"
-                subtitle="Create, edit, deactivate users, and reset passwords."
+                title="Admin"
+                subtitle={adminTab === 'users' ? 'Create, edit, deactivate users, and reset passwords.' : 'Create new release notes or update existing versions.'}
                 action={(
                     <div className="admin-users-header-actions">
-                        <button
-                            type="button"
-                            className="profile-btn profile-btn-primary admin-toolbar-btn admin-users-create-btn"
-                            disabled={savingDrawer}
-                            onClick={() => setDrawer({ open: true, mode: 'create', user: null })}
-                        >
-                            Create User
-                        </button>
+                        {adminTab === 'users' ? (
+                            <button
+                                type="button"
+                                className="profile-btn profile-btn-primary admin-toolbar-btn admin-users-create-btn"
+                                disabled={savingDrawer}
+                                onClick={() => setDrawer({ open: true, mode: 'create', user: null })}
+                            >
+                                Create User
+                            </button>
+                        ) : (
+                            <button
+                                type="button"
+                                className="profile-btn profile-btn-primary admin-toolbar-btn admin-users-create-btn"
+                                disabled={savingReleaseNotes}
+                                onClick={startNewReleaseNote}
+                            >
+                                New Release Note
+                            </button>
+                        )}
                     </div>
                 )}
             />
 
+            <div className="admin-page-tabs">
+                <button type="button" className={`admin-page-tab ${adminTab === 'users' ? 'active' : ''}`} onClick={() => setAdminTab('users')}>User Management</button>
+                <button type="button" className={`admin-page-tab ${adminTab === 'release-notes' ? 'active' : ''}`} onClick={() => setAdminTab('release-notes')}>Release Notes</button>
+            </div>
+
+            {adminTab === 'users' ? (
             <div className="table-wrapper table-surface admin-users-surface">
                 <div className="table-toolbar admin-users-toolbar">
                     <div className="admin-users-toolbar-row">
@@ -1619,6 +2054,54 @@ function AdminPage({ apiFetch }) {
                     </div>
                 )}
             </div>
+            ) : null}
+
+            {adminTab === 'release-notes' ? (
+                <div className="table-wrapper table-surface admin-release-surface">
+                    {message ? <div className="admin-users-message">{message}</div> : null}
+                    <div className="admin-release-layout">
+                        <aside className="admin-release-list">
+                            {releaseNotes.map((note) => (
+                                <button
+                                    key={note.version}
+                                    type="button"
+                                    className={`admin-release-list-item ${selectedReleaseVersion === note.version ? 'active' : ''}`}
+                                    onClick={() => setSelectedReleaseVersion(note.version)}
+                                >
+                                    <span className="admin-release-version">v{note.version}</span>
+                                    <strong>{note.title}</strong>
+                                </button>
+                            ))}
+                        </aside>
+                        <div className="admin-release-editor">
+                            <div className="modal-grid-2col">
+                                <div className="auth-field">
+                                    <label className="auth-label" htmlFor="release-version">Version</label>
+                                    <input id="release-version" className="auth-input" value={releaseForm.version} onChange={(e) => setReleaseForm((prev) => ({ ...prev, version: e.target.value }))} placeholder="1.3" />
+                                </div>
+                                <div className="auth-field">
+                                    <label className="auth-label" htmlFor="release-title">Title</label>
+                                    <input id="release-title" className="auth-input" value={releaseForm.title} onChange={(e) => setReleaseForm((prev) => ({ ...prev, title: e.target.value }))} placeholder="Release title" />
+                                </div>
+                            </div>
+                            <div className="auth-field">
+                                <label className="auth-label" htmlFor="release-summary">Summary</label>
+                                <input id="release-summary" className="auth-input" value={releaseForm.summary} onChange={(e) => setReleaseForm((prev) => ({ ...prev, summary: e.target.value }))} placeholder="Short summary shown in the release modal" />
+                            </div>
+                            <div className="auth-field">
+                                <label className="auth-label" htmlFor="release-items">Items</label>
+                                <textarea id="release-items" className="auth-input admin-release-textarea" value={releaseForm.itemsText} onChange={(e) => setReleaseForm((prev) => ({ ...prev, itemsText: e.target.value }))} placeholder="One bullet item per line" />
+                            </div>
+                            <div className="admin-release-actions">
+                                <button type="button" className="profile-btn profile-btn-secondary" disabled={savingReleaseNotes || selectedReleaseVersion === '__new__' || !selectedReleaseVersion} onClick={deleteReleaseNote}>Delete</button>
+                                <button type="button" className="profile-btn profile-btn-primary" disabled={savingReleaseNotes} onClick={saveReleaseNotes}>
+                                    {savingReleaseNotes ? 'Saving...' : 'Save Release Note'}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            ) : null}
 
             <UserDrawer
                 open={drawer.open}
@@ -1677,6 +2160,8 @@ export default function App() {
     const [authError, setAuthError] = useState('');
     const [mustChangeError, setMustChangeError] = useState('');
     const [bootstrapStatus, setBootstrapStatus] = useState(null);
+    const [releaseNotesOpen, setReleaseNotesOpen] = useState(false);
+    const [releaseNotes, setReleaseNotes] = useState(DEFAULT_RELEASE_NOTES);
 
     const [route, setRoute] = useState(normalizeRoute(window.location.hash.replace('#', '')));
     const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -1876,6 +2361,19 @@ export default function App() {
         };
     }, [authUser]);
 
+    useEffect(() => {
+        if (!authUser || authUser.mustChangePassword) return;
+        let seenVersion = '0';
+        try {
+            seenVersion = localStorage.getItem(RELEASE_NOTES_STORAGE_KEY) || '0';
+        } catch {
+            seenVersion = '0';
+        }
+        if (compareVersionStrings(APP_RELEASE_VERSION, seenVersion) > 0) {
+            setReleaseNotesOpen(true);
+        }
+    }, [authUser]);
+
     const loadProjects = useCallback(async () => {
         const res = await apiFetch(`${API}/projects`);
         const data = await res.json();
@@ -1888,10 +2386,13 @@ export default function App() {
         Promise.all([
             apiFetch('/api/config').then((r) => (r.ok ? r.json() : { regions: {} })),
             apiFetch('/api/geography').then((r) => (r.ok ? r.json() : { continents: [] })),
+            apiFetch('/api/release-notes').then((r) => (r.ok ? r.json() : { notes: DEFAULT_RELEASE_NOTES })),
         ])
-            .then(([cfg, geography]) => {
+            .then(([cfg, geography, noteData]) => {
                 setRegions(cfg.regions || {});
                 setContinents(geography.continents || []);
+                const notes = Array.isArray(noteData?.notes) && noteData.notes.length ? noteData.notes : DEFAULT_RELEASE_NOTES;
+                setReleaseNotes([...notes].sort((a, b) => compareVersionStrings(b.version, a.version)));
             })
             .catch(() => { });
     }, [authUser, loadProjects, apiFetch]);
@@ -1933,6 +2434,32 @@ export default function App() {
         localStorage.removeItem('pw_refresh_token');
         setAuthUser(null);
     };
+
+    const unseenReleaseNotes = useMemo(() => {
+        let seenVersion = '0';
+        try {
+            seenVersion = localStorage.getItem(RELEASE_NOTES_STORAGE_KEY) || '0';
+        } catch {
+            seenVersion = '0';
+        }
+        const notes = releaseNotes
+            .filter((note) => compareVersionStrings(note.version, seenVersion || '0') > 0)
+            .sort((a, b) => compareVersionStrings(b.version, a.version));
+        return notes.length ? notes : [releaseNotes[0] || DEFAULT_RELEASE_NOTES[0]];
+    }, [releaseNotesOpen, authUser, releaseNotes]);
+
+    const markReleaseNotesSeen = useCallback(() => {
+        try {
+            localStorage.setItem(RELEASE_NOTES_STORAGE_KEY, APP_RELEASE_VERSION);
+        } catch {
+            // Ignore localStorage access issues.
+        }
+    }, []);
+
+    const closeReleaseNotes = useCallback(() => {
+        markReleaseNotesSeen();
+        setReleaseNotesOpen(false);
+    }, [markReleaseNotesSeen]);
 
     const getRegion = useCallback((sponsor) => {
         if (!sponsor) return '';
@@ -2494,6 +3021,7 @@ export default function App() {
 
                         {route === 'admin' && authUser.role === 'admin' ? <AdminPage apiFetch={apiFetch} /> : null}
                         {route === 'profile' ? <ProfilePage user={authUser} apiFetch={apiFetch} onUserUpdate={setAuthUser} /> : null}
+                        {route === 'release-notes' ? <ReleaseNotesPage releases={releaseNotes} onBack={() => navigate('dashboard')} /> : null}
                     </div>
                 </div>
             </div>
@@ -2524,11 +3052,15 @@ export default function App() {
             <SyncPanel open={syncOpen} onClose={() => setSyncOpen(false)} onSyncDone={handleSyncDone} onSyncStart={snapshotBeforeSync} apiFetch={apiFetch} />
             <ConfigPanel open={configOpen} onClose={() => setConfigOpen(false)} apiFetch={apiFetch} />
             <SchedulePanel open={scheduleOpen} onClose={() => setScheduleOpen(false)} apiFetch={apiFetch} />
+            <ReleaseNotesModal
+                open={releaseNotesOpen}
+                releases={unseenReleaseNotes}
+                onClose={closeReleaseNotes}
+                onOpenFull={() => {
+                    closeReleaseNotes();
+                    navigate('release-notes');
+                }}
+            />
         </div>
     );
 }
-
-
-
-
-

@@ -19,6 +19,8 @@ const SOURCES = [
   { key: 'devaid', label: 'DevelopmentAid' },
   { key: 'dgmarket', label: 'DGMarket' },
   { key: 'africagateway', label: 'Africa Gateway' },
+  { key: 'isdb', label: 'IsDB' },
+  { key: 'badea', label: 'BADEA' },
 ];
 
 function setModalScrollLock(locked) {
@@ -41,6 +43,8 @@ export default function SyncPanel({ open, onClose, onSyncDone, onSyncStart, apiF
   const [devaid, setDevaid] = useState(true);
   const [dgmarket, setDgmarket] = useState(true);
   const [africagateway, setAfricagateway] = useState(true);
+  const [isdb, setIsdb] = useState(true);
+  const [badea, setBadea] = useState(true);
   const [noAi, setNoAi] = useState(false);
   const [includeExpired, setIncludeExpired] = useState(false);
   const [syncing, setSyncing] = useState(false);
@@ -171,6 +175,8 @@ export default function SyncPanel({ open, onClose, onSyncDone, onSyncStart, apiF
     devaid,
     dgmarket,
     africagateway,
+    isdb,
+    badea,
   };
 
   const selectedSourceCount = Object.values(selectedSources).filter(Boolean).length;
@@ -198,6 +204,8 @@ export default function SyncPanel({ open, onClose, onSyncDone, onSyncStart, apiF
           devaid,
           dgmarket,
           africagateway,
+          isdb,
+          badea,
           no_ai: noAi,
           include_expired: includeExpired,
         }),
@@ -247,6 +255,8 @@ export default function SyncPanel({ open, onClose, onSyncDone, onSyncStart, apiF
               <div className="sync-source-item"><Toggle isSelected={devaid} onChange={setDevaid} isDisabled={syncing} label="DevelopmentAid" /></div>
               <div className="sync-source-item"><Toggle isSelected={dgmarket} onChange={setDgmarket} isDisabled={syncing} label="DGMarket" /></div>
               <div className="sync-source-item"><Toggle isSelected={africagateway} onChange={setAfricagateway} isDisabled={syncing} label="Africa Gateway" /></div>
+              <div className="sync-source-item"><Toggle isSelected={isdb} onChange={setIsdb} isDisabled={syncing} label="IsDB" /></div>
+              <div className="sync-source-item"><Toggle isSelected={badea} onChange={setBadea} isDisabled={syncing} label="BADEA" /></div>
             </div>
           </div>
 

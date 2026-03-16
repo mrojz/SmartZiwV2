@@ -1,63 +1,107 @@
 # Procurement Watch
 
-## New security and collaboration features
+Procurement Watch is a SaaS-style internal intelligence dashboard for tracking procurement and tender opportunities, reviewing them with AI assistance, and managing analyst decisions in one workspace.
 
-This version adds:
-- Session-based authentication (no public registration)
-- Admin user management
-- Mandatory password change on first login/reset
-- Entity-linked comments panel in the UI
+## Features
+
+- Authentication and access control
+  - Secure login with JWT-based API access.
+  - Automatic bootstrap of the first admin user from environment variables.
+  - Forced password change on first login or after an admin reset.
+  - Admin-only management endpoints for privileged actions.
+
+- Procurement Watch dashboard
+  - Central table for reviewing opportunities from multiple procurement sources.
+  - Search, filters, advanced boolean query mode, and bulk actions.
+  - Right-side project inspector drawer for project details, decisions, metadata, and discussion.
+
+- AI-assisted review
+  - Newly scraped projects go through AI cybersecurity verification.
+  - AI enrichment supports source analysis, document understanding, and metadata extraction where configured.
+
+- Project decision workflow
+  - Analysts can mark projects as `Go`, `No Go`, or leave them undecided.
+  - Manual deadline override is supported, while keeping the original scraped deadline for traceability.
+
+- Comments and attachments
+  - Entity-linked discussion thread for projects.
+  - File attachments in discussion.
+  - Inline image preview and in-app PDF preview inside the discussion experience.
+
+- Sync management
+  - Manual sync modal with per-source selection.
+  - Scheduled sync configuration with source toggles, timezone handling, and run history.
+  - Live sync output streaming in the sync dialogs.
+  - Notification sound when new projects are found while the user is active in the app.
+
+- User administration
+  - Create, edit, deactivate, and delete users.
+  - Reset user passwords.
+  - Role-based access with admin and user roles.
+
+- Geography and filtering support
+  - Normalized continent, country, and region data.
+  - Continent and region-based filtering across projects.
+  - Seeded geography data for regions and country mappings.
+
+- Data export and persistence
+  - MongoDB-backed project storage.
+  - Excel export generation for project data.
+  - Sync logs and scheduler history persisted in the backend.
+
+## Current scraped sources
+
+The platform currently supports these procurement sources:
+
+- IADB
+- World Bank
+- Global Tenders
+- GIZ
+- DevelopmentAid
+- DGMarket
+- Africa Gateway
+- IsDB
+- BADEA
 
 ## Required environment variables
 
 Set these for first startup/bootstrap:
 
-- `ADMIN_EMAIL` (required when no admin exists)
-- `ADMIN_PASSWORD` (required when no admin exists)
-- `ADMIN_NAME` (optional, default: `Admin`)
+- `ADMIN_EMAIL` required when no admin exists yet
+- `ADMIN_PASSWORD` required when no admin exists yet
+- `ADMIN_NAME` optional, default `Admin`
 
 Optional:
-- `COOKIE_SECURE` (`true` in HTTPS production, default `false`)
+
 - `MONGO_URI`
 - `MONGO_DB`
 - `SYNC_SECRET`
+- `JWT_SECRET`
+- `JWT_ACCESS_MINUTES`
+- `JWT_REFRESH_DAYS`
+- `OPENAI_API_KEY` if AI features depend on it in your deployment
+- `DEEPSEEK_API_KEY` if DeepSeek-based enrichment is enabled
 
 ## First-time admin login
 
-1. Start backend with `ADMIN_EMAIL` and `ADMIN_PASSWORD` set.
-2. If no admin exists, backend auto-creates one admin user.
-3. Login using those credentials.
-4. You will be forced to change password (`mustChangePassword=true`).
+1. Start the backend with `ADMIN_EMAIL` and `ADMIN_PASSWORD` set.
+2. If no admin exists, the backend auto-creates one admin user.
+3. Log in using those credentials.
+4. You will be forced to set a new password before continuing.
 
 ## Auth behavior
 
-- No registration endpoint/UI.
-- All `/api/*` routes require authentication except `/api/auth/login` and `/api/health`.
+- No public registration flow exists.
+- All `/api/*` routes require authentication except:
+  - `/api/auth/login`
+  - `/api/auth/refresh`
+  - `/api/auth/bootstrap-status`
+  - `/api/health`
 - Admin-only APIs are under `/api/admin/*`.
-- Cookie session is used (`pw_session`), plus CSRF token for sensitive writes:
-  - `/api/auth/*`
-  - `/api/admin/*`
-  - `/api/comments`
-
-## Comments
-
-Comments are attached to:
-- `entityType`
-- `entityId`
-
-UI includes a left-side comments panel with:
-- Open/close toggle
-- All/Mine filter
-- Create + Cancel
-- Immediate refresh after submit
 
 ## Tests
 
-Backend minimal tests are under `backend/tests/test_auth_comments.py`:
-- admin bootstrap creation
-- admin route blocked for non-admin
-- must-change-password enforcement
-- create/list comments for an entity
+Backend tests are under [backend/tests/test_auth_comments.py](d:/Dev/Ziw/new_cdx_gpt_5.4/backend/tests/test_auth_comments.py).
 
 Run:
 

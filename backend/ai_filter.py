@@ -24,7 +24,7 @@ DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY", "")
 DEEPSEEK_BASE_URL = os.environ.get("DEEPSEEK_BASE_URL", "https://api.deepseek.com")
 DEEPSEEK_MODEL = "deepseek-chat"
 
-BATCH_SIZE = 5       # Smaller batches for reliability
+BATCH_SIZE = 2       # Smaller batches for reliability
 MAX_WORKERS = 4      # Concurrent threads
 
 SYSTEM_PROMPT = """You are a cybersecurity procurement analyst. Your job is to determine whether procurement notices are related to cybersecurity, information security, or IT security.
