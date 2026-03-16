@@ -1777,7 +1777,7 @@ function AdminPage({ apiFetch }) {
         { key: '_email', label: 'Email', type: 'string' },
         { key: '_role', label: 'Role', type: 'string' },
         { key: '_status', label: 'Status', type: 'string' },
-        { key: '_lastLogin', label: 'Last Login', type: 'date' },
+        { key: '_lastSeen', label: 'Last Opened', type: 'date' },
         { key: '_actions', label: '', type: 'none', width: '52px' },
     ];
 
@@ -1790,7 +1790,7 @@ function AdminPage({ apiFetch }) {
                 case '_email': valA = a.email || ''; valB = b.email || ''; break;
                 case '_role': valA = a.role || ''; valB = b.role || ''; break;
                 case '_status': valA = a.isActive ? 'a' : 'z'; valB = b.isActive ? 'a' : 'z'; break;
-                case '_lastLogin': valA = a.lastLoginAt || ''; valB = b.lastLoginAt || ''; break;
+                case '_lastSeen': valA = a.lastSeenAt || ''; valB = b.lastSeenAt || ''; break;
                 default: valA = ''; valB = ''; break;
             }
             const cmp = String(valA).localeCompare(String(valB), undefined, { sensitivity: 'base' });
@@ -2033,8 +2033,8 @@ function AdminPage({ apiFetch }) {
                                             </Table.Cell>
                                         );
                                     }
-                                    if (key === '_lastLogin') {
-                                        return <Table.Cell><span className="admin-users-last-login">{formatAdminDateTime(u.lastLoginAt)}</span></Table.Cell>;
+                                    if (key === '_lastSeen') {
+                                        return <Table.Cell><span className="admin-users-last-login">{formatAdminDateTime(u.lastSeenAt)}</span></Table.Cell>;
                                     }
                                     return (
                                         <Table.Cell className="td-actions admin-users-actions-cell">
