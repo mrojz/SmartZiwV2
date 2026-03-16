@@ -5,6 +5,7 @@ load_dotenv(override=False)
 
 import asyncio
 import json
+import mimetypes
 import os
 import secrets
 import subprocess
@@ -38,6 +39,8 @@ from database import (
     delete_projects_by_db_ids,
     get_config as db_get_config,
     save_config as db_save_config,
+    get_release_notes as db_get_release_notes,
+    save_release_notes as db_save_release_notes,
     get_schedule as db_get_schedule,
     save_schedule as db_save_schedule,
     get_geography as db_get_geography,
@@ -89,7 +92,7 @@ def _load_persistent_secret(env_name: str, fallback_filename: str) -> str:
 # JWT config
 JWT_SECRET = _load_persistent_secret("JWT_SECRET", ".jwt_secret")
 JWT_ALGORITHM = "HS256"
-JWT_ACCESS_MINUTES = int(os.getenv("JWT_ACCESS_MINUTES", "60"))
+JWT_ACCESS_MINUTES = int(os.getenv("JWT_ACCESS_MINUTES", "2160"))
 JWT_REFRESH_DAYS = int(os.getenv("JWT_REFRESH_DAYS", "7"))
 
 scheduler = BackgroundScheduler()
@@ -550,6 +553,8 @@ def _start_sync_with_flags(req_dict: dict):
         "devaid": "--devaid",
         "dgmarket": "--dgmarket",
         "africagateway": "--africagateway",
+        "isdb": "--isdb",
+        "badea": "--badea",
         "no_ai": "--no-ai",
         "no_enrich": "--no-enrich",
         "include_expired": "--include-expired",
@@ -604,6 +609,17 @@ class ConfigUpdate(BaseModel):
     regions: dict[str, list[str]] = {}
 
 
+class ReleaseNoteItem(BaseModel):
+    version: str
+    title: str
+    summary: str = ""
+    items: list[str] = Field(default_factory=list)
+
+
+class ReleaseNotesUpdate(BaseModel):
+    notes: list[ReleaseNoteItem] = Field(default_factory=list)
+
+
 class SyncRequest(BaseModel):
     iadb: bool = False
     worldbank: bool = False
@@ -612,6 +628,8 @@ class SyncRequest(BaseModel):
     devaid: bool = False
     dgmarket: bool = False
     africagateway: bool = False
+    isdb: bool = False
+    badea: bool = False
     no_ai: bool = False
     no_enrich: bool = False
     include_expired: bool = False
@@ -887,7 +905,24 @@ def serve_upload(file_id: str, filename: str):
     filepath = UPLOADS_DIR / safe_id / safe_name
     if not filepath.exists():
         raise HTTPException(status_code=404, detail="File not found")
-    return FileResponse(filepath, filename=safe_name)
+    media_type, _ = mimetypes.guess_type(str(filepath))
+    displayable_types = (
+        "application/pdf",
+        "image/",
+        "text/",
+    )
+    disposition = "attachment"
+    if media_type and (
+        media_type == "application/pdf"
+        or any(media_type.startswith(prefix) for prefix in ("image/", "text/"))
+    ):
+        disposition = "inline"
+    return FileResponse(
+        filepath,
+        filename=safe_name,
+        media_type=media_type or "application/octet-stream",
+        content_disposition_type=disposition,
+    )
 
 # Existing endpoints
 @app.get("/api/auth/bootstrap-status")
@@ -973,6 +1008,32 @@ def get_geography():
 def update_config(body: ConfigUpdate):
     db_save_config(body.keywords, body.regions)
     return {"status": "saved", "keywords": len(body.keywords), "regions": len(body.regions)}
+
+
+@app.get("/api/release-notes")
+def get_release_notes():
+    return {"notes": db_get_release_notes()}
+
+
+@app.get("/api/admin/release-notes")
+def admin_get_release_notes(request: Request):
+    _require_admin(request)
+    return {"notes": db_get_release_notes()}
+
+
+@app.put("/api/admin/release-notes")
+def admin_update_release_notes(body: ReleaseNotesUpdate, request: Request):
+    _require_admin(request)
+    normalized = []
+    for note in body.notes:
+        normalized.append({
+            "version": note.version.strip(),
+            "title": note.title.strip(),
+            "summary": note.summary.strip(),
+            "items": [item.strip() for item in note.items if str(item).strip()],
+        })
+    db_save_release_notes(normalized)
+    return {"status": "saved", "count": len(normalized)}
 
 
 @app.post("/api/sync/start")

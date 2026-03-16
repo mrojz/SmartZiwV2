@@ -30,6 +30,8 @@ const SOURCE_LIST = [
     { key: 'devaid', label: 'DevelopmentAid' },
     { key: 'dgmarket', label: 'DGMarket' },
     { key: 'africagateway', label: 'Africa Gateway' },
+    { key: 'isdb', label: 'IsDB' },
+    { key: 'badea', label: 'BADEA' },
 ];
 
 const TIMEZONES = [
@@ -213,6 +215,9 @@ export default function SchedulePanel({ open, onClose, apiFetch }) {
             giz: true,
             devaid: true,
             dgmarket: true,
+            africagateway: true,
+            isdb: true,
+            badea: true,
         },
         no_ai: false,
         include_expired: false,

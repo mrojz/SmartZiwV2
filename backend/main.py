@@ -9,6 +9,8 @@ Usage:
     python main.py --giz                # Run only GIZ scraper
     python main.py --devaid             # Run only DevelopmentAid scraper
     python main.py --dgmarket           # Run only DGMarket scraper
+    python main.py --isdb               # Run only IsDB scraper
+    python main.py --badea              # Run only BADEA scraper
     python main.py --no-ai             # Skip AI cybersecurity verification
     python main.py --include-expired   # Include projects with past due dates
 """
@@ -75,6 +77,16 @@ SCRAPERS = {
         "label": "Africa Gateway",
         "import": "from utils.ag_scraper import run_ag_scraper",
         "func": "run_ag_scraper",
+    },
+    "isdb": {
+        "label": "IsDB",
+        "import": "from utils.isdb_scraper import run_isdb_scraper",
+        "func": "run_isdb_scraper",
+    },
+    "badea": {
+        "label": "BADEA",
+        "import": "from utils.badea_scraper import run_badea_scraper",
+        "func": "run_badea_scraper",
     },
 }
 
@@ -149,13 +161,15 @@ def main():
     parser.add_argument("--devaid", action="store_true", help="Run only the DevelopmentAid scraper")
     parser.add_argument("--dgmarket", action="store_true", help="Run only the DGMarket scraper")
     parser.add_argument("--africagateway", action="store_true", help="Run only the Africa Gateway scraper")
+    parser.add_argument("--isdb", action="store_true", help="Run only the IsDB scraper")
+    parser.add_argument("--badea", action="store_true", help="Run only the BADEA scraper")
     parser.add_argument("--no-ai", action="store_true", help="Skip AI cybersecurity verification")
     parser.add_argument("--no-enrich", action="store_true", help="Skip AI enrichment (source detection, doc analysis)")
     parser.add_argument("--include-expired", action="store_true", help="Include projects with past due dates")
     args = parser.parse_args()
 
     # Determine which scrapers to run
-    any_source = args.iadb or args.worldbank or args.globaltenders or args.giz or args.devaid or args.dgmarket or args.africagateway
+    any_source = args.iadb or args.worldbank or args.globaltenders or args.giz or args.devaid or args.dgmarket or args.africagateway or args.isdb or args.badea
     to_run = {}
     for key, info in SCRAPERS.items():
         if getattr(args, key, False) or not any_source:
