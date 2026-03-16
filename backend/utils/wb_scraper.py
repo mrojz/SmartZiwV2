@@ -81,6 +81,23 @@ NOTICE_TYPES = "^".join([
 ])
 
 
+def _request_notices_page(params):
+    last_error = None
+    for method in ("POST", "GET"):
+        try:
+            requester = requests.post if method == "POST" else requests.get
+            resp = requester(API_URL, params=params, headers=HEADERS, timeout=30)
+            if resp.status_code == 500:
+                last_error = requests.HTTPError(f"500 Server Error via {method} for url: {resp.url}")
+                continue
+            return resp
+        except Exception as exc:
+            last_error = exc
+    if last_error:
+        raise last_error
+    raise RuntimeError("Unknown World Bank request failure")
+
+
 def fetch_notices(keyword, max_pages=10):
     """Fetch all procurement notices matching a keyword, with pagination.
     
@@ -108,9 +125,7 @@ def fetch_notices(keyword, max_pages=10):
 
         for attempt in range(3):
             try:
-                resp = requests.post(
-                    API_URL, params=params, headers=HEADERS, timeout=30
-                )
+                resp = _request_notices_page(params)
                 if resp.status_code == 429:
                     wait = (2 ** attempt) + random.uniform(1, 3)
                     print(f"    [!] Rate limited, waiting {wait:.1f}s...")

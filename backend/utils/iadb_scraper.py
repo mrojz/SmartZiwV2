@@ -120,8 +120,13 @@ def save_tokens():
 def run_mitmproxy(port):
     """Run mitmproxy in a separate thread. Retries on a new random port if binding fails."""
     global active_proxy_port
-    from mitmproxy import options
-    from mitmproxy.tools import dump
+    try:
+        from mitmproxy import options
+        from mitmproxy.tools import dump
+    except Exception as e:
+        print(f"[!] mitmproxy import failed: {e}")
+        print("[!] IADB token interception is unavailable. This is commonly caused by an incompatible bcrypt/passlib combination.")
+        return
 
     max_retries = 10
     current_port = port
