@@ -129,6 +129,7 @@ def _sanitize_user(user: dict) -> dict:
         "createdAt": user.get("createdAt"),
         "updatedAt": user.get("updatedAt"),
         "lastLoginAt": user.get("lastLoginAt"),
+        "lastSeenAt": user.get("lastSeenAt"),
     }
 
 
@@ -155,6 +156,7 @@ def _bootstrap_admin_if_needed():
             "createdAt": ts,
             "updatedAt": ts,
             "lastLoginAt": None,
+            "lastSeenAt": None,
         }
     )
     print(f"[auth] Bootstrapped default admin: {email}")
@@ -675,7 +677,8 @@ def login(body: LoginRequest):
     if not user.get("isActive", True):
         raise HTTPException(status_code=403, detail="User is deactivated")
 
-    update_user(user["id"], {"lastLoginAt": now_iso()})
+    seen_at = now_iso()
+    update_user(user["id"], {"lastLoginAt": seen_at, "lastSeenAt": seen_at})
     fresh = get_user_by_id(user["id"])
     access_token = _create_access_token(fresh)
     refresh_token = _create_refresh_token(fresh)
@@ -690,7 +693,8 @@ def logout():
 @app.get("/api/auth/me")
 def me(request: Request):
     user = request.state.user
-    return {"user": _sanitize_user(user)}
+    updated = update_user(user["id"], {"lastSeenAt": now_iso()})
+    return {"user": _sanitize_user(updated or user)}
 
 
 class RefreshRequest(BaseModel):
@@ -707,6 +711,7 @@ def refresh_token(body: RefreshRequest):
         raise HTTPException(status_code=401, detail="User not found")
     if not user.get("isActive", True):
         raise HTTPException(status_code=403, detail="User is deactivated")
+    user = update_user(user["id"], {"lastSeenAt": now_iso()}) or user
     new_access = _create_access_token(user)
     return {"accessToken": new_access, "user": _sanitize_user(user)}
 
@@ -772,6 +777,7 @@ def admin_create_user(body: AdminUserCreateRequest, request: Request):
         "createdAt": ts,
         "updatedAt": ts,
         "lastLoginAt": None,
+        "lastSeenAt": None,
     }
     create_user_doc(user)
     return {"user": _sanitize_user(user), "temporaryPassword": generated_password}
