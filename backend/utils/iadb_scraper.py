@@ -172,7 +172,7 @@ def create_selenium_driver(proxy_port=8001):
     is_windows = platform.system() == "Windows"
     
     # Headless mode
-    chrome_options.add_argument("--headless=new")
+    # chrome_options.add_argument("--headless=new")
     
     # Configure proxy
     chrome_options.add_argument(f"--proxy-server=http://127.0.0.1:{proxy_port}")
@@ -215,13 +215,13 @@ def accept_cookies(driver):
     from selenium.webdriver.support import expected_conditions as EC
     
     try:
-        cookie_btn = WebDriverWait(driver, 15).until(
+        cookie_btn = WebDriverWait(driver, 3).until(
             EC.element_to_be_clickable((By.ID, "onetrust-accept-btn-handler"))
         )
         cookie_btn.click()
         print("[+] Accepted cookies.")
-    except Exception as e:
-        print(f"[!] Could not click cookie button: {e}")
+    except Exception:
+        print("[i] Cookie banner not shown or not clickable within 3s, continuing...")
 
 
 def scroll_down(driver, pixels=600):
