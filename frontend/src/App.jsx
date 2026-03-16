@@ -862,6 +862,11 @@ function CommentsPanel({ open, entity, project, projectRegion, comments, mine, s
         el.style.overflowY = el.scrollHeight > 132 ? 'auto' : 'hidden';
     }, [body]);
 
+    const normalizedComments = useMemo(
+        () => comments.map(normalizeComment),
+        [comments],
+    );
+
     if (!open) return null;
 
     const keywords = (project?.matched_keywords || '')
@@ -943,11 +948,6 @@ function CommentsPanel({ open, entity, project, projectRegion, comments, mine, s
     };
 
     const removeFile = (fileId) => setPendingFiles((prev) => prev.filter((f) => f.fileId !== fileId));
-
-    const normalizedComments = useMemo(
-        () => comments.map(normalizeComment),
-        [comments],
-    );
 
     const filteredComments = search
         ? normalizedComments.filter((c) => {
