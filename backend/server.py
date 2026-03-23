@@ -29,10 +29,15 @@ from pydantic import BaseModel, EmailStr, Field
 
 from database import (
     get_all_projects,
+    get_project_by_db_id,
     update_project_by_index,
     update_project_by_db_id,
     update_project_deadline_by_index,
     update_project_deadline_by_db_id,
+    update_project_assignments_by_db_id,
+    subscribe_project_commenters_by_db_id,
+    update_project_vote_by_db_id,
+    update_project_deep_dive_state_by_db_id,
     upsert_projects,
     delete_project_by_index,
     delete_project_by_db_id,
@@ -56,9 +61,19 @@ from database import (
     update_user,
     delete_user,
     count_admin_users,
+    get_saved_searches as db_get_saved_searches,
+    save_saved_searches as db_save_saved_searches,
     list_comments,
     create_comment,
+    get_comment_metrics,
+    create_notifications,
+    list_notifications_for_user,
+    mark_notification_read,
+    mark_notification_viewed,
+    mark_all_notifications_read,
+    mark_all_notifications_viewed,
 )
+from deep_dive import run_deep_dive_research
 
 BASE_DIR = Path(__file__).resolve().parent
 PROJECTS_XLSX = BASE_DIR / "projects.xlsx"
@@ -102,6 +117,8 @@ DAY_ORDER = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
 _excel_export_lock = threading.Lock()
 _excel_export_running = False
 _excel_export_pending = False
+_deep_dive_lock = threading.Lock()
+_deep_dive_running: set[str] = set()
 
 
 # Auth helpers
@@ -243,6 +260,253 @@ def _require_admin(request: Request):
     return u
 
 
+def _require_manager(request: Request):
+    u = request.state.user
+    if u.get("role") != "manager":
+        raise HTTPException(status_code=403, detail="Manager only")
+    return u
+
+
+def _require_admin_or_manager(request: Request):
+    u = request.state.user
+    if u.get("role") not in ("admin", "manager"):
+        raise HTTPException(status_code=403, detail="Admin or manager only")
+    return u
+
+
+def _active_users_by_id() -> dict[str, dict]:
+    return {
+        user["id"]: _sanitize_user(user)
+        for user in list_users("")
+        if user.get("isActive", True)
+    }
+
+
+def _project_entity_id(project: dict) -> str:
+    return str(project.get("project_id") or project.get("project_name") or "")
+
+
+def _enrich_project_payload(project: dict, user_map: dict[str, dict] | None = None, comment_metrics: dict[str, dict] | None = None, current_user_id: str | None = None) -> dict:
+    payload = dict(project)
+    users = user_map or _active_users_by_id()
+    metrics_map = comment_metrics or get_comment_metrics("project")
+    entity_id = _project_entity_id(payload)
+    metrics = metrics_map.get(entity_id, {})
+    payload["comment_count"] = int(metrics.get("comment_count") or 0)
+    payload["comment_document_count"] = int(metrics.get("comment_document_count") or 0)
+    assigned_ids = [str(item) for item in (payload.get("assigned_user_ids") or []) if item]
+    payload["assigned_user_ids"] = assigned_ids
+    payload["assigned_users"] = [users[user_id] for user_id in assigned_ids if user_id in users]
+    votes = [vote for vote in (payload.get("votes") or []) if vote.get("value") in ("up", "down")]
+    payload["vote_summary"] = {
+        "up": sum(1 for vote in votes if vote.get("value") == "up"),
+        "down": sum(1 for vote in votes if vote.get("value") == "down"),
+    }
+    payload["current_user_vote"] = ""
+    if current_user_id:
+        for vote in votes:
+            if str(vote.get("userId") or "") == str(current_user_id):
+                payload["current_user_vote"] = vote.get("value") or ""
+                break
+    return payload
+
+
+def _broadcast_notification(event: dict, user_ids: list[str] | None = None):
+    allowed = {str(item) for item in (user_ids or []) if item}
+    with _notification_lock:
+        for loop, q, queue_user_id in list(_notification_queues):
+            if allowed and queue_user_id not in allowed:
+                continue
+            try:
+                loop.call_soon_threadsafe(q.put_nowait, event)
+            except Exception:
+                pass
+
+
+def _emit_user_notifications(*, user_ids: list[str], actor_user: dict, notification_type: str, message: str, project: dict | None = None, comment_id: str | None = None):
+    recipients = []
+    actor_id = str((actor_user or {}).get("id") or "")
+    seen = set()
+    for user_id in user_ids:
+        key = str(user_id or "").strip()
+        if not key or key == actor_id or key in seen:
+            continue
+        seen.add(key)
+        recipients.append(key)
+    if not recipients:
+        return
+
+    timestamp = now_iso()
+    notifications = []
+    for user_id in recipients:
+        notifications.append({
+            "id": str(uuid.uuid4()),
+            "userId": user_id,
+            "type": notification_type,
+            "projectDbId": project.get("db_id") if project else None,
+            "entityId": _project_entity_id(project or {}),
+            "commentId": comment_id,
+            "actorUserId": actor_id,
+            "actorName": actor_user.get("name") if actor_user else "",
+            "message": message,
+            "read": False,
+            "viewed": False,
+            "createdAt": timestamp,
+        })
+    create_notifications(notifications)
+    for notification in notifications:
+        _broadcast_notification({"type": "notification", "notification": notification}, [notification["userId"]])
+
+
+def _sanitize_mentions(raw_mentions: list, users: dict[str, dict] | None = None) -> list[dict]:
+    user_map = users or _active_users_by_id()
+    mentions = []
+    seen = set()
+    for raw in raw_mentions or []:
+        mention = raw.model_dump() if hasattr(raw, "model_dump") else (raw.dict() if hasattr(raw, "dict") else dict(raw))
+        user_id = str(mention.get("userId") or "").strip()
+        if not user_id or user_id in seen or user_id not in user_map:
+            continue
+        seen.add(user_id)
+        user = user_map[user_id]
+        mentions.append({
+            "userId": user_id,
+            "name": user.get("name", ""),
+            "email": user.get("email", ""),
+        })
+    return mentions
+
+
+def _project_comment_recipient_ids(project: dict, mentioned_user_ids: list[str]) -> list[str]:
+    recipients = []
+    seen = set()
+    for user_id in (project.get("assigned_user_ids") or []) + (project.get("comment_subscriber_user_ids") or []):
+        key = str(user_id or "").strip()
+        if not key or key in seen or key in mentioned_user_ids:
+            continue
+        seen.add(key)
+        recipients.append(key)
+    return recipients
+
+
+def _create_project_comment_and_notify(*, entity_type: str, entity_id: str, project: dict | None, author_user: dict, body_text: str, attachments: list[dict] | None = None, mentions: list[dict] | None = None) -> dict:
+    text = (body_text or "").strip()
+    cleaned_attachments = attachments or []
+    cleaned_mentions = mentions or []
+    comment = {
+        "id": str(uuid.uuid4()),
+        "entityType": entity_type.strip(),
+        "entityId": entity_id.strip(),
+        "authorUserId": author_user.get("id"),
+        "authorName": author_user.get("name", ""),
+        "authorAvatarUrl": author_user.get("avatarUrl", ""),
+        "body": text,
+        "attachments": cleaned_attachments,
+        "mentions": cleaned_mentions,
+        "createdAt": now_iso(),
+        "updatedAt": now_iso(),
+    }
+    create_comment(comment)
+    if project and comment["entityType"] == "project":
+        mentioned_user_ids = [mention["userId"] for mention in cleaned_mentions]
+        if mentioned_user_ids:
+            project = subscribe_project_commenters_by_db_id(project.get("db_id"), mentioned_user_ids) or project
+            actor_name = author_user.get("name") or author_user.get("email") or "Someone"
+            _emit_user_notifications(
+                user_ids=mentioned_user_ids,
+                actor_user=author_user,
+                notification_type="mention",
+                message=f"{actor_name} mentioned you on {project.get('project_name') or project.get('project_id') or 'a tender'}.",
+                project=project,
+                comment_id=comment["id"],
+            )
+        recipient_ids = _project_comment_recipient_ids(project, mentioned_user_ids)
+        actor_name = author_user.get("name") or author_user.get("email") or "Someone"
+        _emit_user_notifications(
+            user_ids=recipient_ids,
+            actor_user=author_user,
+            notification_type="comment",
+            message=f"{actor_name} commented on {project.get('project_name') or project.get('project_id') or 'a tender'}.",
+            project=project,
+            comment_id=comment["id"],
+        )
+    comment.pop("_id", None)
+    return comment
+
+
+def _format_deep_dive_comment(project: dict, result: dict) -> str:
+    source_name = result.get("source_name") or "Unknown"
+    primary_url = result.get("primary_url") or ""
+    summary = (result.get("summary") or "").strip()
+    document_links = result.get("document_urls") or []
+
+    lines = [
+        "Deep Dive Search",
+        "",
+        f"Source: {source_name}",
+    ]
+    if primary_url:
+        lines.append(f"Source page: {primary_url}")
+    if summary:
+        lines.extend(["", "Project:", summary[:420]])
+    if document_links:
+        lines.extend(["", "Files:"])
+        lines.extend([f"- {url}" for url in document_links[:5]])
+    elif primary_url:
+        lines.extend(["", "Files:", "- No clear document links found"])
+    else:
+        lines.extend(["", "Files:", "- No source files found"])
+    return "\n".join(lines).strip()
+
+
+def _run_project_deep_dive(project_db_id: str, actor_user: dict):
+    bot_user = {
+        "id": "bot:deep-dive",
+        "name": "Deep Dive Bot",
+        "email": "",
+        "avatarUrl": "",
+    }
+    try:
+        project = update_project_deep_dive_state_by_db_id(project_db_id, {
+            "deep_dive_status": "running",
+            "deep_dive_error": "",
+        })
+        if not project:
+            return
+        result = run_deep_dive_research(project)
+        comment_body = _format_deep_dive_comment(project, result)
+        _create_project_comment_and_notify(
+            entity_type="project",
+            entity_id=_project_entity_id(project),
+            project=project,
+            author_user=bot_user,
+            body_text=comment_body,
+        )
+        update_project_deep_dive_state_by_db_id(project_db_id, {
+            "deep_dive_status": "completed",
+            "deep_dive_completed_at": now_iso(),
+            "deep_dive_error": "",
+        })
+    except Exception as exc:
+        project = get_project_by_db_id(project_db_id)
+        if project:
+            _create_project_comment_and_notify(
+                entity_type="project",
+                entity_id=_project_entity_id(project),
+                project=project,
+                author_user=bot_user,
+                body_text=f"Deep Dive Search could not complete.\n\nNotes: {str(exc).strip()}",
+            )
+        update_project_deep_dive_state_by_db_id(project_db_id, {
+            "deep_dive_status": "error",
+            "deep_dive_completed_at": now_iso(),
+            "deep_dive_error": str(exc).strip()[:1000],
+        })
+    finally:
+        with _deep_dive_lock:
+            _deep_dive_running.discard(project_db_id)
+
+
 # Scheduler/sync
 
 def _scheduled_sync_job():
@@ -340,17 +604,8 @@ app.add_middleware(
 )
 
 
-_notification_queues: list[tuple[asyncio.AbstractEventLoop, asyncio.Queue]] = []
+_notification_queues: list[tuple[asyncio.AbstractEventLoop, asyncio.Queue, str]] = []
 _notification_lock = threading.Lock()
-
-
-def _broadcast_notification(event: dict):
-    with _notification_lock:
-        for loop, q in list(_notification_queues):
-            try:
-                loop.call_soon_threadsafe(q.put_nowait, event)
-            except Exception:
-                pass
 
 
 class SyncState:
@@ -557,6 +812,10 @@ def _start_sync_with_flags(req_dict: dict):
         "africagateway": "--africagateway",
         "isdb": "--isdb",
         "badea": "--badea",
+        "bcie": "--bcie",
+        "eabr": "--eabr",
+        "oas": "--oas",
+        "africanunion": "--africanunion",
         "no_ai": "--no-ai",
         "no_enrich": "--no-enrich",
         "include_expired": "--include-expired",
@@ -632,6 +891,10 @@ class SyncRequest(BaseModel):
     africagateway: bool = False
     isdb: bool = False
     badea: bool = False
+    bcie: bool = False
+    eabr: bool = False
+    oas: bool = False
+    africanunion: bool = False
     no_ai: bool = False
     no_enrich: bool = False
     include_expired: bool = False
@@ -661,11 +924,43 @@ class BulkProjectDeleteRequest(BaseModel):
     projectDbIds: list[str] = Field(default_factory=list)
 
 
+class MentionItem(BaseModel):
+    userId: str
+    name: str = ""
+    email: str = ""
+
+
 class CommentCreateRequest(BaseModel):
     entityType: str
     entityId: str
     body: str = Field(min_length=1, max_length=4000)
-    attachments: list[dict] = []
+    projectDbId: str = ""
+    attachments: list[dict] = Field(default_factory=list)
+    mentions: list[MentionItem] = Field(default_factory=list)
+
+
+class ProjectAssignmentsUpdate(BaseModel):
+    userIds: list[str] = Field(default_factory=list)
+
+
+class ProjectVoteUpdate(BaseModel):
+    value: str = ""
+
+
+class DeepDiveTriggerRequest(BaseModel):
+    force: bool = False
+
+
+class SavedSearchItem(BaseModel):
+    id: str
+    name: str
+    filters: dict = Field(default_factory=dict)
+    createdAt: str | None = None
+    updatedAt: str | None = None
+
+
+class SavedSearchesUpdate(BaseModel):
+    searches: list[SavedSearchItem] = Field(default_factory=list)
 
 
 # Auth endpoints
@@ -758,7 +1053,7 @@ def admin_list_users(request: Request, q: str = ""):
 @app.post("/api/admin/users")
 def admin_create_user(body: AdminUserCreateRequest, request: Request):
     _require_admin(request)
-    if body.role not in ("admin", "user"):
+    if body.role not in ("admin", "manager", "user"):
         raise HTTPException(status_code=400, detail="Invalid role")
     if get_user_by_email(body.email):
         raise HTTPException(status_code=400, detail="Email already exists")
@@ -786,7 +1081,7 @@ def admin_create_user(body: AdminUserCreateRequest, request: Request):
 @app.put("/api/admin/users/{user_id}")
 def admin_update_user(user_id: str, body: AdminUserUpdateRequest, request: Request):
     admin = _require_admin(request)
-    if body.role not in ("admin", "user"):
+    if body.role not in ("admin", "manager", "user"):
         raise HTTPException(status_code=400, detail="Invalid role")
     target = get_user_by_id(user_id)
     if not target:
@@ -829,6 +1124,34 @@ def admin_delete_user(user_id: str, request: Request):
 
 
 # Comments
+@app.get("/api/users")
+def get_active_users(request: Request):
+    return list(_active_users_by_id().values())
+
+
+@app.get("/api/saved-searches")
+def get_saved_searches(request: Request):
+    return {"searches": db_get_saved_searches(request.state.user.get("id"))}
+
+
+@app.put("/api/saved-searches")
+def save_saved_searches(body: SavedSearchesUpdate, request: Request):
+    sanitized = []
+    for raw in body.searches[:30]:
+        item = raw.model_dump() if hasattr(raw, "model_dump") else raw.dict()
+        name = str(item.get("name") or "").strip()
+        if not name:
+            continue
+        sanitized.append({
+            "id": str(item.get("id") or uuid.uuid4()),
+            "name": name[:80],
+            "filters": item.get("filters") or {},
+            "createdAt": item.get("createdAt") or now_iso(),
+            "updatedAt": now_iso(),
+        })
+    return {"searches": db_save_saved_searches(request.state.user.get("id"), sanitized)}
+
+
 @app.get("/api/comments")
 def get_comments(entityType: str, entityId: str, mine: bool = False, search: str = "", request: Request = None):
     comments = list_comments(entityType, entityId)
@@ -848,7 +1171,11 @@ def get_comments(entityType: str, entityId: str, mine: bool = False, search: str
     user_map = {u["id"]: _sanitize_user(u) for u in list_users("")}
     out = []
     for c in comments:
-        author = user_map.get(c.get("authorUserId"), {"id": c.get("authorUserId"), "name": "Unknown", "avatarUrl": ""})
+        author = user_map.get(c.get("authorUserId"), {
+            "id": c.get("authorUserId"),
+            "name": c.get("authorName") or "Unknown",
+            "avatarUrl": c.get("authorAvatarUrl", ""),
+        })
         out.append({
             "id": c.get("id"),
             "entityType": c.get("entityType"),
@@ -858,10 +1185,23 @@ def get_comments(entityType: str, entityId: str, mine: bool = False, search: str
             "authorAvatarUrl": author.get("avatarUrl", ""),
             "body": c.get("body"),
             "attachments": c.get("attachments", []),
+            "mentions": c.get("mentions", []),
             "createdAt": c.get("createdAt"),
             "updatedAt": c.get("updatedAt"),
         })
     return out
+
+@app.get("/api/projects/by-db-id/{project_db_id}")
+def get_project(project_db_id: str, request: Request):
+    project = get_project_by_db_id(project_db_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    return _enrich_project_payload(
+        project,
+        user_map=_active_users_by_id(),
+        comment_metrics=get_comment_metrics("project"),
+        current_user_id=request.state.user.get("id"),
+    )
 
 
 @app.post("/api/comments")
@@ -869,18 +1209,18 @@ def post_comment(body: CommentCreateRequest, request: Request):
     text = body.body.strip()
     if not text and not body.attachments:
         raise HTTPException(status_code=400, detail="Comment body is required")
-    comment = {
-        "id": str(uuid.uuid4()),
-        "entityType": body.entityType.strip(),
-        "entityId": body.entityId.strip(),
-        "authorUserId": request.state.user.get("id"),
-        "body": text,
-        "attachments": body.attachments or [],
-        "createdAt": now_iso(),
-        "updatedAt": now_iso(),
-    }
-    create_comment(comment)
-    comment.pop("_id", None)
+    users = _active_users_by_id()
+    mentions = _sanitize_mentions(body.mentions or [], users)
+    project = get_project_by_db_id(body.projectDbId.strip()) if body.projectDbId else None
+    comment = _create_project_comment_and_notify(
+        entity_type=body.entityType,
+        entity_id=body.entityId,
+        project=project,
+        author_user=request.state.user,
+        body_text=text,
+        attachments=body.attachments or [],
+        mentions=mentions,
+    )
     return {"comment": comment}
 
 
@@ -943,8 +1283,14 @@ def health():
 
 
 @app.get("/api/projects")
-def list_projects():
-    return get_all_projects()
+def list_projects(request: Request):
+    user_map = _active_users_by_id()
+    comment_metrics = get_comment_metrics("project")
+    current_user_id = request.state.user.get("id")
+    return [
+        _enrich_project_payload(project, user_map=user_map, comment_metrics=comment_metrics, current_user_id=current_user_id)
+        for project in get_all_projects()
+    ]
 
 
 @app.delete("/api/projects/{index}")
@@ -1132,45 +1478,114 @@ def server_time():
 
 
 @app.patch("/api/projects/{index}/decision")
-def update_decision(index: int, body: DecisionUpdate):
+def update_decision(index: int, body: DecisionUpdate, request: Request):
+    _require_manager(request)
     if body.decision not in ("Go", "No Go", ""):
         raise HTTPException(status_code=400, detail="Decision must be 'Go', 'No Go', or ''")
     result = update_project_by_index(index, body.decision)
     if result is None:
         raise HTTPException(status_code=404, detail="Project index out of range")
     _save_to_excel(get_all_projects())
-    return result
+    return _enrich_project_payload(result, current_user_id=request.state.user.get("id"))
 
 
 @app.patch("/api/projects/by-db-id/{project_db_id}/decision")
-def update_decision_by_id(project_db_id: str, body: DecisionUpdate):
+def update_decision_by_id(project_db_id: str, body: DecisionUpdate, request: Request):
+    _require_manager(request)
     if body.decision not in ("Go", "No Go", ""):
         raise HTTPException(status_code=400, detail="Decision must be 'Go', 'No Go', or ''")
     result = update_project_by_db_id(project_db_id, body.decision)
     if result is None:
         raise HTTPException(status_code=404, detail="Project not found")
     _save_to_excel(get_all_projects())
-    return result
+    return _enrich_project_payload(result, current_user_id=request.state.user.get("id"))
 
 
 @app.patch("/api/projects/{index}/deadline")
 def update_deadline(index: int, body: DeadlineUpdate, request: Request):
-    user = _require_admin(request)
+    user = _require_admin_or_manager(request)
     result = update_project_deadline_by_index(index, body.manualDeadline, user)
     if result is None:
         raise HTTPException(status_code=404, detail="Project index out of range")
     _save_to_excel(get_all_projects())
-    return result
+    return _enrich_project_payload(result, current_user_id=request.state.user.get("id"))
 
 
 @app.patch("/api/projects/by-db-id/{project_db_id}/deadline")
 def update_deadline_by_id(project_db_id: str, body: DeadlineUpdate, request: Request):
-    user = _require_admin(request)
+    user = _require_admin_or_manager(request)
     result = update_project_deadline_by_db_id(project_db_id, body.manualDeadline, user)
     if result is None:
         raise HTTPException(status_code=404, detail="Project not found")
     _save_to_excel(get_all_projects())
-    return result
+    return _enrich_project_payload(result, current_user_id=request.state.user.get("id"))
+
+
+@app.put("/api/projects/by-db-id/{project_db_id}/assignments")
+def update_project_assignments(project_db_id: str, body: ProjectAssignmentsUpdate, request: Request):
+    users = _active_users_by_id()
+    valid_user_ids = [user_id for user_id in body.userIds if user_id in users]
+    project_before = get_project_by_db_id(project_db_id)
+    result = update_project_assignments_by_db_id(project_db_id, valid_user_ids)
+    if result is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+    previous_assigned = set((project_before or {}).get("assigned_user_ids") or [])
+    new_assigned = [user_id for user_id in valid_user_ids if user_id not in previous_assigned]
+    if new_assigned:
+        actor_name = request.state.user.get("name") or request.state.user.get("email") or "Someone"
+        _emit_user_notifications(
+            user_ids=new_assigned,
+            actor_user=request.state.user,
+            notification_type="assignment",
+            message=f"{actor_name} assigned you to {result.get('project_name') or result.get('project_id') or 'a tender'}.",
+            project=result,
+        )
+    return _enrich_project_payload(result, user_map=users, current_user_id=request.state.user.get("id"))
+
+
+@app.post("/api/projects/by-db-id/{project_db_id}/vote")
+def update_project_vote(project_db_id: str, body: ProjectVoteUpdate, request: Request):
+    if body.value not in ("up", "down", ""):
+        raise HTTPException(status_code=400, detail="Vote must be 'up', 'down', or ''")
+    result = update_project_vote_by_db_id(project_db_id, request.state.user.get("id"), body.value)
+    if result is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+    return _enrich_project_payload(result, current_user_id=request.state.user.get("id"))
+
+
+@app.post("/api/projects/by-db-id/{project_db_id}/deep-dive")
+def trigger_project_deep_dive(project_db_id: str, body: DeepDiveTriggerRequest, request: Request):
+    project = get_project_by_db_id(project_db_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    with _deep_dive_lock:
+        if project_db_id in _deep_dive_running and not body.force:
+            current = get_project_by_db_id(project_db_id) or project
+            return {
+                "accepted": True,
+                "alreadyRunning": True,
+                "jobId": current.get("deep_dive_job_id") or "",
+                "project": _enrich_project_payload(current, current_user_id=request.state.user.get("id")),
+            }
+        _deep_dive_running.add(project_db_id)
+
+    job_id = str(uuid.uuid4())
+    updated = update_project_deep_dive_state_by_db_id(project_db_id, {
+        "deep_dive_status": "queued",
+        "deep_dive_job_id": job_id,
+        "deep_dive_requested_at": now_iso(),
+        "deep_dive_completed_at": "",
+        "deep_dive_requested_by": request.state.user.get("email", "") or request.state.user.get("name", ""),
+        "deep_dive_error": "",
+    })
+    threading.Thread(target=_run_project_deep_dive, args=(project_db_id, request.state.user), daemon=True).start()
+    return {
+        "accepted": True,
+        "alreadyRunning": False,
+        "jobId": job_id,
+        "project": _enrich_project_payload(updated or project, current_user_id=request.state.user.get("id")),
+    }
 
 
 @app.get("/api/download")
@@ -1195,12 +1610,47 @@ def download_filtered_excel(body: dict):
     return FileResponse(path=str(PROJECTS_XLSX), filename="projects.xlsx", media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
 
+@app.get("/api/notifications")
+def list_notifications(request: Request, limit: int = 50):
+    notifications = list_notifications_for_user(request.state.user.get("id"), max(1, min(limit, 200)))
+    return {"notifications": notifications}
+
+
+@app.post("/api/notifications/{notification_id}/read")
+def read_notification(notification_id: str, request: Request):
+    notification = mark_notification_read(request.state.user.get("id"), notification_id)
+    if not notification:
+        raise HTTPException(status_code=404, detail="Notification not found")
+    return {"notification": notification}
+
+
+@app.post("/api/notifications/{notification_id}/view")
+def view_notification(notification_id: str, request: Request):
+    notification = mark_notification_viewed(request.state.user.get("id"), notification_id)
+    if not notification:
+        raise HTTPException(status_code=404, detail="Notification not found")
+    return {"notification": notification}
+
+
+@app.post("/api/notifications/view-all")
+def view_all_notifications(request: Request):
+    updated = mark_all_notifications_viewed(request.state.user.get("id"))
+    return {"updated": updated}
+
+
+@app.post("/api/notifications/read-all")
+def read_all_notifications(request: Request):
+    updated = mark_all_notifications_read(request.state.user.get("id"))
+    return {"updated": updated}
+
+
 @app.get("/api/notifications/stream")
-async def notification_stream():
+async def notification_stream(request: Request):
     queue: asyncio.Queue = asyncio.Queue()
     loop = asyncio.get_running_loop()
+    user_id = str(request.state.user.get("id") or "")
     with _notification_lock:
-        _notification_queues.append((loop, queue))
+        _notification_queues.append((loop, queue, user_id))
 
     async def event_generator():
         try:

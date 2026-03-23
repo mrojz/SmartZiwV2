@@ -21,6 +21,10 @@ const SOURCES = [
   { key: 'africagateway', label: 'Africa Gateway' },
   { key: 'isdb', label: 'IsDB' },
   { key: 'badea', label: 'BADEA' },
+  { key: 'bcie', label: 'BCIE' },
+  { key: 'eabr', label: 'EABR' },
+  { key: 'oas', label: 'OAS' },
+  { key: 'africanunion', label: 'African Union' },
 ];
 
 function setModalScrollLock(locked) {
@@ -45,6 +49,10 @@ export default function SyncPanel({ open, onClose, onSyncDone, onSyncStart, apiF
   const [africagateway, setAfricagateway] = useState(true);
   const [isdb, setIsdb] = useState(true);
   const [badea, setBadea] = useState(true);
+  const [bcie, setBcie] = useState(true);
+  const [eabr, setEabr] = useState(true);
+  const [oas, setOas] = useState(true);
+  const [africanunion, setAfricanunion] = useState(true);
   const [noAi, setNoAi] = useState(false);
   const [includeExpired, setIncludeExpired] = useState(false);
   const [syncing, setSyncing] = useState(false);
@@ -177,6 +185,10 @@ export default function SyncPanel({ open, onClose, onSyncDone, onSyncStart, apiF
     africagateway,
     isdb,
     badea,
+    bcie,
+    eabr,
+    oas,
+    africanunion,
   };
 
   const selectedSourceCount = Object.values(selectedSources).filter(Boolean).length;
@@ -206,6 +218,10 @@ export default function SyncPanel({ open, onClose, onSyncDone, onSyncStart, apiF
           africagateway,
           isdb,
           badea,
+          bcie,
+          eabr,
+          oas,
+          africanunion,
           no_ai: noAi,
           include_expired: includeExpired,
         }),
@@ -257,6 +273,10 @@ export default function SyncPanel({ open, onClose, onSyncDone, onSyncStart, apiF
               <div className="sync-source-item"><Toggle isSelected={africagateway} onChange={setAfricagateway} isDisabled={syncing} label="Africa Gateway" /></div>
               <div className="sync-source-item"><Toggle isSelected={isdb} onChange={setIsdb} isDisabled={syncing} label="IsDB" /></div>
               <div className="sync-source-item"><Toggle isSelected={badea} onChange={setBadea} isDisabled={syncing} label="BADEA" /></div>
+              <div className="sync-source-item"><Toggle isSelected={bcie} onChange={setBcie} isDisabled={syncing} label="BCIE" /></div>
+              <div className="sync-source-item"><Toggle isSelected={eabr} onChange={setEabr} isDisabled={syncing} label="EABR" /></div>
+              <div className="sync-source-item"><Toggle isSelected={oas} onChange={setOas} isDisabled={syncing} label="OAS" /></div>
+              <div className="sync-source-item"><Toggle isSelected={africanunion} onChange={setAfricanunion} isDisabled={syncing} label="African Union" /></div>
             </div>
           </div>
 

@@ -7,6 +7,7 @@ Collections:
   - users:    auth users
   - sessions: login sessions
   - comments: comments by entity
+  - notifications: user notifications
   - continents / countries / geo_regions: normalized geography data
 """
 
@@ -40,6 +41,8 @@ def get_db():
         _db.users.create_index([('email', ASCENDING)], unique=True, background=True)
         _db.sessions.create_index([('sessionId', ASCENDING)], unique=True, background=True)
         _db.comments.create_index([('entityType', ASCENDING), ('entityId', ASCENDING), ('createdAt', ASCENDING)])
+        _db.notifications.create_index([('userId', ASCENDING), ('createdAt', ASCENDING)])
+        _db.notifications.create_index([('userId', ASCENDING), ('read', ASCENDING), ('createdAt', ASCENDING)])
         _db.continents.create_index([('code', ASCENDING)], unique=True, background=True)
         _db.countries.create_index([('iso2', ASCENDING)], unique=True, background=True)
         _db.geo_regions.create_index([('slug', ASCENDING)], unique=True, background=True)
@@ -79,6 +82,24 @@ def _normalize_project(doc: dict, geography: dict | None = None) -> dict:
     doc['primary_continent_name_en'] = geo['continent_names_en'][0] if geo['continent_names_en'] else ''
     doc['primary_continent_name_fr'] = geo['continent_names_fr'][0] if geo['continent_names_fr'] else ''
     doc['primary_region_name'] = geo['region_names'][0] if geo['region_names'] else ''
+    doc['assigned_user_ids'] = [str(item) for item in (doc.get('assigned_user_ids') or []) if item]
+    doc['comment_subscriber_user_ids'] = [str(item) for item in (doc.get('comment_subscriber_user_ids') or []) if item]
+    doc['votes'] = [
+        {
+            'userId': str(item.get('userId') or ''),
+            'value': str(item.get('value') or ''),
+            'createdAt': item.get('createdAt'),
+            'updatedAt': item.get('updatedAt'),
+        }
+        for item in (doc.get('votes') or [])
+        if item.get('userId') and item.get('value') in ('up', 'down')
+    ]
+    doc['deep_dive_status'] = str(doc.get('deep_dive_status') or '')
+    doc['deep_dive_job_id'] = str(doc.get('deep_dive_job_id') or '')
+    doc['deep_dive_requested_at'] = doc.get('deep_dive_requested_at') or ''
+    doc['deep_dive_completed_at'] = doc.get('deep_dive_completed_at') or ''
+    doc['deep_dive_requested_by'] = doc.get('deep_dive_requested_by') or ''
+    doc['deep_dive_error'] = doc.get('deep_dive_error') or ''
     return doc
 
 
@@ -165,6 +186,17 @@ def update_project_by_db_id(project_db_id: str, decision: str) -> dict | None:
     return _normalize_project(_strip_id(doc), get_geography())
 
 
+def get_project_by_db_id(project_db_id: str) -> dict | None:
+    db = get_db()
+    object_id = _parse_object_id(project_db_id)
+    if not object_id:
+        return None
+    doc = db.projects.find_one({'_id': object_id})
+    if not doc:
+        return None
+    return _normalize_project(_strip_id(doc), get_geography())
+
+
 def update_project_deadline_by_index(index: int, manual_deadline: str, updated_by: dict | None = None) -> dict | None:
     db = get_db()
     projects = list(db.projects.find())
@@ -203,6 +235,109 @@ def update_project_deadline_by_db_id(project_db_id: str, manual_deadline: str, u
     updated = db.projects.find_one_and_update(
         {'_id': object_id},
         {'$set': updates},
+        return_document=ReturnDocument.AFTER,
+    )
+    if not updated:
+        return None
+    return _normalize_project(_strip_id(updated), get_geography())
+
+
+def update_project_assignments_by_db_id(project_db_id: str, assigned_user_ids: list[str]) -> dict | None:
+    db = get_db()
+    object_id = _parse_object_id(project_db_id)
+    if not object_id:
+        return None
+    cleaned = []
+    seen = set()
+    for user_id in assigned_user_ids or []:
+        user_key = str(user_id or '').strip()
+        if not user_key or user_key in seen:
+            continue
+        seen.add(user_key)
+        cleaned.append(user_key)
+    doc = db.projects.find_one_and_update(
+        {'_id': object_id},
+        {'$set': {'assigned_user_ids': cleaned}},
+        return_document=ReturnDocument.AFTER,
+    )
+    if not doc:
+        return None
+    return _normalize_project(_strip_id(doc), get_geography())
+
+
+def subscribe_project_commenters_by_db_id(project_db_id: str, user_ids: list[str]) -> dict | None:
+    db = get_db()
+    object_id = _parse_object_id(project_db_id)
+    if not object_id:
+        return None
+    cleaned = []
+    seen = set()
+    for user_id in user_ids or []:
+        user_key = str(user_id or '').strip()
+        if not user_key or user_key in seen:
+            continue
+        seen.add(user_key)
+        cleaned.append(user_key)
+    doc = db.projects.find_one_and_update(
+        {'_id': object_id},
+        {'$addToSet': {'comment_subscriber_user_ids': {'$each': cleaned}}},
+        return_document=ReturnDocument.AFTER,
+    )
+    if not doc:
+        return None
+    return _normalize_project(_strip_id(doc), get_geography())
+
+
+def update_project_deep_dive_state_by_db_id(project_db_id: str, updates: dict) -> dict | None:
+    db = get_db()
+    object_id = _parse_object_id(project_db_id)
+    if not object_id:
+        return None
+    doc = db.projects.find_one_and_update(
+        {'_id': object_id},
+        {'$set': updates},
+        return_document=ReturnDocument.AFTER,
+    )
+    if not doc:
+        return None
+    return _normalize_project(_strip_id(doc), get_geography())
+
+
+def update_project_vote_by_db_id(project_db_id: str, user_id: str, value: str) -> dict | None:
+    db = get_db()
+    object_id = _parse_object_id(project_db_id)
+    if not object_id:
+        return None
+    project = db.projects.find_one({'_id': object_id})
+    if not project:
+        return None
+
+    votes = []
+    found = False
+    now = now_iso()
+    for vote in project.get('votes') or []:
+        if str(vote.get('userId') or '') != str(user_id):
+            votes.append(vote)
+            continue
+        found = True
+        if value in ('up', 'down'):
+            votes.append({
+                'userId': str(user_id),
+                'value': value,
+                'createdAt': vote.get('createdAt') or now,
+                'updatedAt': now,
+            })
+    if not found and value in ('up', 'down'):
+        votes.append({
+            'userId': str(user_id),
+            'value': value,
+            'createdAt': now,
+            'updatedAt': now,
+        })
+
+    updated = db.projects.find_one_and_update(
+        {'_id': object_id},
+        {'$set': {'votes': votes}},
         return_document=ReturnDocument.AFTER,
     )
     if not updated:
@@ -348,6 +483,10 @@ def get_schedule() -> dict:
         doc['sources'].setdefault('africagateway', True)
         doc['sources'].setdefault('isdb', True)
         doc['sources'].setdefault('badea', True)
+        doc['sources'].setdefault('bcie', True)
+        doc['sources'].setdefault('eabr', True)
+        doc['sources'].setdefault('oas', True)
+        doc['sources'].setdefault('africanunion', True)
         return doc
     return {
         'enabled': False,
@@ -365,6 +504,10 @@ def get_schedule() -> dict:
             'africagateway': True,
             'isdb': True,
             'badea': True,
+            'bcie': True,
+            'eabr': True,
+            'oas': True,
+            'africanunion': True,
         },
         'no_ai': False,
         'include_expired': False,
@@ -437,6 +580,18 @@ def update_user(user_id: str, updates: dict) -> dict | None:
     return _strip_id(result) if result else None
 
 
+def get_saved_searches(user_id: str) -> list[dict]:
+    user = get_user_by_id(user_id)
+    searches = (user or {}).get('savedSearches') or []
+    return searches if isinstance(searches, list) else []
+
+
+def save_saved_searches(user_id: str, searches: list[dict]) -> list[dict]:
+    updated = update_user(user_id, {'savedSearches': searches}) or {}
+    saved = updated.get('savedSearches') or []
+    return saved if isinstance(saved, list) else []
+
+
 def delete_user(user_id: str) -> bool:
     db = get_db()
     r = db.users.delete_one({'id': user_id})
@@ -483,6 +638,107 @@ def create_comment(comment: dict) -> dict:
     db = get_db()
     db.comments.insert_one(comment)
     return comment
+
+
+def get_comment_metrics(entity_type: str = 'project') -> dict[str, dict]:
+    db = get_db()
+    pipeline = [
+        {'$match': {'entityType': entity_type}},
+        {
+            '$project': {
+                'entityId': 1,
+                'attachmentCount': {
+                    '$size': {
+                        '$ifNull': ['$attachments', []],
+                    }
+                },
+            }
+        },
+        {
+            '$group': {
+                '_id': '$entityId',
+                'comment_count': {'$sum': 1},
+                'comment_document_count': {'$sum': '$attachmentCount'},
+            }
+        },
+    ]
+    out = {}
+    for row in db.comments.aggregate(pipeline):
+        out[str(row.get('_id') or '')] = {
+            'comment_count': int(row.get('comment_count') or 0),
+            'comment_document_count': int(row.get('comment_document_count') or 0),
+        }
+    return out
+
+
+def create_notification(notification: dict) -> dict:
+    db = get_db()
+    db.notifications.insert_one(notification)
+    return notification
+
+
+def create_notifications(notifications: list[dict]) -> int:
+    if not notifications:
+        return 0
+    db = get_db()
+    db.notifications.insert_many(notifications)
+    return len(notifications)
+
+
+def list_notifications_for_user(user_id: str, limit: int = 50) -> list[dict]:
+    db = get_db()
+    docs = db.notifications.find({'userId': user_id}).sort('createdAt', -1).limit(limit)
+    out = []
+    for doc in docs:
+        item = _strip_id(doc)
+        item['read'] = bool(item.get('read', False))
+        item['viewed'] = bool(item.get('viewed', False))
+        out.append(item)
+    return out
+
+
+def mark_notification_read(user_id: str, notification_id: str) -> dict | None:
+    db = get_db()
+    object_id = _parse_object_id(notification_id)
+    if not object_id:
+        return None
+    doc = db.notifications.find_one_and_update(
+        {'_id': object_id, 'userId': user_id},
+        {'$set': {'read': True, 'readAt': now_iso(), 'viewed': True, 'viewedAt': now_iso()}},
+        return_document=ReturnDocument.AFTER,
+    )
+    return _strip_id(doc) if doc else None
+
+
+def mark_notification_viewed(user_id: str, notification_id: str) -> dict | None:
+    db = get_db()
+    object_id = _parse_object_id(notification_id)
+    if not object_id:
+        return None
+    doc = db.notifications.find_one_and_update(
+        {'_id': object_id, 'userId': user_id},
+        {'$set': {'viewed': True, 'viewedAt': now_iso()}},
+        return_document=ReturnDocument.AFTER,
+    )
+    return _strip_id(doc) if doc else None
+
+
+def mark_all_notifications_read(user_id: str) -> int:
+    db = get_db()
+    result = db.notifications.update_many(
+        {'userId': user_id, 'read': {'$ne': True}},
+        {'$set': {'read': True, 'readAt': now_iso()}},
+    )
+    return int(result.modified_count)
+
+
+def mark_all_notifications_viewed(user_id: str) -> int:
+    db = get_db()
+    result = db.notifications.update_many(
+        {'userId': user_id, 'viewed': {'$ne': True}},
+        {'$set': {'viewed': True, 'viewedAt': now_iso()}},
+    )
+    return int(result.modified_count)
 
 
 def migrate_from_json(json_path: str) -> int:

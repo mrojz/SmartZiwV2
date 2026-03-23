@@ -44,6 +44,11 @@ A project IS cybersecurity-related if it involves:
 - Cloud security, application security, DevSecOps
 - Security training and certification programs
 
+A project is NOT cybersecurity-related if the main procurement is for:
+- software licenses, license renewals, product subscriptions, support renewals, or maintenance renewals
+- hardware, devices, appliances, equipment acquisition, or physical supply of goods
+- generic ICT/security product acquisition where the notice is mainly about buying products rather than cybersecurity services or expertise
+
 A project is NOT cybersecurity-related if it only mentions security in passing (e.g. physical security, food safety, social security, guard services) or is a general IT/digital project with no specific security focus.
 
 You will receive a numbered list of projects. For each project, respond with ONLY a JSON array of objects:

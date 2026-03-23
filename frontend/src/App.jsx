@@ -721,6 +721,65 @@ function ReleaseNotesPage({ releases, onBack }) {
     );
 }
 
+function VoteUpIcon() {
+    return (
+        <svg viewBox="0 0 20 20" aria-hidden="true" className="vote-action-icon">
+            <path d="M10 15.5V5.5M10 5.5l-4 4M10 5.5l4 4" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+    );
+}
+
+function VoteDownIcon() {
+    return (
+        <svg viewBox="0 0 20 20" aria-hidden="true" className="vote-action-icon">
+            <path d="M10 4.5v10M10 14.5l-4-4M10 14.5l4-4" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+    );
+}
+
+function NotificationsPanel({ open, notifications, unreadCount, onClose, onOpenNotification, onMarkAllRead }) {
+    useEffect(() => {
+        if (!open) return undefined;
+        setModalScrollLock(true);
+        return () => setModalScrollLock(false);
+    }, [open]);
+
+    if (!open) return null;
+
+    return (
+        <div className="modal-overlay" onClick={onClose}>
+            <div className="modal-card modal-card-sm notifications-panel" onClick={(event) => event.stopPropagation()}>
+                <div className="modal-header">
+                    <div>
+                        <h2 className="modal-title">Notifications</h2>
+                        <p className="panel-subtext">{unreadCount} unread</p>
+                    </div>
+                    <button type="button" className="modal-close-btn" onClick={onClose} aria-label="Close notifications"><X /></button>
+                </div>
+                <div className="modal-body notifications-panel-body">
+                    {notifications.length ? notifications.map((item) => (
+                        <button
+                            key={item.id}
+                            type="button"
+                            className={`notification-row ${item.read ? '' : 'is-unread'} ${item.viewed ? '' : 'is-unviewed'}`}
+                            onClick={() => onOpenNotification(item)}
+                        >
+                            <div className="notification-row-copy">
+                                <strong>{item.message}</strong>
+                                <span>{formatDisplayDate(item.createdAt)}</span>
+                            </div>
+                        </button>
+                    )) : <p className="auth-muted">No notifications yet.</p>}
+                </div>
+                <div className="modal-footer">
+                    <button type="button" className="profile-btn profile-btn-secondary" onClick={onClose}>Close</button>
+                    <button type="button" className="profile-btn profile-btn-primary" onClick={onMarkAllRead} disabled={!unreadCount}>Mark all read</button>
+                </div>
+            </div>
+        </div>
+    );
+}
+
 function PageHeader({ title, subtitle, action, className = '' }) {
     return (
         <div className={`layout-page-header ${className}`.trim()}>
@@ -815,7 +874,27 @@ function Sidebar({ user, route, onNavigate, collapsed, mobileOpen, onToggleColla
         </aside>
     );
 }
-function CommentsPanel({ open, entity, project, projectRegion, comments, mine, setMine, body, setBody, onSubmit, onClose, currentUser, apiFetch, onDecisionChange, onDeadlineSave }) {
+function CommentsPanel({
+    open,
+    entity,
+    project,
+    projectRegion,
+    comments,
+    mine,
+    setMine,
+    body,
+    setBody,
+    onSubmit,
+    onClose,
+    currentUser,
+    apiFetch,
+    onDecisionChange,
+    onDeadlineSave,
+    availableUsers,
+    onAssignmentsChange,
+    onVoteChange,
+    onDeepDiveSearch,
+}) {
     const listRef = useRef(null);
     const fileInputRef = useRef(null);
     const textAreaRef = useRef(null);
@@ -827,6 +906,11 @@ function CommentsPanel({ open, entity, project, projectRegion, comments, mine, s
     const [deadlineInput, setDeadlineInput] = useState('');
     const [savingDeadline, setSavingDeadline] = useState(false);
     const [previewAttachment, setPreviewAttachment] = useState(null);
+    const [selectedMentions, setSelectedMentions] = useState([]);
+    const [mentionState, setMentionState] = useState({ open: false, query: '', start: -1, end: -1, index: 0 });
+    const [savingAssignments, setSavingAssignments] = useState(false);
+    const [runningDeepDive, setRunningDeepDive] = useState(false);
+    const [mentionUsers, setMentionUsers] = useState([]);
 
     useEffect(() => {
         const onKey = (e) => {
@@ -850,8 +934,31 @@ function CommentsPanel({ open, entity, project, projectRegion, comments, mine, s
             setSearchOpen(false);
             setDeadlineInput(toInputDate(project?.manual_deadline));
             setPreviewAttachment(null);
+            setSelectedMentions([]);
+            setMentionState({ open: false, query: '', start: -1, end: -1, index: 0 });
+            setRunningDeepDive(false);
         }
     }, [open, entity?.id, project?.manual_deadline]);
+
+    useEffect(() => {
+        if (!open) return;
+        if (Array.isArray(availableUsers) && availableUsers.length) {
+            setMentionUsers(availableUsers);
+            return;
+        }
+        let cancelled = false;
+        apiFetch('/api/users')
+            .then((res) => (res.ok ? res.json() : []))
+            .then((data) => {
+                if (!cancelled) setMentionUsers(Array.isArray(data) ? data : []);
+            })
+            .catch(() => {
+                if (!cancelled) setMentionUsers([]);
+            });
+        return () => {
+            cancelled = true;
+        };
+    }, [open, availableUsers, apiFetch]);
 
     useEffect(() => {
         const el = textAreaRef.current;
@@ -867,6 +974,24 @@ function CommentsPanel({ open, entity, project, projectRegion, comments, mine, s
         [comments],
     );
 
+    const canEditDeadline = currentUser?.role === 'admin' || currentUser?.role === 'manager';
+    const canManageDecision = currentUser?.role === 'manager';
+    const assignedUserIds = project?.assigned_user_ids || [];
+    const assignedUsers = project?.assigned_users || [];
+    const voteSummary = project?.vote_summary || { up: 0, down: 0 };
+    const currentUserVote = project?.current_user_vote || '';
+    const mentionCandidates = useMemo(() => {
+        const query = mentionState.query.trim().toLowerCase();
+        if (!mentionState.open) return [];
+        return (mentionUsers || [])
+            .filter((user) => user.id !== currentUser?.id)
+            .filter((user) => {
+                if (!query) return true;
+                return `${user.name || ''} ${user.email || ''}`.toLowerCase().includes(query);
+            })
+            .slice(0, 6);
+    }, [mentionUsers, currentUser?.id, mentionState]);
+
     if (!open) return null;
 
     const keywords = (project?.matched_keywords || '')
@@ -881,17 +1006,84 @@ function CommentsPanel({ open, entity, project, projectRegion, comments, mine, s
         : '';
     const projectDecision = project?.decision || '';
     const projectVerified = project?.ai_verified === 'Yes';
-    const canEditDeadline = currentUser?.role === 'admin';
     const effectiveDeadline = project?.effective_deadline || project?.manual_deadline || project?.scraped_deadline || project?.project_end_date || '';
 
+    const updateMentionState = (value, caret) => {
+        const nextCaret = typeof caret === 'number' ? caret : value.length;
+        const beforeCaret = value.slice(0, nextCaret);
+        const match = beforeCaret.match(/(^|\s)@([A-Za-z0-9._-]*)$/);
+        if (!match) {
+            setMentionState({ open: false, query: '', start: -1, end: -1, index: 0 });
+            return;
+        }
+        const query = match[2] || '';
+        setMentionState({
+            open: true,
+            query,
+            start: nextCaret - query.length - 1,
+            end: nextCaret,
+            index: 0,
+        });
+    };
+
+    const insertMention = (user) => {
+        const label = user?.name || user?.email || '';
+        if (!label || mentionState.start < 0) return;
+        const start = mentionState.start;
+        const end = mentionState.end < 0 ? body.length : mentionState.end;
+        const nextValue = `${body.slice(0, start)}@${label} ${body.slice(end)}`;
+        setBody(nextValue);
+        setSelectedMentions((prev) => {
+            const next = prev.filter((item) => item.userId !== user.id);
+            next.push({ userId: user.id, name: user.name, email: user.email });
+            return next;
+        });
+        setMentionState({ open: false, query: '', start: -1, end: -1, index: 0 });
+        requestAnimationFrame(() => {
+            if (!textAreaRef.current) return;
+            const cursorPos = start + label.length + 2;
+            textAreaRef.current.focus();
+            textAreaRef.current.setSelectionRange(cursorPos, cursorPos);
+        });
+    };
+
     const handleKeyDown = (e) => {
+        if (mentionState.open && mentionCandidates.length) {
+            if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                setMentionState((prev) => ({ ...prev, index: (prev.index + 1) % mentionCandidates.length }));
+                return;
+            }
+            if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                setMentionState((prev) => ({ ...prev, index: (prev.index - 1 + mentionCandidates.length) % mentionCandidates.length }));
+                return;
+            }
+            if (e.key === 'Enter' || e.key === 'Tab') {
+                e.preventDefault();
+                insertMention(mentionCandidates[mentionState.index] || mentionCandidates[0]);
+                return;
+            }
+            if (e.key === 'Escape') {
+                e.preventDefault();
+                setMentionState({ open: false, query: '', start: -1, end: -1, index: 0 });
+                return;
+            }
+        }
         if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault();
             if ((body.trim() || pendingFiles.length) && entity?.id) handleSubmit();
         }
     };
 
-    const handleSubmit = () => onSubmit(pendingFiles, () => setPendingFiles([]));
+    const handleSubmit = () => {
+        const mentions = selectedMentions.filter((mention) => body.includes(`@${mention.name || mention.email}`));
+        return onSubmit(pendingFiles, mentions, () => {
+            setPendingFiles([]);
+            setSelectedMentions([]);
+            setMentionState({ open: false, query: '', start: -1, end: -1, index: 0 });
+        });
+    };
 
     const handleDeadlineSave = async () => {
         if (!canEditDeadline) return;
@@ -900,6 +1092,29 @@ function CommentsPanel({ open, entity, project, projectRegion, comments, mine, s
             await onDeadlineSave(deadlineInput || null);
         } finally {
             setSavingDeadline(false);
+        }
+    };
+
+    const handleDeepDiveSearch = async () => {
+        if (!project?.db_id || runningDeepDive) return;
+        setRunningDeepDive(true);
+        try {
+            await onDeepDiveSearch?.(project.db_id);
+        } finally {
+            setRunningDeepDive(false);
+        }
+    };
+
+    const toggleAssignment = async (userId) => {
+        if (!project?.db_id) return;
+        const next = assignedUserIds.includes(userId)
+            ? assignedUserIds.filter((item) => item !== userId)
+            : [...assignedUserIds, userId];
+        setSavingAssignments(true);
+        try {
+            await onAssignmentsChange(project.db_id, next);
+        } finally {
+            setSavingAssignments(false);
         }
     };
 
@@ -988,35 +1203,98 @@ function CommentsPanel({ open, entity, project, projectRegion, comments, mine, s
                             </div>
                         ) : null}
 
-                        <div className="inspector-decision-block">
-                            <div>
-                                <h3>Decision</h3>
-                                <p>Update the analyst call without leaving the review flow.</p>
+                        <div className="project-inspector-collab-grid">
+                            <div className="project-inspector-votes">
+                                <div>
+                                    <h3>Team signal</h3>
+                                    <p>Upvote or downvote the tender without changing the formal decision.</p>
+                                </div>
+                                <div className="project-vote-actions">
+                                    <button
+                                        type="button"
+                                        className={`project-vote-btn ${currentUserVote === 'up' ? 'is-active is-up' : ''}`}
+                                        onClick={(event) => {
+                                            event.preventDefault();
+                                            event.stopPropagation();
+                                            onVoteChange?.(project?.db_id, currentUserVote === 'up' ? '' : 'up');
+                                        }}
+                                    >
+                                        <VoteUpIcon />
+                                        <span>Upvote</span>
+                                        <strong>{voteSummary.up || 0}</strong>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        className={`project-vote-btn ${currentUserVote === 'down' ? 'is-active is-down' : ''}`}
+                                        onClick={(event) => {
+                                            event.preventDefault();
+                                            event.stopPropagation();
+                                            onVoteChange?.(project?.db_id, currentUserVote === 'down' ? '' : 'down');
+                                        }}
+                                    >
+                                        <VoteDownIcon />
+                                        <span>Downvote</span>
+                                        <strong>{voteSummary.down || 0}</strong>
+                                    </button>
+                                </div>
                             </div>
-                            <div className="inspector-decision-actions">
-                                <button
-                                    type="button"
-                                    className={`inspector-decision-btn ${projectDecision === 'Go' ? 'is-active is-go' : ''}`}
-                                    onClick={() => onDecisionChange(projectDecision === 'Go' ? '' : 'Go')}
-                                >
-                                    Go
-                                </button>
-                                <button
-                                    type="button"
-                                    className={`inspector-decision-btn ${projectDecision === 'No Go' ? 'is-active is-nogo' : ''}`}
-                                    onClick={() => onDecisionChange(projectDecision === 'No Go' ? '' : 'No Go')}
-                                >
-                                    No Go
-                                </button>
-                                <button
-                                    type="button"
-                                    className={`inspector-decision-btn ${!projectDecision ? 'is-active' : ''}`}
-                                    onClick={() => onDecisionChange('')}
-                                >
-                                    Undecided
-                                </button>
+
+                            <div className="project-inspector-assignees">
+                                <div>
+                                    <h3>Working on this tender</h3>
+                                    <p>Assign teammates to coordinate review and follow-up.</p>
+                                </div>
+                                <div className="assignment-chip-grid">
+                                    {(availableUsers || []).map((user) => {
+                                        const assigned = assignedUserIds.includes(user.id);
+                                        return (
+                                            <button
+                                                key={user.id}
+                                                type="button"
+                                                className={`assignment-chip ${assigned ? 'is-assigned' : ''}`}
+                                                disabled={savingAssignments}
+                                                onClick={() => toggleAssignment(user.id)}
+                                            >
+                                                <span className="assignment-chip-initials">{initials(user.name || '', user.email || '')}</span>
+                                                <span>{user.name || user.email}</span>
+                                            </button>
+                                        );
+                                    })}
+                                </div>
                             </div>
                         </div>
+
+                        {canManageDecision ? (
+                            <div className="inspector-decision-block">
+                                <div>
+                                    <h3>Decision</h3>
+                                    <p>Managers can set the formal Go / No Go decision.</p>
+                                </div>
+                                <div className="inspector-decision-actions">
+                                    <button
+                                        type="button"
+                                        className={`inspector-decision-btn ${projectDecision === 'Go' ? 'is-active is-go' : ''}`}
+                                        onClick={() => onDecisionChange(projectDecision === 'Go' ? '' : 'Go')}
+                                    >
+                                        Go
+                                    </button>
+                                    <button
+                                        type="button"
+                                        className={`inspector-decision-btn ${projectDecision === 'No Go' ? 'is-active is-nogo' : ''}`}
+                                        onClick={() => onDecisionChange(projectDecision === 'No Go' ? '' : 'No Go')}
+                                    >
+                                        No Go
+                                    </button>
+                                    <button
+                                        type="button"
+                                        className={`inspector-decision-btn ${!projectDecision ? 'is-active' : ''}`}
+                                        onClick={() => onDecisionChange('')}
+                                    >
+                                        Undecided
+                                    </button>
+                                </div>
+                            </div>
+                        ) : null}
 
                         <div className="project-inspector-grid">
                             <div><span>ID</span><strong>{project?.project_id || '-'}</strong></div>
@@ -1033,7 +1311,7 @@ function CommentsPanel({ open, entity, project, projectRegion, comments, mine, s
                         <div className="project-inspector-deadline-editor">
                             <div>
                                 <h3>Manual deadline</h3>
-                                <p>{canEditDeadline ? 'Override the scraped deadline when analyst review requires a correction.' : 'Only admins can edit the deadline.'}</p>
+                                <p>{canEditDeadline ? 'Override the scraped deadline when analyst review requires a correction.' : 'Only admins and managers can edit the deadline.'}</p>
                             </div>
                             <div className="project-inspector-deadline-form">
                                 <input
@@ -1066,6 +1344,23 @@ function CommentsPanel({ open, entity, project, projectRegion, comments, mine, s
                             <div className="project-inspector-link-list">
                                 {project?.project_url ? <a href={project.project_url} target="_blank" rel="noreferrer">Open source listing</a> : <span>No project link</span>}
                                 {project?.document_url ? <a href={project.document_url} target="_blank" rel="noreferrer">Open document</a> : <span>No document link</span>}
+                            </div>
+                            <div className="project-inspector-actions">
+                                <button
+                                    type="button"
+                                    className="profile-btn profile-btn-primary"
+                                    onClick={handleDeepDiveSearch}
+                                    disabled={!project?.db_id || runningDeepDive || project?.deep_dive_status === 'queued' || project?.deep_dive_status === 'running'}
+                                >
+                                    {runningDeepDive || project?.deep_dive_status === 'queued' || project?.deep_dive_status === 'running' ? 'Searching...' : 'Deep Dive Search'}
+                                </button>
+                                {project?.deep_dive_status ? (
+                                    <span className={`project-deep-dive-status is-${project.deep_dive_status}`}>
+                                        {project?.deep_dive_status === 'error' && project?.deep_dive_error
+                                            ? `Last run failed: ${project.deep_dive_error}`
+                                            : `Deep dive status: ${project.deep_dive_status}`}
+                                    </span>
+                                ) : null}
                             </div>
                         </div>
 
@@ -1207,13 +1502,34 @@ function CommentsPanel({ open, entity, project, projectRegion, comments, mine, s
                                 name="discussionMessage"
                                 aria-label="Discussion message"
                                 value={body}
-                                onChange={(e) => setBody(e.target.value)}
+                                onChange={(e) => {
+                                    setBody(e.target.value);
+                                    updateMentionState(e.target.value, e.target.selectionStart);
+                                }}
                                 onKeyDown={handleKeyDown}
                                 onFocus={() => setComposerFocused(true)}
                                 onBlur={() => setComposerFocused(Boolean(body.trim()))}
-                                placeholder="Type a message..."
+                                placeholder="Type a message... Use @ to mention someone"
                                 rows={1}
                             />
+                            {mentionState.open && mentionCandidates.length ? (
+                                <div className="mention-menu">
+                                    {mentionCandidates.map((user, index) => (
+                                        <button
+                                            key={user.id}
+                                            type="button"
+                                            className={`mention-menu-item ${index === mentionState.index ? 'is-active' : ''}`}
+                                            onMouseDown={(event) => {
+                                                event.preventDefault();
+                                                insertMention(user);
+                                            }}
+                                        >
+                                            <span className="mention-menu-name">{user.name || user.email}</span>
+                                            <span className="mention-menu-email">{user.email}</span>
+                                        </button>
+                                    ))}
+                                </div>
+                            ) : null}
                             <button
                                 type="button"
                                 className="chat-send-btn chat-send-btn-icon"
@@ -1344,8 +1660,8 @@ function ProfilePage({ user, apiFetch, onUserUpdate }) {
                         <div className="profile-summary-copy">
                             <h2 className="profile-summary-name">{name}</h2>
                             <div className="profile-summary-secondary">
-                                <span className={`profile-summary-role-badge ${user?.role === 'admin' ? 'badge-admin' : 'badge-user'}`}>
-                                    {user?.role === 'admin' ? 'Admin' : 'User'}
+                                <span className={`profile-summary-role-badge ${user?.role === 'admin' ? 'badge-admin' : user?.role === 'manager' ? 'badge-manager' : 'badge-user'}`}>
+                                    {user?.role === 'admin' ? 'Admin' : user?.role === 'manager' ? 'Manager' : 'User'}
                                 </span>
                             </div>
                             <p className="profile-summary-email">{email || 'No email address'}</p>
@@ -1538,6 +1854,7 @@ function UserDrawer({ open, mode, initialUser, onClose, onSave, saving }) {
                                 <label className="auth-label" htmlFor="ud-role">Role</label>
                                 <select id="ud-role" name="role" className="auth-input" value={role} onChange={(e) => setRole(e.target.value)}>
                                     <option value="user">User</option>
+                                    <option value="manager">Manager</option>
                                     <option value="admin">Admin</option>
                                 </select>
                             </div>
@@ -1937,6 +2254,7 @@ function AdminPage({ apiFetch }) {
                                 >
                                     <option value="all">All roles</option>
                                     <option value="admin">Admin</option>
+                                    <option value="manager">Manager</option>
                                     <option value="user">User</option>
                                 </select>
                                 <select
@@ -2017,9 +2335,9 @@ function AdminPage({ apiFetch }) {
                                     if (key === '_role') {
                                         return (
                                             <Table.Cell>
-                                                <span className={`admin-users-pill admin-users-role-pill role-${u.role}`}>
-                                                    {u.role === 'admin' ? 'Admin' : 'User'}
-                                                </span>
+                                                    <span className={`admin-users-pill admin-users-role-pill role-${u.role}`}>
+                                                        {u.role === 'admin' ? 'Admin' : u.role === 'manager' ? 'Manager' : 'User'}
+                                                    </span>
                                             </Table.Cell>
                                         );
                                     }
@@ -2208,6 +2526,7 @@ export default function App() {
     const [scrapedTo, setScrapedTo] = useState('');
 
     const [authUser, setAuthUser] = useState(null);
+    const [availableUsers, setAvailableUsers] = useState([]);
     const [authError, setAuthError] = useState('');
     const [mustChangeError, setMustChangeError] = useState('');
     const [bootstrapStatus, setBootstrapStatus] = useState(null);
@@ -2226,6 +2545,11 @@ export default function App() {
     const [syncOpen, setSyncOpen] = useState(false);
     const [configOpen, setConfigOpen] = useState(false);
     const [scheduleOpen, setScheduleOpen] = useState(false);
+    const [notificationsOpen, setNotificationsOpen] = useState(false);
+    const [notifications, setNotifications] = useState([]);
+    const [expiringSoonOnly, setExpiringSoonOnly] = useState(false);
+    const [expiringSoonDays, setExpiringSoonDays] = useState(5);
+    const [savedSearches, setSavedSearches] = useState([]);
     const preSyncIdsRef = useRef(new Set());
     const notificationAudioRef = useRef(null);
     const notificationStreamRef = useRef(null);
@@ -2385,6 +2709,13 @@ export default function App() {
         eventSource.onmessage = (event) => {
             try {
                 const data = JSON.parse(event.data);
+                if (data?.type === 'notification' && data?.notification) {
+                    setNotifications((prev) => {
+                        const next = [data.notification, ...prev.filter((item) => item.id !== data.notification.id)];
+                        return next.slice(0, 100);
+                    });
+                    return;
+                }
                 if (data?.type !== 'new_projects' || !(data?.count > 0)) return;
                 if (document.visibilityState !== 'visible' || !document.hasFocus()) return;
                 const audio = notificationAudioRef.current;
@@ -2443,12 +2774,18 @@ export default function App() {
             apiFetch('/api/config').then((r) => (r.ok ? r.json() : { regions: {} })),
             apiFetch('/api/geography').then((r) => (r.ok ? r.json() : { continents: [] })),
             apiFetch('/api/release-notes').then((r) => (r.ok ? r.json() : { notes: DEFAULT_RELEASE_NOTES })),
+            apiFetch('/api/users').then((r) => (r.ok ? r.json() : [])),
+            apiFetch('/api/notifications').then((r) => (r.ok ? r.json() : { notifications: [] })),
+            apiFetch('/api/saved-searches').then((r) => (r.ok ? r.json() : { searches: [] })),
         ])
-            .then(([cfg, geography, noteData]) => {
+            .then(([cfg, geography, noteData, userData, notificationData, searchData]) => {
                 setRegions(cfg.regions || {});
                 setContinents(geography.continents || []);
                 const notes = Array.isArray(noteData?.notes) && noteData.notes.length ? noteData.notes : DEFAULT_RELEASE_NOTES;
                 setReleaseNotes([...notes].sort((a, b) => compareVersionStrings(b.version, a.version)));
+                setAvailableUsers(Array.isArray(userData) ? userData : []);
+                setNotifications(Array.isArray(notificationData?.notifications) ? notificationData.notifications : []);
+                setSavedSearches(Array.isArray(searchData?.searches) ? searchData.searches : []);
             })
             .catch(() => { });
     }, [authUser, loadProjects, apiFetch]);
@@ -2496,6 +2833,11 @@ export default function App() {
         return releaseNotes[0];
     }, [releaseNotes]);
 
+    const unreadNotificationCount = useMemo(
+        () => notifications.filter((item) => !item.read).length,
+        [notifications],
+    );
+
     const modalReleaseNotes = useMemo(() => {
         let seenVersion = '0';
         try {
@@ -2521,6 +2863,21 @@ export default function App() {
         markReleaseNotesSeen();
         setReleaseNotesOpen(false);
     }, [markReleaseNotesSeen]);
+
+    const markNotificationAsRead = useCallback(async (notificationId) => {
+        setNotifications((prev) => prev.map((item) => (item.id === notificationId ? { ...item, read: true } : item)));
+        await apiFetch(`/api/notifications/${encodeURIComponent(notificationId)}/read`, { method: 'POST' }).catch(() => {});
+    }, [apiFetch]);
+
+    const markAllNotificationsViewed = useCallback(async () => {
+        setNotifications((prev) => prev.map((item) => ({ ...item, viewed: true })));
+        await apiFetch('/api/notifications/view-all', { method: 'POST' }).catch(() => {});
+    }, [apiFetch]);
+
+    const markAllNotificationsAsRead = useCallback(async () => {
+        setNotifications((prev) => prev.map((item) => ({ ...item, read: true, viewed: true })));
+        await apiFetch('/api/notifications/read-all', { method: 'POST' }).catch(() => {});
+    }, [apiFetch]);
 
     const getRegion = useCallback((sponsor) => {
         if (!sponsor) return '';
@@ -2565,6 +2922,11 @@ export default function App() {
         const deadlineToDate = endDateTo ? new Date(endDateTo) : null;
         const scrapedFromDate = scrapedFrom ? new Date(scrapedFrom) : null;
         const scrapedToDate = scrapedTo ? new Date(scrapedTo) : null;
+        const expiringWindowStart = new Date();
+        expiringWindowStart.setHours(0, 0, 0, 0);
+        const expiringWindowEnd = new Date(expiringWindowStart);
+        expiringWindowEnd.setDate(expiringWindowEnd.getDate() + expiringSoonDays);
+        expiringWindowEnd.setHours(23, 59, 59, 999);
         if (deadlineToDate) deadlineToDate.setHours(23, 59, 59, 999);
         if (scrapedToDate) scrapedToDate.setHours(23, 59, 59, 999);
         return projects.filter((p) => {
@@ -2616,6 +2978,10 @@ export default function App() {
             const projectDeadline = parseFilterDate(p.effective_deadline || p.manual_deadline || p.scraped_deadline || p.project_end_date);
             if (deadlineFromDate && (!projectDeadline || projectDeadline < deadlineFromDate)) return false;
             if (deadlineToDate && (!projectDeadline || projectDeadline > deadlineToDate)) return false;
+            if (expiringSoonOnly) {
+                if (p.ai_verified !== 'Yes') return false;
+                if (!projectDeadline || projectDeadline < expiringWindowStart || projectDeadline > expiringWindowEnd) return false;
+            }
             const scrapedAt = parseFilterDate(p.scraped_at);
             if (scrapedFromDate && (!scrapedAt || scrapedAt < scrapedFromDate)) return false;
             if (scrapedToDate && (!scrapedAt || scrapedAt > scrapedToDate)) return false;
@@ -2688,7 +3054,7 @@ export default function App() {
             }
             return true;
         });
-    }, [projects, chips, freeText, source, verified, region, continent, regions, decision, endDateFrom, endDateTo, scrapedFrom, scrapedTo, getRegion, advancedQueryEnabled, advancedQuery, advancedQueryResult]);
+    }, [projects, chips, freeText, source, verified, region, continent, regions, decision, endDateFrom, endDateTo, scrapedFrom, scrapedTo, getRegion, advancedQueryEnabled, advancedQuery, advancedQueryResult, expiringSoonOnly, expiringSoonDays]);
 
     const sources = useMemo(() => [...new Set(projects.map((p) => p.source).filter(Boolean))].sort(), [projects]);
 
@@ -2708,9 +3074,112 @@ export default function App() {
         setEndDateTo('');
         setScrapedFrom('');
         setScrapedTo('');
+        setExpiringSoonOnly(false);
+        setExpiringSoonDays(5);
     };
 
+    const buildCurrentFilterState = useCallback(() => ({
+        chips,
+        freeText,
+        advancedQuery,
+        advancedQueryEnabled,
+        source,
+        verified,
+        region,
+        continent,
+        decision,
+        startDateFrom,
+        startDateTo,
+        endDateFrom,
+        endDateTo,
+        scrapedFrom,
+        scrapedTo,
+        expiringSoonOnly,
+        expiringSoonDays,
+    }), [
+        chips,
+        freeText,
+        advancedQuery,
+        advancedQueryEnabled,
+        source,
+        verified,
+        region,
+        continent,
+        decision,
+        startDateFrom,
+        startDateTo,
+        endDateFrom,
+        endDateTo,
+        scrapedFrom,
+        scrapedTo,
+        expiringSoonOnly,
+        expiringSoonDays,
+    ]);
+
+    const applySavedFilterState = useCallback((filters = {}) => {
+        setChips(Array.isArray(filters.chips) ? filters.chips : []);
+        setFreeText(filters.freeText || '');
+        setAdvancedQuery(filters.advancedQuery || '');
+        setAdvancedQueryEnabled(Boolean(filters.advancedQueryEnabled));
+        setSource(filters.source || '');
+        setVerified(filters.verified ?? 'Yes');
+        setRegion(filters.region || '');
+        setContinent(filters.continent || '');
+        setDecision(filters.decision || '');
+        setStartDateFrom(filters.startDateFrom || '');
+        setStartDateTo(filters.startDateTo || '');
+        setEndDateFrom(filters.endDateFrom || '');
+        setEndDateTo(filters.endDateTo || '');
+        setScrapedFrom(filters.scrapedFrom || '');
+        setScrapedTo(filters.scrapedTo || '');
+        setExpiringSoonOnly(Boolean(filters.expiringSoonOnly));
+        setExpiringSoonDays(Math.max(1, Math.min(365, Number(filters.expiringSoonDays) || 5)));
+    }, []);
+
+    const persistSavedSearches = useCallback(async (nextSearches) => {
+        const res = await apiFetch('/api/saved-searches', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ searches: nextSearches }),
+        });
+        if (!res.ok) throw new Error('Failed to save searches');
+        const data = await res.json();
+        setSavedSearches(Array.isArray(data?.searches) ? data.searches : []);
+    }, [apiFetch]);
+
+    const handleSaveCurrentSearch = useCallback(async () => {
+        const name = window.prompt('Saved search name');
+        if (!name || !name.trim()) return;
+        const now = new Date().toISOString();
+        const next = [
+            {
+                id: `search-${Date.now()}`,
+                name: name.trim(),
+                filters: buildCurrentFilterState(),
+                createdAt: now,
+                updatedAt: now,
+            },
+            ...savedSearches.filter((item) => item.name.trim().toLowerCase() !== name.trim().toLowerCase()),
+        ];
+        await persistSavedSearches(next);
+    }, [buildCurrentFilterState, savedSearches, persistSavedSearches]);
+
+    const handleApplySavedSearch = useCallback((searchId) => {
+        const match = savedSearches.find((item) => item.id === searchId);
+        if (!match) return;
+        applySavedFilterState(match.filters || {});
+    }, [savedSearches, applySavedFilterState]);
+
+    const handleDeleteSavedSearch = useCallback(async (searchId) => {
+        const next = savedSearches.filter((item) => item.id !== searchId);
+        await persistSavedSearches(next);
+    }, [savedSearches, persistSavedSearches]);
+
+    const canManageDecision = authUser?.role === 'manager';
+    const canEditDeadline = authUser?.role === 'admin' || authUser?.role === 'manager';
+
     const handleDecisionChange = async (index, nextDecision) => {
+        if (!canManageDecision) return;
         const project = projects[index];
         setProjects((prev) => {
             const next = [...prev];
@@ -2737,6 +3206,7 @@ export default function App() {
 
 
     const handleDeadlineChange = async (index, manualDeadline) => {
+        if (!canEditDeadline) return;
         const project = projects[index];
         const res = await apiFetch(
             project?.db_id
@@ -2758,6 +3228,91 @@ export default function App() {
         if (selectedProjectIndex === index) {
             setSelectedProject((prev) => ({ ...(prev || {}), ...updated, __rowId: prev?.__rowId || updated.__rowId }));
         }
+    };
+
+    const handleAssignmentsChange = async (projectDbId, nextUserIds) => {
+        const res = await apiFetch(`${API}/projects/by-db-id/${encodeURIComponent(projectDbId)}/assignments`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userIds: nextUserIds }),
+        });
+        if (!res.ok) throw new Error('Failed to update assignments');
+        const updated = await res.json();
+        setProjects((prev) => prev.map((item) => (item.db_id === updated.db_id ? { ...item, ...updated, __rowId: item.__rowId } : item)));
+        setSelectedProject((prev) => (prev?.db_id === updated.db_id ? { ...prev, ...updated, __rowId: prev.__rowId } : prev));
+    };
+
+    const handleVoteChange = async (projectDbId, nextValue) => {
+        if (!projectDbId) return;
+        const previousProject = projects.find((item) => item.db_id === projectDbId);
+        const previousVote = previousProject?.current_user_vote || '';
+        const previousSummary = previousProject?.vote_summary || { up: 0, down: 0 };
+        const optimisticSummary = {
+            up: Math.max(0, (previousSummary.up || 0) + (previousVote === 'up' ? -1 : 0) + (nextValue === 'up' ? 1 : 0)),
+            down: Math.max(0, (previousSummary.down || 0) + (previousVote === 'down' ? -1 : 0) + (nextValue === 'down' ? 1 : 0)),
+        };
+        setProjects((prev) => prev.map((item) => (
+            item.db_id === projectDbId
+                ? { ...item, current_user_vote: nextValue, vote_summary: optimisticSummary }
+                : item
+        )));
+        setSelectedProject((prev) => (
+            prev?.db_id === projectDbId
+                ? { ...prev, current_user_vote: nextValue, vote_summary: optimisticSummary }
+                : prev
+        ));
+        const res = await apiFetch(`${API}/projects/by-db-id/${encodeURIComponent(projectDbId)}/vote`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ value: nextValue }),
+        });
+        if (!res.ok) {
+            setProjects((prev) => prev.map((item) => (
+                item.db_id === projectDbId
+                    ? { ...item, current_user_vote: previousVote, vote_summary: previousSummary }
+                    : item
+            )));
+            setSelectedProject((prev) => (
+                prev?.db_id === projectDbId
+                    ? { ...prev, current_user_vote: previousVote, vote_summary: previousSummary }
+                    : prev
+            ));
+            window.alert('Failed to update vote');
+            throw new Error('Failed to update vote');
+        }
+        const updated = await res.json();
+        setProjects((prev) => prev.map((item) => (item.db_id === updated.db_id ? { ...item, ...updated, __rowId: item.__rowId } : item)));
+        setSelectedProject((prev) => (prev?.db_id === updated.db_id ? { ...prev, ...updated, __rowId: prev.__rowId } : prev));
+    };
+
+    const refreshSelectedProject = useCallback(async () => {
+        if (!selectedProject?.db_id) return null;
+        const res = await apiFetch(`${API}/projects/by-db-id/${encodeURIComponent(selectedProject.db_id)}`);
+        if (!res.ok) return null;
+        const updated = await res.json();
+        setProjects((prev) => prev.map((item) => (item.db_id === updated.db_id ? { ...item, ...updated, __rowId: item.__rowId } : item)));
+        setSelectedProject((prev) => (prev?.db_id === updated.db_id ? { ...prev, ...updated, __rowId: prev.__rowId } : prev));
+        return updated;
+    }, [selectedProject?.db_id, apiFetch]);
+
+    const handleDeepDiveSearch = async (projectDbId) => {
+        const res = await apiFetch(`${API}/projects/by-db-id/${encodeURIComponent(projectDbId)}/deep-dive`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({}),
+        });
+        if (!res.ok) {
+            const errorData = await res.json().catch(() => ({}));
+            throw new Error(errorData?.detail || 'Failed to start Deep Dive Search');
+        }
+        const data = await res.json().catch(() => ({}));
+        const updated = data?.project;
+        if (updated?.db_id) {
+            setProjects((prev) => prev.map((item) => (item.db_id === updated.db_id ? { ...item, ...updated, __rowId: item.__rowId } : item)));
+            setSelectedProject((prev) => (prev?.db_id === updated.db_id ? { ...prev, ...updated, __rowId: prev.__rowId } : prev));
+            return;
+        }
+        await refreshSelectedProject();
     };
 
     const handleDelete = async (projectOrIndex, fallbackIndex = null) => {
@@ -2950,7 +3505,16 @@ export default function App() {
         };
     }, [authUser, commentsOpen, selectedEntityType, selectedEntityId, commentsMine, apiFetch]);
 
-    const submitComment = async (pendingFiles = [], onFilesClear = null) => {
+    useEffect(() => {
+        if (!authUser || !commentsOpen || !selectedEntityId) return undefined;
+        const interval = window.setInterval(() => {
+            refreshComments();
+            refreshSelectedProject();
+        }, 5000);
+        return () => window.clearInterval(interval);
+    }, [authUser, commentsOpen, selectedEntityId, refreshComments, refreshSelectedProject]);
+
+    const submitComment = async (pendingFiles = [], mentions = [], onFilesClear = null) => {
         if ((!commentsBody.trim() && !pendingFiles.length) || !selectedEntityId) return;
         const attachments = pendingFiles || [];
         const optimistic = {
@@ -2958,17 +3522,47 @@ export default function App() {
             authorName: authUser?.name || 'You',
             body: commentsBody.trim(),
             attachments,
+            mentions,
             createdAt: new Date().toISOString(),
         };
         setComments((prev) => [...prev, optimistic]);
         const text = commentsBody;
         setCommentsBody('');
         if (onFilesClear) onFilesClear();
-        await apiFetch('/api/comments', {
+        const res = await apiFetch('/api/comments', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ entityType: selectedEntityType, entityId: selectedEntityId, body: text || ' ', attachments }),
+            body: JSON.stringify({
+                entityType: selectedEntityType,
+                entityId: selectedEntityId,
+                projectDbId: selectedProject?.db_id || '',
+                body: text || ' ',
+                attachments,
+                mentions,
+            }),
         });
+        if (!res.ok) throw new Error('Failed to post comment');
+        const created = await res.json().catch(() => null);
+        const attachmentCount = attachments.length;
+        if (selectedProject?.db_id) {
+            setProjects((prev) => prev.map((item) => (
+                item.db_id === selectedProject.db_id
+                    ? {
+                        ...item,
+                        comment_count: (item.comment_count || 0) + 1,
+                        comment_document_count: (item.comment_document_count || 0) + attachmentCount,
+                      }
+                    : item
+            )));
+            setSelectedProject((prev) => (prev ? {
+                ...prev,
+                comment_count: (prev.comment_count || 0) + 1,
+                comment_document_count: (prev.comment_document_count || 0) + attachmentCount,
+              } : prev));
+        }
+        if (created?.comment) {
+            setComments((prev) => prev.map((item) => (item.id === optimistic.id ? created.comment : item)));
+        }
         await refreshComments();
     };
 
@@ -2978,6 +3572,28 @@ export default function App() {
         setCommentsOpen(false);
     }, []);
 
+    const openProjectFromNotification = useCallback(async (notification) => {
+        if (!notification) return;
+        const project = projects.find((item) => (
+            (notification.projectDbId && item.db_id === notification.projectDbId)
+            || (notification.entityId && (item.project_id === notification.entityId || item.project_name === notification.entityId))
+        ));
+        if (!project) {
+            window.alert('Project not found for this notification.');
+            return;
+        }
+        const projectIndex = projects.findIndex((item) => item.db_id === project.db_id);
+        if (!notification.read) {
+            await markNotificationAsRead(notification.id);
+        }
+        setNotificationsOpen(false);
+        setRoute('dashboard');
+        window.location.hash = '#dashboard';
+        setSelectedProject(project);
+        setSelectedProjectIndex(projectIndex >= 0 ? projectIndex : null);
+        setCommentsOpen(true);
+    }, [projects, markNotificationAsRead]);
+
     const navigate = (key) => {
         if (key === 'logout') {
             doLogout();
@@ -2986,6 +3602,11 @@ export default function App() {
         setRoute(key);
         window.location.hash = `#${key}`;
     };
+
+    useEffect(() => {
+        if (!notificationsOpen) return;
+        markAllNotificationsViewed();
+    }, [notificationsOpen, markAllNotificationsViewed]);
 
     if (loading) return <div className="app"><div className="loading"><div className="spinner" /><p>Loading...</p></div></div>;
     if (!authUser) return <LoginPage onLogin={doLogin} error={authError} bootstrap={bootstrapStatus} />;
@@ -3015,6 +3636,10 @@ export default function App() {
                                         action={(
                                             <div className="header-actions dashboard-header-actions">
                                                 <div className="header-buttons dashboard-header-buttons">
+                                                    <button type="button" className="header-tertiary-btn" onClick={() => setNotificationsOpen(true)}>
+                                                        <span>Notifications</span>
+                                                        {unreadNotificationCount ? <span className="header-notification-badge">{unreadNotificationCount}</span> : null}
+                                                    </button>
                                                     <button type="button" className="header-tertiary-btn" onClick={() => setConfigOpen(true)}>
                                                         <Settings01 className="header-btn-icon" />
                                                         <span>Settings</span>
@@ -3068,6 +3693,15 @@ export default function App() {
                                         onScrapedFromChange={setScrapedFrom}
                                         onScrapedToChange={setScrapedTo}
                                         onClearFilters={clearFilters}
+                                        expiringSoonOnly={expiringSoonOnly}
+                                        expiringSoonDays={expiringSoonDays}
+                                        onToggleExpiringSoon={() => setExpiringSoonOnly((prev) => !prev)}
+                                        onExpiringSoonDaysChange={(value) => setExpiringSoonDays(Math.max(1, Math.min(365, Number(value) || 1)))}
+                                        savedSearches={savedSearches}
+                                        onSaveCurrentSearch={handleSaveCurrentSearch}
+                                        onApplySavedSearch={handleApplySavedSearch}
+                                        onDeleteSavedSearch={handleDeleteSavedSearch}
+                                        canManageDecision={canManageDecision}
                                         activeProjectId={selectedEntityId}
                                         onClearActiveProject={clearActiveProject}
                                         onProjectSelect={(project, projectIndex) => {
@@ -3101,6 +3735,7 @@ export default function App() {
                 onClose={clearActiveProject}
                 currentUser={authUser}
                 apiFetch={apiFetch}
+                availableUsers={availableUsers}
                 onDecisionChange={(nextDecision) => {
                     if (selectedProjectIndex !== null) handleDecisionChange(selectedProjectIndex, nextDecision);
                 }}
@@ -3108,6 +3743,9 @@ export default function App() {
                     if (selectedProjectIndex !== null) return handleDeadlineChange(selectedProjectIndex, nextDeadline);
                     return Promise.resolve();
                 }}
+                onAssignmentsChange={handleAssignmentsChange}
+                onVoteChange={handleVoteChange}
+                onDeepDiveSearch={handleDeepDiveSearch}
             />
 
             <SyncPanel open={syncOpen} onClose={() => setSyncOpen(false)} onSyncDone={handleSyncDone} onSyncStart={snapshotBeforeSync} apiFetch={apiFetch} />
@@ -3121,6 +3759,14 @@ export default function App() {
                     closeReleaseNotes();
                     navigate('release-notes');
                 }}
+            />
+            <NotificationsPanel
+                open={notificationsOpen}
+                notifications={notifications}
+                unreadCount={unreadNotificationCount}
+                onClose={() => setNotificationsOpen(false)}
+                onOpenNotification={openProjectFromNotification}
+                onMarkAllRead={markAllNotificationsAsRead}
             />
         </div>
     );

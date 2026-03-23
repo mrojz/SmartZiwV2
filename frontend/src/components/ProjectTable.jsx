@@ -36,6 +36,29 @@ function formatPlaceLabel(value) {
     .join(' ');
 }
 
+function initials(name = '', email = '') {
+  const parts = String(name).trim().split(/\s+/).filter(Boolean);
+  if (parts.length >= 2) return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
+  if (parts.length === 1) return parts[0][0].toUpperCase();
+  return (String(email || '?')[0] || '?').toUpperCase();
+}
+
+function CommentSignalIcon() {
+  return (
+    <svg viewBox="0 0 20 20" aria-hidden="true" className="project-row-signal-icon">
+      <path d="M5.5 5.5h9a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2H9.7l-3.2 2.4c-.5.4-1.2 0-.9-.7l.6-1.7H5.5a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2Z" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function AttachmentSignalIcon() {
+  return (
+    <svg viewBox="0 0 20 20" aria-hidden="true" className="project-row-signal-icon">
+      <path d="M7.4 10.8 11.9 6.3a2.6 2.6 0 1 1 3.7 3.7l-5.8 5.8a4 4 0 1 1-5.6-5.6l6.3-6.3" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 function sourceClass(source) {
   const s = (source || '').toLowerCase();
   if (s.includes('iadb')) return 'iadb';
@@ -353,6 +376,15 @@ export default function ProjectTable({
   onScrapedFromChange,
   onScrapedToChange,
   onClearFilters,
+  expiringSoonOnly,
+  expiringSoonDays,
+  onToggleExpiringSoon,
+  onExpiringSoonDaysChange,
+  savedSearches,
+  onSaveCurrentSearch,
+  onApplySavedSearch,
+  onDeleteSavedSearch,
+  canManageDecision,
   onProjectSelect,
   activeProjectId,
   onClearActiveProject,
@@ -375,6 +407,7 @@ export default function ProjectTable({
   });
   const [deadlineDraft, setDeadlineDraft] = useState({ from: deadlineFrom, to: deadlineTo });
   const [scrapedDraft, setScrapedDraft] = useState({ from: scrapedFrom, to: scrapedTo });
+  const [selectedSavedSearchId, setSelectedSavedSearchId] = useState('');
   const headerFilterRef = useRef(null);
   const headerCheckboxRef = useRef(null);
 
@@ -570,6 +603,7 @@ export default function ProjectTable({
   };
 
   const handleBulkDecision = (nextDecision) => {
+    if (!canManageDecision) return;
     allProjects.forEach((project, idx) => {
       if (selectedRowIds.has(getProjectRowId(project, idx))) onDecisionChange(idx, nextDecision);
     });
@@ -592,7 +626,7 @@ export default function ProjectTable({
     setSelectedRowIds(new Set());
   };
 
-  const hasAnyFilter = chips?.length > 0 || freeText || source || region || continent || verified || decision || deadlineFrom || deadlineTo || scrapedFrom || scrapedTo || (advancedQueryEnabled && advancedQuery.trim());
+  const hasAnyFilter = chips?.length > 0 || freeText || source || region || continent || verified || decision || deadlineFrom || deadlineTo || scrapedFrom || scrapedTo || expiringSoonOnly || (advancedQueryEnabled && advancedQuery.trim());
   const activeFilters = [
     source ? { key: 'source', label: `Source: ${source}`, clear: () => onSourceChange('') } : null,
     region ? { key: 'region', label: `Region: ${region}`, clear: () => onRegionChange('') } : null,
@@ -601,6 +635,7 @@ export default function ProjectTable({
     decision ? { key: 'decision', label: `Decision: ${decision}`, clear: () => onDecisionChangeFilter('') } : null,
     deadlineFrom || deadlineTo ? { key: 'deadline', label: `Deadline: ${formatDisplayDate(deadlineFrom) === '-' ? 'Any' : formatDisplayDate(deadlineFrom)} to ${formatDisplayDate(deadlineTo) === '-' ? 'Any' : formatDisplayDate(deadlineTo)}`, clear: () => { onDeadlineFromChange(''); onDeadlineToChange(''); } } : null,
     scrapedFrom || scrapedTo ? { key: 'scraped', label: `Last scraped: ${formatDisplayDate(scrapedFrom) === '-' ? 'Any' : formatDisplayDate(scrapedFrom)} to ${formatDisplayDate(scrapedTo) === '-' ? 'Any' : formatDisplayDate(scrapedTo)}`, clear: () => { onScrapedFromChange(''); onScrapedToChange(''); } } : null,
+    expiringSoonOnly ? { key: 'expiringSoon', label: `Verified expiring in ${expiringSoonDays} day${expiringSoonDays === 1 ? '' : 's'}`, clear: () => onToggleExpiringSoon?.() } : null,
     advancedQueryEnabled && advancedQuery.trim() ? { key: 'advancedQuery', label: 'Advanced logic active', clear: () => { onAdvancedQueryChange(''); onAdvancedQueryEnabledChange(false); } } : null,
   ].filter(Boolean);
   const collapsedSummary = [
@@ -791,6 +826,61 @@ export default function ProjectTable({
             </div>
           </div>
           <div className="table-toolbar-controls">
+            <div className="toolbar-inline-group">
+              <label className="toolbar-day-input" aria-label="Expiring soon days">
+                <span>Days</span>
+                <input
+                  type="number"
+                  min="1"
+                  max="365"
+                  value={expiringSoonDays}
+                  onChange={(event) => onExpiringSoonDaysChange?.(event.target.value)}
+                />
+              </label>
+              <button
+                type="button"
+                className={`toolbar-toggle-btn ${expiringSoonOnly ? 'is-active' : ''}`}
+                onClick={onToggleExpiringSoon}
+              >
+                <span>Expires in {expiringSoonDays} day{expiringSoonDays === 1 ? '' : 's'}</span>
+              </button>
+            </div>
+            <div className="toolbar-inline-group">
+              <select
+                className="toolbar-select"
+                value={selectedSavedSearchId}
+                onChange={(event) => {
+                  const nextId = event.target.value;
+                  setSelectedSavedSearchId(nextId);
+                  if (nextId) onApplySavedSearch?.(nextId);
+                }}
+                aria-label="Saved searches"
+              >
+                <option value="">Saved searches</option>
+                {(savedSearches || []).map((item) => (
+                  <option key={item.id} value={item.id}>{item.name}</option>
+                ))}
+              </select>
+              <button
+                type="button"
+                className="toolbar-toggle-btn"
+                onClick={onSaveCurrentSearch}
+              >
+                <span>Save search</span>
+              </button>
+              <button
+                type="button"
+                className="toolbar-toggle-btn"
+                onClick={() => {
+                  if (!selectedSavedSearchId) return;
+                  onDeleteSavedSearch?.(selectedSavedSearchId);
+                  setSelectedSavedSearchId('');
+                }}
+                disabled={!selectedSavedSearchId}
+              >
+                <span>Delete</span>
+              </button>
+            </div>
             <button
               type="button"
               className={`toolbar-toggle-btn ${advancedQueryEnabled ? 'is-active' : ''}`}
@@ -888,8 +978,8 @@ export default function ProjectTable({
             <button className="bulk-clear" onClick={() => setSelectedRowIds(new Set())}>Clear</button>
           </div>
           <div className="bulk-actions">
-            <button className="bulk-btn go" onClick={() => handleBulkDecision('Go')}>Mark Go</button>
-            <button className="bulk-btn nogo" onClick={() => handleBulkDecision('No Go')}>Mark No Go</button>
+            {canManageDecision ? <button className="bulk-btn go" onClick={() => handleBulkDecision('Go')}>Mark Go</button> : null}
+            {canManageDecision ? <button className="bulk-btn nogo" onClick={() => handleBulkDecision('No Go')}>Mark No Go</button> : null}
             <button className="bulk-btn delete" onClick={() => { void handleBulkDelete(); }}>Delete</button>
           </div>
         </div>
@@ -953,6 +1043,7 @@ export default function ProjectTable({
                   }
 
                   if (key === '_project') {
+                    const assignedUsers = p.assigned_users || [];
                     return (
                       <Table.Cell className="td-project">
                         <div className="project-cell">
@@ -961,6 +1052,33 @@ export default function ProjectTable({
                             <span className="project-cell-id">{p.project_id}</span>
                             <span className={`badge badge-source badge-source-sm ${sourceClass(p.source)}`}>{p.source}</span>
                           </span>
+                          <div className="project-row-signals">
+                            {(p.comment_count || 0) > 0 ? (
+                              <span className="project-row-signal" title="Comments">
+                                <CommentSignalIcon />
+                                <span>{p.comment_count || 0}</span>
+                              </span>
+                            ) : null}
+                            {(p.comment_document_count || 0) > 0 ? (
+                              <span className="project-row-signal" title="Comment attachments">
+                                <AttachmentSignalIcon />
+                                <span>{p.comment_document_count || 0}</span>
+                              </span>
+                            ) : null}
+                            {assignedUsers.length ? (
+                              <span className="project-row-assignees" title={assignedUsers.map((user) => user.name || user.email).join(', ')}>
+                                <span className="project-row-assignees-label">Working on</span>
+                                <span className="project-row-assignee-stack">
+                                  {assignedUsers.slice(0, 3).map((user) => (
+                                    <span key={user.id} className="project-row-assignee" aria-label={user.name || user.email}>
+                                      {initials(user.name || '', user.email || '')}
+                                    </span>
+                                  ))}
+                                  {assignedUsers.length > 3 ? <span className="project-row-assignee project-row-assignee-more">+{assignedUsers.length - 3}</span> : null}
+                                </span>
+                              </span>
+                            ) : null}
+                          </div>
                         </div>
                       </Table.Cell>
                     );
@@ -1028,6 +1146,18 @@ export default function ProjectTable({
 
                   return (
                     <Table.Cell className="td-actions" onClick={(e) => e.stopPropagation()}>
+                      {p.project_url ? (
+                        <button
+                          className="context-trigger context-trigger-open"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            window.open(p.project_url, '_blank');
+                          }}
+                          title="Open project"
+                        >
+                          {'->'}
+                        </button>
+                      ) : null}
                       <button
                         className="context-trigger"
                         onClick={(e) => {
@@ -1081,7 +1211,7 @@ export default function ProjectTable({
           anchorRect={contextMenu.rect}
           onClose={() => setContextMenu(null)}
           items={[
-            {
+            ...(canManageDecision ? [{
               icon: 'G',
               label: contextMenu.project.decision === 'Go' ? 'Undo Go' : 'Mark as Go',
               active: contextMenu.project.decision === 'Go',
@@ -1093,7 +1223,7 @@ export default function ProjectTable({
               active: contextMenu.project.decision === 'No Go',
               onClick: () => onDecisionChange(contextMenu.realIndex, contextMenu.project.decision === 'No Go' ? '' : 'No Go'),
             },
-            { divider: true },
+            { divider: true }] : []),
             ...(contextMenu.project.project_url ? [{ icon: 'O', label: 'Open Project', onClick: () => window.open(contextMenu.project.project_url, '_blank') }] : []),
             ...(contextMenu.project.document_url ? [{ icon: 'D', label: 'Open Document', onClick: () => window.open(contextMenu.project.document_url, '_blank') }] : []),
             { divider: true },
