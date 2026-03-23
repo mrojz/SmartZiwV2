@@ -11,6 +11,10 @@ Usage:
     python main.py --dgmarket           # Run only DGMarket scraper
     python main.py --isdb               # Run only IsDB scraper
     python main.py --badea              # Run only BADEA scraper
+    python main.py --bcie               # Run only BCIE scraper
+    python main.py --eabr               # Run only EABR scraper
+    python main.py --oas                # Run only OAS scraper
+    python main.py --africanunion       # Run only African Union scraper
     python main.py --no-ai             # Skip AI cybersecurity verification
     python main.py --include-expired   # Include projects with past due dates
 """
@@ -88,6 +92,26 @@ SCRAPERS = {
         "import": "from utils.badea_scraper import run_badea_scraper",
         "func": "run_badea_scraper",
     },
+    "bcie": {
+        "label": "BCIE",
+        "import": "from utils.bcie_scraper import run_bcie_scraper",
+        "func": "run_bcie_scraper",
+    },
+    "eabr": {
+        "label": "EABR",
+        "import": "from utils.eabr_scraper import run_eabr_scraper",
+        "func": "run_eabr_scraper",
+    },
+    "oas": {
+        "label": "OAS",
+        "import": "from utils.oas_scraper import run_oas_scraper",
+        "func": "run_oas_scraper",
+    },
+    "africanunion": {
+        "label": "African Union",
+        "import": "from utils.africanunion_scraper import run_africanunion_scraper",
+        "func": "run_africanunion_scraper",
+    },
 }
 
 
@@ -163,13 +187,17 @@ def main():
     parser.add_argument("--africagateway", action="store_true", help="Run only the Africa Gateway scraper")
     parser.add_argument("--isdb", action="store_true", help="Run only the IsDB scraper")
     parser.add_argument("--badea", action="store_true", help="Run only the BADEA scraper")
+    parser.add_argument("--bcie", action="store_true", help="Run only the BCIE scraper")
+    parser.add_argument("--eabr", action="store_true", help="Run only the EABR scraper")
+    parser.add_argument("--oas", action="store_true", help="Run only the OAS scraper")
+    parser.add_argument("--africanunion", action="store_true", help="Run only the African Union scraper")
     parser.add_argument("--no-ai", action="store_true", help="Skip AI cybersecurity verification")
     parser.add_argument("--no-enrich", action="store_true", help="Skip AI enrichment (source detection, doc analysis)")
     parser.add_argument("--include-expired", action="store_true", help="Include projects with past due dates")
     args = parser.parse_args()
 
     # Determine which scrapers to run
-    any_source = args.iadb or args.worldbank or args.globaltenders or args.giz or args.devaid or args.dgmarket or args.africagateway or args.isdb or args.badea
+    any_source = args.iadb or args.worldbank or args.globaltenders or args.giz or args.devaid or args.dgmarket or args.africagateway or args.isdb or args.badea or args.bcie or args.eabr or args.oas or args.africanunion
     to_run = {}
     for key, info in SCRAPERS.items():
         if getattr(args, key, False) or not any_source:

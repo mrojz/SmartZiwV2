@@ -32,6 +32,10 @@ const SOURCE_LIST = [
     { key: 'africagateway', label: 'Africa Gateway' },
     { key: 'isdb', label: 'IsDB' },
     { key: 'badea', label: 'BADEA' },
+    { key: 'bcie', label: 'BCIE' },
+    { key: 'eabr', label: 'EABR' },
+    { key: 'oas', label: 'OAS' },
+    { key: 'africanunion', label: 'African Union' },
 ];
 
 const TIMEZONES = [
@@ -218,6 +222,10 @@ export default function SchedulePanel({ open, onClose, apiFetch }) {
             africagateway: true,
             isdb: true,
             badea: true,
+            bcie: true,
+            eabr: true,
+            oas: true,
+            africanunion: true,
         },
         no_ai: false,
         include_expired: false,
@@ -239,7 +247,7 @@ export default function SchedulePanel({ open, onClose, apiFetch }) {
 
     const [syncRunning, setSyncRunning] = useState(false);
     const [liveLogs, setLiveLogs] = useState([]);
-    const liveLogEndRef = useRef(null);
+    const liveLogContainerRef = useRef(null);
     const sseRef = useRef(null);
     const liveLogIndexRef = useRef(-1);
     const syncPollRef = useRef(null);
@@ -422,8 +430,8 @@ export default function SchedulePanel({ open, onClose, apiFetch }) {
     }, [open, serverOffset, nextRun]);
 
     useEffect(() => {
-        if (liveLogs.length > 0) {
-            liveLogEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+        if (liveLogs.length > 0 && liveLogContainerRef.current) {
+            liveLogContainerRef.current.scrollTop = liveLogContainerRef.current.scrollHeight;
         }
     }, [liveLogs]);
 
@@ -519,11 +527,10 @@ export default function SchedulePanel({ open, onClose, apiFetch }) {
                                         <span className="btn-spinner" />
                                         {syncRunning ? 'Sync in progress...' : 'Recent sync output'}
                                     </div>
-                                    <pre className="schedule-ongoing-output">
+                                    <pre ref={liveLogContainerRef} className="schedule-ongoing-output">
                                         {liveLogs.length > 0
                                             ? liveLogs.slice(-30).join('\n')
                                             : 'Waiting for output...'}
-                                        <span ref={liveLogEndRef} />
                                     </pre>
                                 </div>
                             )}

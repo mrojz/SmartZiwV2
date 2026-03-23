@@ -140,6 +140,54 @@
   color: var(--accent);
 }
 
+.toolbar-toggle-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.toolbar-inline-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.toolbar-day-input {
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--text-secondary);
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.toolbar-day-input input {
+  width: 56px;
+  border: 0;
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  text-align: right;
+  outline: none;
+}
+
+.toolbar-select {
+  height: 34px;
+  min-width: 150px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
 .toolbar-collapse-btn .toolbar-chevron {
   display: inline-flex;
   transform: rotate(180deg);
