@@ -1612,7 +1612,7 @@ def download_filtered_excel(body: dict):
 
 @app.get("/api/notifications")
 def list_notifications(request: Request, limit: int = 50):
-    notifications = list_notifications_for_user(request.state.user.get("id"), max(1, min(limit, 200)))
+    notifications = list_notifications_for_user(request.state.user.get("id"), max(1, min(limit, 5000)))
     return {"notifications": notifications}
 
 
