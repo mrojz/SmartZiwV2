@@ -685,7 +685,7 @@ def create_notifications(notifications: list[dict]) -> int:
     return len(notifications)
 
 
-def list_notifications_for_user(user_id: str, limit: int = 50) -> list[dict]:
+def list_notifications_for_user(user_id: str, limit: int = 1000) -> list[dict]:
     db = get_db()
     docs = db.notifications.find({'userId': user_id}).sort('createdAt', -1).limit(limit)
     out = []

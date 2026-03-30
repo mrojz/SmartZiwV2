@@ -438,15 +438,27 @@
   padding: 12px;
   text-align: left;
   margin-bottom: 10px;
+  transition: border-color 160ms ease, background-color 160ms ease, box-shadow 160ms ease, opacity 160ms ease;
 }
 
 .notification-row.is-unread {
-  border-color: #b8cdf8;
-  background: #f7faff;
+  border-color: #9cbcf7;
+  background: linear-gradient(180deg, #f7faff 0%, #eef5ff 100%);
+  box-shadow: 0 6px 16px rgb(31 111 235 / 0.08);
 }
 
 .notification-row.is-unviewed {
   box-shadow: inset 3px 0 0 #1f6feb;
+}
+
+.notification-row:not(.is-unread) {
+  border-color: #e6ebf3;
+  background: #f8fafc;
+  opacity: 0.82;
+}
+
+.notification-row:hover {
+  opacity: 1;
 }
 
 .notification-row-copy {
@@ -461,10 +473,19 @@
   color: var(--text-primary, #172033);
 }
 
+.notification-row:not(.is-unread) .notification-row-copy strong {
+  color: #5f6c82;
+  font-weight: 500;
+}
+
 .notification-row-copy span,
 .panel-subtext {
   font-size: 12px;
   color: var(--text-secondary, #6a7891);
+}
+
+.notification-row:not(.is-unread) .notification-row-copy span {
+  color: #8591a6;
 }
 
 .project-inspector-collab-grid {

@@ -76,6 +76,67 @@ function normalizeRoute(rawRoute = '') {
     return rawRoute === 'comments' ? 'dashboard' : (rawRoute || 'dashboard');
 }
 
+function formatActorList(names = []) {
+    const cleaned = [...new Set((names || []).map((name) => String(name || '').trim()).filter(Boolean))];
+    if (!cleaned.length) return 'Someone';
+    if (cleaned.length === 1) return cleaned[0];
+    if (cleaned.length === 2) return `${cleaned[0]} and ${cleaned[1]}`;
+    return `${cleaned.slice(0, -1).join(', ')} and ${cleaned[cleaned.length - 1]}`;
+}
+
+function buildGroupedNotifications(notifications = [], projects = []) {
+    const projectIdByDbId = new Map(
+        (projects || [])
+            .filter((item) => item?.db_id)
+            .map((item) => [item.db_id, item.project_id || item.entityId || item.project_name || ''])
+    );
+    const groups = new Map();
+    for (const item of notifications || []) {
+        const projectKey = item.projectDbId || item.entityId || item.id;
+        const groupKey = `${item.type || 'notification'}::${projectKey}`;
+        const existing = groups.get(groupKey);
+        if (!existing) {
+            groups.set(groupKey, {
+                id: groupKey,
+                type: item.type || 'notification',
+                projectDbId: item.projectDbId || '',
+                entityId: item.entityId || '',
+                projectLabel: projectIdByDbId.get(item.projectDbId) || item.entityId || 'unknown',
+                actorNames: item.actorName ? [item.actorName] : [],
+                createdAt: item.createdAt,
+                read: Boolean(item.read),
+                viewed: Boolean(item.viewed),
+                notificationIds: [item.id],
+                items: [item],
+            });
+            continue;
+        }
+        existing.notificationIds.push(item.id);
+        existing.items.push(item);
+        if (item.actorName) existing.actorNames.push(item.actorName);
+        if (!item.read) existing.read = false;
+        if (!item.viewed) existing.viewed = false;
+        if ((item.createdAt || '') > (existing.createdAt || '')) existing.createdAt = item.createdAt;
+    }
+
+    const messageForGroup = (group) => {
+        const actors = formatActorList(group.actorNames);
+        const projectLabel = group.projectLabel || group.entityId || 'unknown';
+        if (group.type === 'mention') return `${actors} tagged you in project ${projectLabel}`;
+        if (group.type === 'assignment') return `${actors} assigned you to project ${projectLabel}`;
+        if (group.type === 'comment') return `${actors} commented on project ${projectLabel}`;
+        return `${actors} updated project ${projectLabel}`;
+    };
+
+    return [...groups.values()]
+        .map((group) => ({
+            ...group,
+            actorNames: [...new Set(group.actorNames)],
+            message: messageForGroup(group),
+        }))
+        .sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
+}
+
 function initials(name = '', email = '') {
     const parts = name.trim().split(/\s+/).filter(Boolean);
     if (parts.length >= 2) return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
@@ -2710,10 +2771,7 @@ export default function App() {
             try {
                 const data = JSON.parse(event.data);
                 if (data?.type === 'notification' && data?.notification) {
-                    setNotifications((prev) => {
-                        const next = [data.notification, ...prev.filter((item) => item.id !== data.notification.id)];
-                        return next.slice(0, 100);
-                    });
+                    setNotifications((prev) => [data.notification, ...prev.filter((item) => item.id !== data.notification.id)]);
                     return;
                 }
                 if (data?.type !== 'new_projects' || !(data?.count > 0)) return;
@@ -2775,7 +2833,7 @@ export default function App() {
             apiFetch('/api/geography').then((r) => (r.ok ? r.json() : { continents: [] })),
             apiFetch('/api/release-notes').then((r) => (r.ok ? r.json() : { notes: DEFAULT_RELEASE_NOTES })),
             apiFetch('/api/users').then((r) => (r.ok ? r.json() : [])),
-            apiFetch('/api/notifications').then((r) => (r.ok ? r.json() : { notifications: [] })),
+            apiFetch('/api/notifications?limit=5000').then((r) => (r.ok ? r.json() : { notifications: [] })),
             apiFetch('/api/saved-searches').then((r) => (r.ok ? r.json() : { searches: [] })),
         ])
             .then(([cfg, geography, noteData, userData, notificationData, searchData]) => {
@@ -2833,9 +2891,14 @@ export default function App() {
         return releaseNotes[0];
     }, [releaseNotes]);
 
+    const groupedNotifications = useMemo(
+        () => buildGroupedNotifications(notifications, projects),
+        [notifications, projects],
+    );
+
     const unreadNotificationCount = useMemo(
-        () => notifications.filter((item) => !item.read).length,
-        [notifications],
+        () => groupedNotifications.filter((item) => !item.read).length,
+        [groupedNotifications],
     );
 
     const modalReleaseNotes = useMemo(() => {
@@ -2867,6 +2930,15 @@ export default function App() {
     const markNotificationAsRead = useCallback(async (notificationId) => {
         setNotifications((prev) => prev.map((item) => (item.id === notificationId ? { ...item, read: true } : item)));
         await apiFetch(`/api/notifications/${encodeURIComponent(notificationId)}/read`, { method: 'POST' }).catch(() => {});
+    }, [apiFetch]);
+
+    const markNotificationGroupAsRead = useCallback(async (notificationIds = []) => {
+        const ids = [...new Set((notificationIds || []).filter(Boolean))];
+        if (!ids.length) return;
+        setNotifications((prev) => prev.map((item) => (
+            ids.includes(item.id) ? { ...item, read: true, viewed: true } : item
+        )));
+        await Promise.all(ids.map((id) => apiFetch(`/api/notifications/${encodeURIComponent(id)}/read`, { method: 'POST' }).catch(() => {})));
     }, [apiFetch]);
 
     const markAllNotificationsViewed = useCallback(async () => {
@@ -3584,7 +3656,7 @@ export default function App() {
         }
         const projectIndex = projects.findIndex((item) => item.db_id === project.db_id);
         if (!notification.read) {
-            await markNotificationAsRead(notification.id);
+            await markNotificationGroupAsRead(notification.notificationIds || [notification.id]);
         }
         setNotificationsOpen(false);
         setRoute('dashboard');
@@ -3592,7 +3664,7 @@ export default function App() {
         setSelectedProject(project);
         setSelectedProjectIndex(projectIndex >= 0 ? projectIndex : null);
         setCommentsOpen(true);
-    }, [projects, markNotificationAsRead]);
+    }, [projects, markNotificationGroupAsRead]);
 
     const navigate = (key) => {
         if (key === 'logout') {
@@ -3762,7 +3834,7 @@ export default function App() {
             />
             <NotificationsPanel
                 open={notificationsOpen}
-                notifications={notifications}
+                notifications={groupedNotifications}
                 unreadCount={unreadNotificationCount}
                 onClose={() => setNotificationsOpen(false)}
                 onOpenNotification={openProjectFromNotification}
