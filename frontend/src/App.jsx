@@ -368,144 +368,6 @@ function setModalScrollLock(locked) {
     html.classList.toggle('modal-scroll-locked', shouldLock);
 }
 
-const BOOLEAN_QUERY_FIELDS = new Set(['source', 'decision', 'region', 'continent', 'verified', 'ai', 'country', 'keyword', 'signals', 'id', 'published_date', 'deadline', 'last_scraped']);
-
-function tokenizeBooleanQuery(input) {
-    const source = String(input || '');
-    const tokens = [];
-    let index = 0;
-
-    while (index < source.length) {
-        const char = source[index];
-        if (/\s/.test(char)) {
-            index += 1;
-            continue;
-        }
-        if (char === '(') {
-            tokens.push({ type: 'LPAREN' });
-            index += 1;
-            continue;
-        }
-        if (char === ')') {
-            tokens.push({ type: 'RPAREN' });
-            index += 1;
-            continue;
-        }
-
-        const operatorMatch = source.slice(index).match(/^(AND|OR|NOT)\b/i);
-        if (operatorMatch) {
-            tokens.push({ type: operatorMatch[1].toUpperCase() });
-            index += operatorMatch[0].length;
-            continue;
-        }
-
-        const fieldMatch = source.slice(index).match(/^([a-z_][a-z0-9_]*)\s*:/i);
-        if (!fieldMatch) {
-            throw new Error(`Unexpected token near "${source.slice(index, index + 16)}"`);
-        }
-
-        const field = fieldMatch[1].toLowerCase();
-        if (!BOOLEAN_QUERY_FIELDS.has(field)) {
-            throw new Error(`Unknown field "${field}"`);
-        }
-        index += fieldMatch[0].length;
-
-        while (index < source.length && /\s/.test(source[index])) index += 1;
-
-        let value = '';
-        if (source[index] === '"') {
-            index += 1;
-            const start = index;
-            while (index < source.length && source[index] !== '"') index += 1;
-            if (index >= source.length) throw new Error('Missing closing quote in advanced query');
-            value = source.slice(start, index);
-            index += 1;
-        } else {
-            const start = index;
-            while (index < source.length && !/[\s()]/.test(source[index])) index += 1;
-            value = source.slice(start, index);
-        }
-
-        const normalizedValue = value.trim();
-        if (!normalizedValue) throw new Error(`Missing value for "${field}"`);
-        tokens.push({ type: 'CONDITION', field, value: normalizedValue });
-    }
-
-    return tokens;
-}
-
-function parseBooleanQuery(input) {
-    const tokens = tokenizeBooleanQuery(input);
-    let cursor = 0;
-
-    const peek = () => tokens[cursor];
-    const consume = (type) => {
-        const token = tokens[cursor];
-        if (!token || token.type !== type) {
-            throw new Error(type === 'RPAREN' ? 'Missing closing parenthesis' : `Expected ${type}`);
-        }
-        cursor += 1;
-        return token;
-    };
-
-    const parsePrimary = () => {
-        const token = peek();
-        if (!token) throw new Error('Incomplete expression');
-        if (token.type === 'CONDITION') {
-            cursor += 1;
-            return { type: 'condition', field: token.field, value: token.value };
-        }
-        if (token.type === 'LPAREN') {
-            consume('LPAREN');
-            const expression = parseOr();
-            consume('RPAREN');
-            return expression;
-        }
-        throw new Error(`Unexpected token "${token.type}"`);
-    };
-
-    const parseUnary = () => {
-        if (peek()?.type === 'NOT') {
-            consume('NOT');
-            return { type: 'not', node: parseUnary() };
-        }
-        return parsePrimary();
-    };
-
-    const parseAnd = () => {
-        let node = parseUnary();
-        while (peek()?.type === 'AND') {
-            consume('AND');
-            node = { type: 'and', left: node, right: parseUnary() };
-        }
-        return node;
-    };
-
-    const parseOr = () => {
-        let node = parseAnd();
-        while (peek()?.type === 'OR') {
-            consume('OR');
-            node = { type: 'or', left: node, right: parseAnd() };
-        }
-        return node;
-    };
-
-    if (!tokens.length) return null;
-    const ast = parseOr();
-    if (cursor < tokens.length) {
-        throw new Error(`Unexpected token "${tokens[cursor].type}"`);
-    }
-    return ast;
-}
-
-function evaluateBooleanQuery(ast, evaluateCondition) {
-    if (!ast) return true;
-    if (ast.type === 'condition') return evaluateCondition(ast);
-    if (ast.type === 'not') return !evaluateBooleanQuery(ast.node, evaluateCondition);
-    if (ast.type === 'and') return evaluateBooleanQuery(ast.left, evaluateCondition) && evaluateBooleanQuery(ast.right, evaluateCondition);
-    if (ast.type === 'or') return evaluateBooleanQuery(ast.left, evaluateCondition) || evaluateBooleanQuery(ast.right, evaluateCondition);
-    return true;
-}
 
 function Avatar({ user, size = 34 }) {
     if (user?.avatarUrl) {
@@ -2560,20 +2422,6 @@ export default function App() {
     const [continents, setContinents] = useState([]);
     const [chips, setChips] = useState([]);
     const [freeText, setFreeText] = useState('');
-    const [advancedQuery, setAdvancedQuery] = useState(() => {
-        try {
-            return sessionStorage.getItem('pw_advanced_query') || '';
-        } catch {
-            return '';
-        }
-    });
-    const [advancedQueryEnabled, setAdvancedQueryEnabled] = useState(() => {
-        try {
-            return sessionStorage.getItem('pw_advanced_query_enabled') === '1';
-        } catch {
-            return false;
-        }
-    });
     const [source, setSource] = useState('');
     const [verified, setVerified] = useState('Yes');
     const [region, setRegion] = useState('');
@@ -2616,14 +2464,6 @@ export default function App() {
     const notificationStreamRef = useRef(null);
     const notificationAudioUnlockedRef = useRef(false);
 
-    useEffect(() => {
-        try {
-            sessionStorage.setItem('pw_advanced_query', advancedQuery);
-            sessionStorage.setItem('pw_advanced_query_enabled', advancedQueryEnabled ? '1' : '0');
-        } catch {
-            // Ignore sessionStorage access issues.
-        }
-    }, [advancedQuery, advancedQueryEnabled]);
 
     const apiFetch = useCallback(async (url, opts = {}, _isRetry = false) => {
         const headers = { ...(opts.headers || {}) };
@@ -2960,16 +2800,6 @@ export default function App() {
         return '';
     }, [regions]);
 
-    const advancedQueryResult = useMemo(() => {
-        const query = advancedQuery.trim();
-        if (!advancedQueryEnabled || !query) return { ast: null, error: '' };
-        try {
-            return { ast: parseBooleanQuery(query), error: '' };
-        } catch (error) {
-            return { ast: null, error: error.message || 'Invalid advanced query' };
-        }
-    }, [advancedQuery, advancedQueryEnabled]);
-
     const filtered = useMemo(() => {
         const ft = freeText.toLowerCase();
         const parseFilterDate = (value) => {
@@ -3057,84 +2887,16 @@ export default function App() {
             const scrapedAt = parseFilterDate(p.scraped_at);
             if (scrapedFromDate && (!scrapedAt || scrapedAt < scrapedFromDate)) return false;
             if (scrapedToDate && (!scrapedAt || scrapedAt > scrapedToDate)) return false;
-            if (advancedQueryEnabled && advancedQuery.trim() && !advancedQueryResult.error) {
-                const projectRegions = (p.region_names || []).map((name) => String(name).toLowerCase());
-                const projectContinents = [
-                    ...(p.continent_codes || []).map((code) => String(code).toLowerCase()),
-                    ...(p.continent_names_en || []).map((name) => String(name).toLowerCase()),
-                    ...(p.continent_names_fr || []).map((name) => String(name).toLowerCase()),
-                ];
-                const projectCountries = [
-                    ...(p.country_names_en || []).map((name) => String(name).toLowerCase()),
-                    ...(p.country_names_fr || []).map((name) => String(name).toLowerCase()),
-                    String(p.project_sponsor || '').toLowerCase(),
-                ];
-                const projectKeywords = String(p.matched_keywords || '')
-                    .split(',')
-                    .map((keywordValue) => keywordValue.trim().toLowerCase())
-                    .filter(Boolean);
-                const isVerified = p.ai_verified === 'Yes';
-                const normalizedDecision = p.decision ? String(p.decision).toLowerCase() : 'undecided';
-                const matchesAdvancedCondition = ({ field, value }) => {
-                    const queryValue = String(value || '').toLowerCase();
-                    switch (field) {
-                        case 'source':
-                            return String(p.source || '').toLowerCase().includes(queryValue);
-                        case 'decision':
-                            return normalizedDecision === queryValue;
-                        case 'region':
-                            return projectRegions.some((regionValue) => regionValue.includes(queryValue));
-                        case 'continent':
-                        case 'country':
-                            return (field === 'continent' ? projectContinents : projectCountries)
-                                .some((entry) => entry.includes(queryValue));
-                        case 'verified':
-                        case 'ai': {
-                            const positive = ['yes', 'true', 'verified', '1'];
-                            const negative = ['no', 'false', 'unverified', '0'];
-                            if (positive.includes(queryValue)) return isVerified;
-                            if (negative.includes(queryValue)) return !isVerified;
-                            return false;
-                        }
-                        case 'keyword':
-                        case 'signals':
-                            return projectKeywords.some((keywordValue) => keywordValue.includes(queryValue));
-                        case 'id':
-                            return String(p.project_id || '').toLowerCase().includes(queryValue);
-                        case 'published_date':
-                            return [
-                                String(p.project_start_date || '').toLowerCase(),
-                                formatDisplayDate(p.project_start_date).toLowerCase(),
-                            ].some((entry) => entry.includes(queryValue));
-                        case 'deadline': {
-                            const deadlineValue = p.effective_deadline || p.manual_deadline || p.scraped_deadline || p.project_end_date || '';
-                            return [
-                                String(deadlineValue).toLowerCase(),
-                                formatDisplayDate(deadlineValue).toLowerCase(),
-                            ].some((entry) => entry.includes(queryValue));
-                        }
-                        case 'last_scraped':
-                            return [
-                                String(p.scraped_at || '').toLowerCase(),
-                                formatDisplayDate(p.scraped_at).toLowerCase(),
-                            ].some((entry) => entry.includes(queryValue));
-                        default:
-                            return false;
-                    }
-                };
-                if (!evaluateBooleanQuery(advancedQueryResult.ast, matchesAdvancedCondition)) return false;
-            }
             return true;
         });
-    }, [projects, chips, freeText, source, verified, region, continent, regions, decision, endDateFrom, endDateTo, scrapedFrom, scrapedTo, getRegion, advancedQueryEnabled, advancedQuery, advancedQueryResult, expiringSoonOnly, expiringSoonDays]);
+    }, [projects, chips, freeText, source, verified, region, continent, regions, decision, endDateFrom, endDateTo, scrapedFrom, scrapedTo, getRegion, expiringSoonOnly, expiringSoonDays]);
+
 
     const sources = useMemo(() => [...new Set(projects.map((p) => p.source).filter(Boolean))].sort(), [projects]);
 
     const clearFilters = () => {
         setChips([]);
         setFreeText('');
-        setAdvancedQuery('');
-        setAdvancedQueryEnabled(false);
         setSource('');
         setVerified('Yes');
         setRegion('');
@@ -3153,8 +2915,6 @@ export default function App() {
     const buildCurrentFilterState = useCallback(() => ({
         chips,
         freeText,
-        advancedQuery,
-        advancedQueryEnabled,
         source,
         verified,
         region,
@@ -3171,8 +2931,6 @@ export default function App() {
     }), [
         chips,
         freeText,
-        advancedQuery,
-        advancedQueryEnabled,
         source,
         verified,
         region,
@@ -3191,8 +2949,6 @@ export default function App() {
     const applySavedFilterState = useCallback((filters = {}) => {
         setChips(Array.isArray(filters.chips) ? filters.chips : []);
         setFreeText(filters.freeText || '');
-        setAdvancedQuery(filters.advancedQuery || '');
-        setAdvancedQueryEnabled(Boolean(filters.advancedQueryEnabled));
         setSource(filters.source || '');
         setVerified(filters.verified ?? 'Yes');
         setRegion(filters.region || '');
@@ -3739,11 +3495,6 @@ export default function App() {
                                         onChipsChange={setChips}
                                         freeText={freeText}
                                         onFreeTextChange={setFreeText}
-                                        advancedQuery={advancedQuery}
-                                        onAdvancedQueryChange={setAdvancedQuery}
-                                        advancedQueryEnabled={advancedQueryEnabled}
-                                        onAdvancedQueryEnabledChange={setAdvancedQueryEnabled}
-                                        advancedQueryError={advancedQueryResult.error}
                                         source={source}
                                         onSourceChange={setSource}
                                         region={region}

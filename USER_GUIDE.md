@@ -2,17 +2,13 @@
 
 > **Version 1.2** · Last updated April 2026
 
-Procurement Watch is a SaaS-style internal intelligence platform for tracking procurement and tender opportunities across multiple international sources. It scrapes, verifies, and enriches opportunities using AI, then surfaces them in a unified dashboard for analyst review.
+Procurement Watch is an internal intelligence platform for tracking procurement and tender opportunities across multiple international sources. It scrapes, verifies, and enriches opportunities using AI, then surfaces them in a unified dashboard for analyst review.
 
 ---
 
 ## Table of Contents
 
 1. [Getting Started](#1-getting-started)
-   - [Prerequisites](#prerequisites)
-   - [Installation (Docker)](#option-a--docker-compose-recommended)
-   - [Installation (Manual)](#option-b--manual-setup)
-   - [Environment Variables](#environment-variables)
 2. [First-Time Login](#2-first-time-login)
 3. [Dashboard Overview](#3-dashboard-overview)
    - [Project Table](#project-table)
@@ -53,103 +49,13 @@ Procurement Watch is a SaaS-style internal intelligence platform for tracking pr
 
 ---
 
+pip install -r requirements.txt
+
 ## 1. Getting Started
 
-### Prerequisites
+For the installation guide, please refer to [INSTALL.md](INSTALL.md).
 
-| Requirement         | Recommended Version |
-|---------------------|---------------------|
-| Python              | 3.12+               |
-| Node.js             | 22+                 |
-| MongoDB             | 4.4+                |
-| Docker *(optional)* | Latest stable        |
-
-### Option A — Docker Compose *(recommended)*
-
-The simplest way to run the full stack:
-
-```bash
-# 1. Clone the repository and cd into it
-cd new_cdx_gpt_5.4
-
-# 2. Copy and configure environment variables
-cp backend/.env.example backend/.env
-# Edit backend/.env with your real values
-
-# 3. Start everything
-docker compose up --build -d
-```
-
-This starts three containers:
-
-| Service    | Port  | Description                    |
-|------------|-------|--------------------------------|
-| `mongo`    | 27017 | MongoDB database               |
-| `backend`  | 8000  | FastAPI backend                 |
-| `frontend` | 80    | React app served via Nginx      |
-
-> **Access the app at [http://localhost](http://localhost)**
-
-### Option B — Manual Setup
-
-#### Backend
-
-```bash
-cd backend
-python -m venv .venv
-
-# Windows
-.venv\Scripts\activate
-
-# macOS / Linux
-source .venv/bin/activate
-
-pip install -r requirements.txt
-```
-
-Copy and edit the environment file:
-
-```bash
-cp .env.example .env
-# Edit .env with your credentials (see Environment Variables below)
-```
-
-Start the backend:
-
-```bash
-uvicorn server:app --host 0.0.0.0 --port 8000 --reload
-```
-
-#### Frontend
-
-```bash
-cd frontend
-npm install
-npm run dev
-```
-
-> **Access the app at [http://localhost:5173](http://localhost:5173)**
-
-### Environment Variables
-
-Configure these in `backend/.env`:
-
-| Variable              | Required | Description                                            |
-|-----------------------|----------|--------------------------------------------------------|
-| `ADMIN_EMAIL`         | Yes*     | Bootstrap admin email (required on first startup)      |
-| `ADMIN_PASSWORD`      | Yes*     | Bootstrap admin password (required on first startup)   |
-| `ADMIN_NAME`          | No       | Admin display name (default: `Admin`)                  |
-| `MONGO_URI`           | No       | MongoDB connection string (default: `localhost:27017`) |
-| `MONGO_DB`            | No       | Database name (default: `procurement_watch`)           |
-| `DEEPSEEK_API_KEY`    | No       | API key for DeepSeek-based AI features                 |
-| `OPENAI_API_KEY`      | No       | API key for OpenAI-based AI features                   |
-| `JWT_SECRET`          | No       | JWT signing secret (auto-generated if absent)          |
-| `JWT_ACCESS_MINUTES`  | No       | Access token lifetime in minutes (default: `2160`)     |
-| `JWT_REFRESH_DAYS`    | No       | Refresh token lifetime in days (default: `7`)          |
-| `DGMARKET_SESSION_ID` | No       | Session ID for the DGMarket scraper                    |
-| `SYNC_SECRET`         | No       | Shared secret for sync API authentication              |
-
-> **\*** Only required when no admin user exists in the database yet.
+---
 
 ---
 
@@ -167,23 +73,28 @@ Configure these in `backend/.env`:
 
 ## 3. Dashboard Overview
 
-After logging in, you land on the **Procurement Watch** dashboard — the central workspace for reviewing tender opportunities.
-
 ### Project Table
 
 The main table displays all stored projects with the following columns:
 
-| Column           | Description                                                        |
-|------------------|--------------------------------------------------------------------|
-| **Source**        | Where the project was scraped from (e.g. IADB, World Bank)        |
-| **Project Name** | Title of the tender/opportunity                                    |
-| **Sponsor**      | Sponsoring organization or country                                 |
-| **Deadline**     | Submission deadline (manual override shown separately)             |
-| **Decision**     | Go / No Go status set by managers                                  |
-| **AI Verified**  | Whether the project passed AI cybersecurity relevance verification |
-| **Votes**        | Upvote / downvote tally from team members                          |
-| **Comments**     | Discussion comment count                                           |
-| **Assigned**     | Users assigned to review this project                              |
+![](./assets/2026-04-14-14-09-10-image.png)
+
+<div><center><i>
+figure 1: Proc Watch Dashboard
+</div></i></center>
+
+The following table explains each column meaning
+
+| Column           | Description                                                                                                    |
+|:---------------- | -------------------------------------------------------------------------------------------------------------- |
+| **Project**      | Title of the tender/opportunity                                                                                |
+| **Region**       | Region and Country of the tender/opportunity                                                                   |
+| **Publish Date** | Date the submission was published (different from date scraped)                                                |
+| **Deadline**     | Submission deadline                                                                                            |
+| **Signals**      | Keywords used in search filter to find that project                                                            |
+| **Decision**     | Can only be set by manager (Go/No Go)                                                                          |
+| **Verified**     | After being scraped, tenders need to pass AI verifications to make sure it falls within our scope of services. |
+| **Last Scraped** | When was this scraped                                                                                          |
 
 - **Click any row** to open the project inspector drawer on the right.
 - **Sort** by clicking column headers.
@@ -211,20 +122,20 @@ keyword:Cybersecurity AND (source:GIZ OR source:IADB)
 
 **Available query fields:**
 
-| Field            | Description                        | Example                         |
-|------------------|------------------------------------|---------------------------------|
-| `source`         | Procurement source                 | `source:"World Bank"`          |
-| `decision`       | Go / No Go status                  | `decision:Go`                  |
-| `region`         | Geographic region                  | `region:"West Africa"`         |
-| `continent`      | Continent                          | `continent:Africa`             |
-| `verified` / `ai`| AI verification status             | `verified:Yes`                 |
-| `country`        | Country name                       | `country:Senegal`              |
-| `keyword`        | Matched keyword                    | `keyword:Cybersecurity`        |
-| `signals`        | AI signal tags                     | `signals:VAPT`                 |
-| `id`             | Project ID                         | `id:P-12345`                   |
-| `published_date` | Published date                     | `published_date:2026-01`       |
-| `deadline`       | Deadline date                      | `deadline:2026-06`             |
-| `last_scraped`   | Last scraped date                  | `last_scraped:2026-03`         |
+| Field             | Description            | Example                  |
+| ----------------- | ---------------------- | ------------------------ |
+| `source`          | Procurement source     | `source:"World Bank"`    |
+| `decision`        | Go / No Go status      | `decision:Go`            |
+| `region`          | Geographic region      | `region:"West Africa"`   |
+| `continent`       | Continent              | `continent:Africa`       |
+| `verified` / `ai` | AI verification status | `verified:Yes`           |
+| `country`         | Country name           | `country:Senegal`        |
+| `keyword`         | Matched keyword        | `keyword:Cybersecurity`  |
+| `signals`         | AI signal tags         | `signals:VAPT`           |
+| `id`              | Project ID             | `id:P-12345`             |
+| `published_date`  | Published date         | `published_date:2026-01` |
+| `deadline`        | Deadline date          | `deadline:2026-06`       |
+| `last_scraped`    | Last scraped date      | `last_scraped:2026-03`   |
 
 **Operators:** `AND`, `OR`, `NOT`, and parentheses `()` for grouping.
 
@@ -245,46 +156,40 @@ Each user can store up to 30 saved searches.
 
 Clicking a project row opens the **inspector drawer** on the right side of the screen. This is the primary workspace for reviewing individual tender details.
 
+![](D:\Dev\Ziw\new_cdx_gpt_5.4\assets\2026-04-14-14-52-07-image.png)
+
 ### Project Details
 
 The inspector shows:
 
 - **Project name** and link to the original source page
-- **Source** and **project ID**
-- **Sponsor / organization**
-- **Country, region, and continent** information
-- **Published date** and **deadline**
-- **Matched keywords** that triggered the scraper to collect this project
-- **AI verification status** and AI-generated analysis
 - **Document links** (if any were found during enrichment)
 
 ### Decision Workflow
 
-Managers can mark each project with a decision:
-
-- **Go** — The project is worth pursuing
-- **No Go** — The project is not relevant
-- **Clear** — Reset the decision to undecided
-
-> Only users with the **manager** role can set decisions.
-
-### Deadline Override
-
-Admins and managers can set a **manual deadline** that overrides the scraped deadline. The original scraped deadline is preserved for traceability.
-
-1. In the inspector, locate the deadline section.
-2. Click the edit icon to set a manual deadline.
-3. Clear the manual deadline to revert to the original scraped value.
-
-### Voting
-
-All users can vote on projects:
+Users can vote on projects:
 
 - **Upvote** (👍) — Signal that the project looks promising
 - **Downvote** (👎) — Signal that the project may not be relevant
 - Click the same vote again to **remove** your vote
 
-Vote tallies are visible directly in the table and in the inspector.
+Managers can mark each project with a decision
+
+- **Go**
+
+- **No Go** 
+
+> Only users with the **manager** role can set decisions.
+
+### Deadline Override
+
+Users can set a **manual deadline** that overrides the scraped deadline because some scrapers fails or are unable to retrieve the deadline. The original scraped deadline is preserved for traceability. 
+
+1. In the inspector, locate the deadline section.
+2. Click the edit icon to set a manual deadline.
+3. Clear the manual deadline to revert to the original scraped value.
+
+# 
 
 ### User Assignment
 
@@ -383,15 +288,15 @@ During a sync (manual or scheduled), you can view **real-time console output**:
 
 The schedule panel displays **sync run history**, showing:
 
-| Field              | Description                         |
-|--------------------|-------------------------------------|
-| Status             | Success / failure                   |
-| Started at         | Timestamp when the sync began       |
-| Finished at        | Timestamp when the sync completed   |
-| Duration           | Total run time                      |
-| New projects       | Number of new tenders found         |
-| Sources            | Which scrapers were run             |
-| Per-scraper logs   | Expandable detailed output per source |
+| Field            | Description                           |
+| ---------------- | ------------------------------------- |
+| Status           | Success / failure                     |
+| Started at       | Timestamp when the sync began         |
+| Finished at      | Timestamp when the sync completed     |
+| Duration         | Total run time                        |
+| New projects     | Number of new tenders found           |
+| Sources          | Which scrapers were run               |
+| Per-scraper logs | Expandable detailed output per source |
 
 ---
 
@@ -399,12 +304,12 @@ The schedule panel displays **sync run history**, showing:
 
 Procurement Watch has a real-time notification system. You receive notifications when:
 
-| Event                | Description                                          |
-|----------------------|------------------------------------------------------|
-| **Mention**          | Someone tags you in a comment with `@mention`        |
-| **Comment**          | Someone comments on a project you're assigned to or subscribed to |
-| **Assignment**       | Someone assigns you to a project                     |
-| **New projects**     | A sync finds new projects (browser notification)     |
+| Event            | Description                                                       |
+| ---------------- | ----------------------------------------------------------------- |
+| **Mention**      | Someone tags you in a comment with `@mention`                     |
+| **Comment**      | Someone comments on a project you're assigned to or subscribed to |
+| **Assignment**   | Someone assigns you to a project                                  |
+| **New projects** | A sync finds new projects (browser notification)                  |
 
 **Notification features:**
 
@@ -515,21 +420,21 @@ The Excel file includes all project fields: source, name, ID, sponsor, country, 
 
 ## 11. Supported Procurement Sources
 
-| Source           | Key             | Description                                     |
-|------------------|-----------------|-------------------------------------------------|
-| **IADB**         | `iadb`          | Inter-American Development Bank                 |
-| **World Bank**   | `worldbank`     | World Bank procurement opportunities            |
-| **Global Tenders** | `globaltenders` | Global Tenders aggregator                     |
-| **GIZ**          | `giz`           | German development agency                       |
-| **DevelopmentAid** | `devaid`      | DevelopmentAid tenders portal                   |
-| **DGMarket**     | `dgmarket`      | DGMarket procurement notices                    |
-| **Africa Gateway** | `africagateway` | African Development Bank opportunities        |
-| **IsDB**         | `isdb`          | Islamic Development Bank                        |
-| **BADEA**        | `badea`         | Arab Bank for Economic Development in Africa    |
-| **BCIE**         | `bcie`          | Central American Bank for Economic Integration  |
-| **EABR**         | `eabr`          | Eurasian Development Bank                       |
-| **OAS**          | `oas`           | Organization of American States                 |
-| **African Union** | `africanunion` | African Union procurement                       |
+| Source             | Key             | Description                                    |
+| ------------------ | --------------- | ---------------------------------------------- |
+| **IADB**           | `iadb`          | Inter-American Development Bank                |
+| **World Bank**     | `worldbank`     | World Bank procurement opportunities           |
+| **Global Tenders** | `globaltenders` | Global Tenders aggregator                      |
+| **GIZ**            | `giz`           | German development agency                      |
+| **DevelopmentAid** | `devaid`        | DevelopmentAid tenders portal                  |
+| **DGMarket**       | `dgmarket`      | DGMarket procurement notices                   |
+| **Africa Gateway** | `africagateway` | African Development Bank opportunities         |
+| **IsDB**           | `isdb`          | Islamic Development Bank                       |
+| **BADEA**          | `badea`         | Arab Bank for Economic Development in Africa   |
+| **BCIE**           | `bcie`          | Central American Bank for Economic Integration |
+| **EABR**           | `eabr`          | Eurasian Development Bank                      |
+| **OAS**            | `oas`           | Organization of American States                |
+| **African Union**  | `africanunion`  | African Union procurement                      |
 
 Each scraper searches these sources using your configured keywords and returns normalized project records.
 
@@ -537,23 +442,23 @@ Each scraper searches these sources using your configured keywords and returns n
 
 ## 12. User Roles & Permissions
 
-| Action                      | Admin | Manager | User |
-|-----------------------------|:-----:|:-------:|:----:|
-| View dashboard & projects   | ✅    | ✅      | ✅   |
-| Search & filter             | ✅    | ✅      | ✅   |
-| Vote on projects            | ✅    | ✅      | ✅   |
-| Comment & attach files      | ✅    | ✅      | ✅   |
-| Export data to Excel        | ✅    | ✅      | ✅   |
-| Set project decisions       | ❌    | ✅      | ❌   |
-| Override deadlines          | ✅    | ✅      | ❌   |
-| Assign users to projects    | ✅    | ✅      | ✅   |
-| Trigger manual sync         | ✅    | ✅      | ✅   |
-| Manage schedule             | ✅    | ✅      | ✅   |
-| Configure keywords/regions  | ✅    | ✅      | ✅   |
-| Manage users (CRUD)         | ✅    | ❌      | ❌   |
-| Reset user passwords        | ✅    | ❌      | ❌   |
-| Manage release notes        | ✅    | ❌      | ❌   |
-| Delete projects             | ✅    | ✅      | ✅   |
+| Action                     | Admin | Manager | User |
+| -------------------------- |:-----:|:-------:|:----:|
+| View dashboard & projects  | ✅     | ✅       | ✅    |
+| Search & filter            | ✅     | ✅       | ✅    |
+| Vote on projects           | ✅     | ✅       | ✅    |
+| Comment & attach files     | ✅     | ✅       | ✅    |
+| Export data to Excel       | ✅     | ✅       | ✅    |
+| Set project decisions      | ❌     | ✅       | ❌    |
+| Override deadlines         | ✅     | ✅       | ❌    |
+| Assign users to projects   | ✅     | ✅       | ✅    |
+| Trigger manual sync        | ✅     | ✅       | ✅    |
+| Manage schedule            | ✅     | ✅       | ✅    |
+| Configure keywords/regions | ✅     | ✅       | ✅    |
+| Manage users (CRUD)        | ✅     | ❌       | ❌    |
+| Reset user passwords       | ✅     | ❌       | ❌    |
+| Manage release notes       | ✅     | ❌       | ❌    |
+| Delete projects            | ✅     | ✅       | ✅    |
 
 ---
 
@@ -579,16 +484,16 @@ When a new version is deployed, users see the release notes modal on their next 
 
 ### Common Issues
 
-| Problem                              | Solution                                                                     |
-|--------------------------------------|------------------------------------------------------------------------------|
-| **"No admin exists"** on login page  | Set `ADMIN_EMAIL` and `ADMIN_PASSWORD` in `backend/.env` and restart backend |
-| **Cannot log in**                    | Check that the user account is active and credentials are correct            |
-| **Sync fails for a source**          | Check the scraper logs for errors; the source website may be down            |
-| **AI verification skipped**          | Ensure `DEEPSEEK_API_KEY` or `OPENAI_API_KEY` is set in `.env`              |
-| **No projects found after sync**     | Check your keywords configuration; projects may not match any keywords       |
-| **Excel export fails**               | Ensure `openpyxl` is installed and disk space is available                   |
-| **Frontend can't connect to backend**| Verify backend is running on port 8000; check CORS settings                  |
-| **DGMarket scraper fails**           | Update `DGMARKET_SESSION_ID` in `.env` with a fresh session ID              |
+| Problem                               | Solution                                                                     |
+| ------------------------------------- | ---------------------------------------------------------------------------- |
+| **"No admin exists"** on login page   | Set `ADMIN_EMAIL` and `ADMIN_PASSWORD` in `backend/.env` and restart backend |
+| **Cannot log in**                     | Check that the user account is active and credentials are correct            |
+| **Sync fails for a source**           | Check the scraper logs for errors; the source website may be down            |
+| **AI verification skipped**           | Ensure `DEEPSEEK_API_KEY` or `OPENAI_API_KEY` is set in `.env`               |
+| **No projects found after sync**      | Check your keywords configuration; projects may not match any keywords       |
+| **Excel export fails**                | Ensure `openpyxl` is installed and disk space is available                   |
+| **Frontend can't connect to backend** | Verify backend is running on port 8000; check CORS settings                  |
+| **DGMarket scraper fails**            | Update `DGMARKET_SESSION_ID` in `.env` with a fresh session ID               |
 
 ### Checking Backend Health
 
@@ -640,15 +545,15 @@ pytest
 
 **Technology stack:**
 
-| Layer     | Technology                                                |
-|-----------|-----------------------------------------------------------|
-| Frontend  | React 19, Vite 7, React Aria, Untitled UI, CSS            |
-| Backend   | Python 3.12, FastAPI, Pydantic, APScheduler               |
-| Database  | MongoDB (via PyMongo)                                      |
-| AI        | DeepSeek / OpenAI APIs                                    |
-| Scraping  | Requests, BeautifulSoup, Selenium, mitmproxy              |
-| Auth      | JWT (PyJWT), bcrypt                                       |
-| Deploy    | Docker Compose, Nginx                                     |
+| Layer    | Technology                                     |
+| -------- | ---------------------------------------------- |
+| Frontend | React 19, Vite 7, React Aria, Untitled UI, CSS |
+| Backend  | Python 3.12, FastAPI, Pydantic, APScheduler    |
+| Database | MongoDB (via PyMongo)                          |
+| AI       | DeepSeek / OpenAI APIs                         |
+| Scraping | Requests, BeautifulSoup, Selenium, mitmproxy   |
+| Auth     | JWT (PyJWT), bcrypt                            |
+| Deploy   | Docker Compose, Nginx                          |
 
 ---
 

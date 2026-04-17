@@ -22,3 +22,5 @@ Thumbs.db
 
 projects.xlsx
 *.xlsx
+.jwt_secret
+package-lock.json

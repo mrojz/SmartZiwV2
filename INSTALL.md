@@ -39,7 +39,6 @@ Important environment setup:
 ADMIN_EMAIL=admin@example.com
 ADMIN_PASSWORD=change-me
 ADMIN_NAME=Admin
-OPENAI_API_KEY=your-key-if-needed
 DEEPSEEK_API_KEY=your-key-if-needed
 ```
 
