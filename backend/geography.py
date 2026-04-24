@@ -96,17 +96,23 @@ def build_lookup(geography: dict) -> dict:
     regions = geography.get('regions', [])
     countries_by_iso = {country['iso2']: country for country in countries}
     continents_by_code = {continent['code']: continent for continent in continents}
+    country_aliases = _build_country_alias_map(countries)
     return {
         'countries_by_iso': countries_by_iso,
         'continents_by_code': continents_by_code,
         'regions': regions,
-        'country_aliases': _build_country_alias_map(countries),
+        'region_country_sets': [
+            (region['slug'], region['name'], set(region.get('country_iso2s', [])))
+            for region in regions
+        ],
+        'country_aliases': country_aliases,
+        'country_aliases_by_length': sorted(country_aliases.items(), key=lambda item: len(item[0]), reverse=True),
         'continent_aliases': _build_continent_alias_map(continents),
     }
 
 
-def infer_project_geography(project: dict, geography: dict) -> dict:
-    lookup = build_lookup(geography)
+def infer_project_geography(project: dict, geography: dict, lookup: dict | None = None) -> dict:
+    lookup = lookup or build_lookup(geography)
     source_text = ' | '.join(
         str(project.get(key, '') or '')
         for key in ('project_country', 'country', 'project_sponsor')
@@ -134,7 +140,12 @@ def infer_project_geography(project: dict, geography: dict) -> dict:
             matched_country_iso2s.append(iso2)
 
     if not matched_country_iso2s:
-        for alias, iso2 in sorted(lookup['country_aliases'].items(), key=lambda item: len(item[0]), reverse=True):
+        aliases_by_length = lookup.get('country_aliases_by_length') or sorted(
+            lookup['country_aliases'].items(),
+            key=lambda item: len(item[0]),
+            reverse=True,
+        )
+        for alias, iso2 in aliases_by_length:
             if len(alias) < 4:
                 continue
             if alias in haystack and iso2 not in matched_country_iso2s:
@@ -154,11 +165,14 @@ def infer_project_geography(project: dict, geography: dict) -> dict:
     matched_region_slugs = []
     matched_region_names = []
     matched_country_set = set(matched_country_iso2s)
-    for region in lookup['regions']:
-        region_country_set = set(region.get('country_iso2s', []))
+    region_country_sets = lookup.get('region_country_sets') or [
+        (region['slug'], region['name'], set(region.get('country_iso2s', [])))
+        for region in lookup['regions']
+    ]
+    for slug, name, region_country_set in region_country_sets:
         if matched_country_set and matched_country_set.intersection(region_country_set):
-            matched_region_slugs.append(region['slug'])
-            matched_region_names.append(region['name'])
+            matched_region_slugs.append(slug)
+            matched_region_names.append(name)
 
     countries = [lookup['countries_by_iso'][iso2] for iso2 in matched_country_iso2s if iso2 in lookup['countries_by_iso']]
     continents = [lookup['continents_by_code'][code] for code in matched_continent_codes if code in lookup['continents_by_code']]

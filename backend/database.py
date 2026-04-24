@@ -18,9 +18,9 @@ from bson import ObjectId
 from pymongo import ASCENDING, MongoClient, ReturnDocument
 
 try:
-    from geography import build_region_name_map, infer_project_geography, load_seed_data
+    from geography import build_lookup, build_region_name_map, infer_project_geography, load_seed_data
 except ImportError:
-    from backend.geography import build_region_name_map, infer_project_geography, load_seed_data
+    from backend.geography import build_lookup, build_region_name_map, infer_project_geography, load_seed_data
 
 MONGO_URI = os.getenv('MONGO_URI', 'mongodb://localhost:27017')
 DB_NAME = os.getenv('MONGO_DB', 'procurement_watch')
@@ -65,7 +65,7 @@ def _parse_object_id(value: str):
         return None
 
 
-def _normalize_project(doc: dict, geography: dict | None = None) -> dict:
+def _normalize_project(doc: dict, geography: dict | None = None, geography_lookup: dict | None = None) -> dict:
     scraped_deadline = doc.get('scraped_deadline') or doc.get('project_end_date') or ''
     manual_deadline = doc.get('manual_deadline') or ''
     effective_deadline = manual_deadline or scraped_deadline or ''
@@ -74,7 +74,8 @@ def _normalize_project(doc: dict, geography: dict | None = None) -> dict:
     doc['manual_deadline'] = manual_deadline
     doc['effective_deadline'] = effective_deadline
     doc['deadline_source'] = doc.get('deadline_source') or source
-    geo = infer_project_geography(doc, geography or get_geography())
+    geography = geography or get_geography()
+    geo = infer_project_geography(doc, geography, lookup=geography_lookup)
     doc.update(geo)
     doc['primary_country_name_en'] = geo['country_names_en'][0] if geo['country_names_en'] else ''
     doc['primary_country_name_fr'] = geo['country_names_fr'][0] if geo['country_names_fr'] else ''
@@ -106,7 +107,8 @@ def _normalize_project(doc: dict, geography: dict | None = None) -> dict:
 def get_all_projects() -> list[dict]:
     db = get_db()
     geography = get_geography()
-    return [_normalize_project(_strip_id(doc), geography) for doc in db.projects.find()]
+    geography_lookup = build_lookup(geography)
+    return [_normalize_project(_strip_id(doc), geography, geography_lookup) for doc in db.projects.find()]
 
 
 def insert_projects(projects: list[dict]) -> int:
