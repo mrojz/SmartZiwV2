@@ -1,7 +1,10 @@
-import os
 import re
+from pathlib import Path
+
 from docx import Document
 from docx.shared import Pt
+
+ROOT = Path(__file__).resolve().parents[2]
 
 # Same helper as before
 def process_inline(paragraph, text):
@@ -89,7 +92,7 @@ Les fichiers sont stockés dans le répertoire physique : `backend/uploads/`.
 Le frontend met en œuvre un lecteur PDF en direct intégratif et compresse visuellement les galeries d'images pour faciliter la détection de besoins, par les analystes réseau.
 """
 
-doc_path = r"d:\Dev\Ziw\new_cdx_gpt_5.4\Architecture_Projet_FR.docx"
+doc_path = ROOT / "Architecture_Projet_FR.docx"
 doc = Document()
 doc.styles['Normal'].font.name = 'Arial'
 

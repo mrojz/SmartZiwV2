@@ -1,6 +1,8 @@
 import sys
 import subprocess
-import os
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[2]
 
 def install(package):
     subprocess.check_call([sys.executable, "-m", "pip", "install", package])
@@ -82,6 +84,6 @@ for section in sections:
         else:
             par = doc.add_paragraph(p.strip())
 
-output_path = r"d:\Dev\Ziw\new_cdx_gpt_5.4\Guide_Utilisateur_Procurement_Watch.docx"
+output_path = ROOT / "Guide_Utilisateur_Procurement_Watch.docx"
 doc.save(output_path)
 print(f"Document saved to {output_path}")

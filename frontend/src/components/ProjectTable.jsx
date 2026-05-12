@@ -174,6 +174,7 @@ export default function ProjectTable({
   const columns = [
     { key: '_select', label: '', type: 'none' },
     { key: '_project', label: 'Project', type: 'string' },
+    { key: '_project_id', label: 'Project ID', type: 'string' },
     { key: '_region', label: 'Region', type: 'string' },
     { key: '_published', label: 'Published Date', type: 'date' },
     { key: '_deadline', label: 'Deadline', type: 'date' },
@@ -196,6 +197,8 @@ export default function ProjectTable({
     switch (colKey) {
       case '_project':
         return p.project_name || p.project_description || '';
+      case '_project_id':
+        return p.project_id || '';
       case '_region':
         return p.project_sponsor || '';
       case '_published':
@@ -535,7 +538,6 @@ export default function ProjectTable({
                         <div className="project-cell">
                           <span className="project-cell-name" title={displayName}>{displayName}</span>
                           <span className="project-cell-meta">
-                            <span className="project-cell-id">{p.project_id}</span>
                             <span className={`badge badge-source badge-source-sm ${sourceClass(p.source)}`}>{p.source}</span>
                           </span>
                           <div className="project-row-signals">
@@ -566,6 +568,14 @@ export default function ProjectTable({
                             ) : null}
                           </div>
                         </div>
+                      </Table.Cell>
+                    );
+                  }
+
+                  if (key === '_project_id') {
+                    return (
+                      <Table.Cell className="td-project-id">
+                        <span className="project-id-value" title={p.project_id || ''}>{p.project_id || '-'}</span>
                       </Table.Cell>
                     );
                   }

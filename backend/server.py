@@ -82,6 +82,8 @@ DOWNLOADS_DIR = BASE_DIR / "downloads"
 SYNC_SECRET = os.getenv("SYNC_SECRET", str(uuid.uuid4()))
 UPLOADS_DIR = BASE_DIR / "uploads"
 UPLOADS_DIR.mkdir(exist_ok=True)
+MAX_COMMENT_UPLOAD_BYTES = 50 * 1024 * 1024
+MAX_COMMENT_UPLOAD_MB = MAX_COMMENT_UPLOAD_BYTES // (1024 * 1024)
 
 
 def _load_persistent_secret(env_name: str, fallback_filename: str) -> str:
@@ -1228,14 +1230,17 @@ def post_comment(body: CommentCreateRequest, request: Request):
 
 @app.post("/api/comments/upload")
 async def upload_comment_file(file: UploadFile, request: Request):
-    if file.size and file.size > 20 * 1024 * 1024:  # 20 MB limit
-        raise HTTPException(status_code=400, detail="File too large (max 20 MB)")
+    if file.size and file.size > MAX_COMMENT_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail=f"File too large (max {MAX_COMMENT_UPLOAD_MB} MB)")
+    safe_name = Path(file.filename).name.replace("..", "").replace("/", "").replace("\\", "") if file.filename else "file"
+    contents = await file.read()
+    if len(contents) > MAX_COMMENT_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail=f"File too large (max {MAX_COMMENT_UPLOAD_MB} MB)")
+
     file_id = str(uuid.uuid4())
     dest_dir = UPLOADS_DIR / file_id
     dest_dir.mkdir(parents=True, exist_ok=True)
-    safe_name = Path(file.filename).name.replace("..", "").replace("/", "").replace("\\", "") if file.filename else "file"
     dest_path = dest_dir / safe_name
-    contents = await file.read()
     dest_path.write_bytes(contents)
     return {
         "fileId": file_id,

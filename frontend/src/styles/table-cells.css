@@ -35,6 +35,22 @@
   font-weight: 600;
 }
 
+.td-project-id {
+  overflow: hidden;
+}
+
+.project-id-value {
+  display: inline-block;
+  max-width: 100%;
+  font-family: 'Consolas', 'Courier New', monospace;
+  font-size: 0.76rem;
+  font-weight: 700;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .td-country {
   overflow: hidden;
 }

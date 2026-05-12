@@ -3308,6 +3308,39 @@ body {
   background: color-mix(in srgb, var(--bg-surface) 92%, white);
 }
 
+.project-drawer-head > div:first-child {
+  min-width: 0;
+}
+
+.project-drawer-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.project-share-btn {
+  height: 34px;
+  padding: 0 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border-light);
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  font-size: 0.82rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.project-share-btn:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--accent) 34%, var(--border-light));
+  color: var(--accent);
+}
+
+.project-share-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .project-drawer-head h2 {
   margin: 8px 0 0;
   font-size: 1.18rem;

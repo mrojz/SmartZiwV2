@@ -651,41 +651,49 @@
 }
 
 
-/* Procurement watch 10-column sizing */
+/* Procurement watch 11-column sizing */
 .projects-table th:nth-child(2),
 .projects-table td:nth-child(2) {
-  width: 24%;
+  width: 22%;
 }
 
 .projects-table th:nth-child(3),
 .projects-table td:nth-child(3) {
-  width: 15%;
+  width: 11%;
 }
 
 .projects-table th:nth-child(4),
-.projects-table td:nth-child(4),
+.projects-table td:nth-child(4) {
+  width: 14%;
+}
+
 .projects-table th:nth-child(5),
 .projects-table td:nth-child(5) {
-  width: 10%;
+  width: 9%;
 }
 
 .projects-table th:nth-child(6),
 .projects-table td:nth-child(6) {
-  width: 14%;
+  width: 9%;
 }
 
 .projects-table th:nth-child(7),
 .projects-table td:nth-child(7) {
-  width: 9%;
+  width: 13%;
 }
 
 .projects-table th:nth-child(8),
 .projects-table td:nth-child(8) {
-  width: 9%;
+  width: 8%;
 }
 
 .projects-table th:nth-child(9),
 .projects-table td:nth-child(9) {
+  width: 8%;
+}
+
+.projects-table th:nth-child(10),
+.projects-table td:nth-child(10) {
   width: 7%;
 }
 

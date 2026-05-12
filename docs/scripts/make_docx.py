@@ -1,6 +1,9 @@
 import docx
+from pathlib import Path
 from docx.shared import Pt
 from docx.enum.text import WD_ALIGN_PARAGRAPH
+
+ROOT = Path(__file__).resolve().parents[2]
 
 def create_guide():
     doc = docx.Document()
@@ -99,7 +102,7 @@ def create_guide():
         "nouveaux projets correspondants sont trouvés, ou lorsqu'on les a mentionnés."
     )
     
-    doc.save('Guide_Utilisateur_v2.docx')
+    doc.save(ROOT / 'Guide_Utilisateur_v2.docx')
 
 if __name__ == '__main__':
     create_guide()

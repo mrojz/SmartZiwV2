@@ -48,6 +48,8 @@ Frontend (React)
   - Setup and run instructions.
 - `ARCH.md`
   - This architecture document.
+- `docs/scripts/`
+  - Documentation-generation helpers.
 
 ## Frontend Architecture
 
@@ -77,7 +79,6 @@ Frontend entry points live in:
     - `SyncPanel.jsx`
     - `SchedulePanel.jsx`
     - `ConfigPanel.jsx`
-    - `SmartSearch.jsx`
 - `frontend/src/styles/`
   - Shared styling system and feature-specific CSS.
   - Notable files:

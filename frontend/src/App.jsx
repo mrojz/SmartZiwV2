@@ -73,7 +73,24 @@ function buildNotificationStreamUrl() {
 }
 
 function normalizeRoute(rawRoute = '') {
-    return rawRoute === 'comments' ? 'dashboard' : (rawRoute || 'dashboard');
+    const route = String(rawRoute || '').replace(/^#/, '').replace(/^\//, '');
+    if (route === 'comments' || route.startsWith('tenders/')) return 'dashboard';
+    return route || 'dashboard';
+}
+
+function getTenderIdFromHash(rawHash = '') {
+    const hash = String(rawHash || '').replace(/^#/, '').replace(/^\//, '');
+    const match = hash.match(/^tenders\/([^/?#]+)/);
+    return match ? decodeURIComponent(match[1]) : '';
+}
+
+function buildTenderHash(projectDbId = '') {
+    return projectDbId ? `#/tenders/${encodeURIComponent(projectDbId)}` : '#dashboard';
+}
+
+function buildTenderShareUrl(projectDbId = '') {
+    if (!projectDbId || typeof window === 'undefined') return '';
+    return `${window.location.origin}${window.location.pathname}${window.location.search}${buildTenderHash(projectDbId)}`;
 }
 
 function formatActorList(names = []) {
@@ -147,6 +164,7 @@ function initials(name = '', email = '') {
 const COMMENT_IMAGE_UPLOAD_TARGET_BYTES = 1.5 * 1024 * 1024;
 const COMMENT_IMAGE_UPLOAD_RETRY_BYTES = 900 * 1024;
 const COMMENT_IMAGE_MAX_DIMENSION = 1800;
+const COMMENT_FILE_UPLOAD_LIMIT_MB = 50;
 
 function isCompressibleImage(file) {
     return Boolean(file?.type && file.type.startsWith('image/') && !file.type.includes('svg') && !file.type.includes('gif'));
@@ -817,6 +835,7 @@ function CommentsPanel({
     onAssignmentsChange,
     onVoteChange,
     onDeepDiveSearch,
+    shareUrl,
 }) {
     const listRef = useRef(null);
     const fileInputRef = useRef(null);
@@ -834,6 +853,7 @@ function CommentsPanel({
     const [savingAssignments, setSavingAssignments] = useState(false);
     const [runningDeepDive, setRunningDeepDive] = useState(false);
     const [mentionUsers, setMentionUsers] = useState([]);
+    const [shareCopied, setShareCopied] = useState(false);
 
     useEffect(() => {
         const onKey = (e) => {
@@ -860,6 +880,7 @@ function CommentsPanel({
             setSelectedMentions([]);
             setMentionState({ open: false, query: '', start: -1, end: -1, index: 0 });
             setRunningDeepDive(false);
+            setShareCopied(false);
         }
     }, [open, entity?.id, project?.manual_deadline]);
 
@@ -1028,6 +1049,29 @@ function CommentsPanel({
         }
     };
 
+    const handleCopyShareUrl = async () => {
+        if (!shareUrl) return;
+        try {
+            if (navigator.clipboard?.writeText) {
+                await navigator.clipboard.writeText(shareUrl);
+            } else {
+                const tempInput = document.createElement('input');
+                tempInput.value = shareUrl;
+                tempInput.setAttribute('readonly', '');
+                tempInput.style.position = 'fixed';
+                tempInput.style.opacity = '0';
+                document.body.appendChild(tempInput);
+                tempInput.select();
+                document.execCommand('copy');
+                document.body.removeChild(tempInput);
+            }
+            setShareCopied(true);
+            window.setTimeout(() => setShareCopied(false), 1800);
+        } catch {
+            window.prompt('Copy tender link', shareUrl);
+        }
+    };
+
     const toggleAssignment = async (userId) => {
         if (!project?.db_id) return;
         const next = assignedUserIds.includes(userId)
@@ -1075,7 +1119,7 @@ function CommentsPanel({
 
                 const err = await res.json().catch(() => ({}));
                 const message = res.status === 413
-                    ? 'Image is too large for the server upload limit. Try a smaller image.'
+                    ? `File is too large. Uploads are limited to ${COMMENT_FILE_UPLOAD_LIMIT_MB} MB.`
                     : (err.detail || `Upload failed (${res.status})`);
                 window.alert(message);
             }
@@ -1104,7 +1148,17 @@ function CommentsPanel({
                         <span className="project-inspector-kicker">Project inspector</span>
                         <h2>{projectTitle}</h2>
                     </div>
-                    <Button color="tertiary" size="sm" iconLeading={X} onClick={onClose} aria-label="Close project inspector" />
+                    <div className="project-drawer-head-actions">
+                        <button
+                            type="button"
+                            className="project-share-btn"
+                            onClick={handleCopyShareUrl}
+                            disabled={!shareUrl}
+                        >
+                            {shareCopied ? 'Copied' : 'Copy link'}
+                        </button>
+                        <Button color="tertiary" size="sm" iconLeading={X} onClick={onClose} aria-label="Close project inspector" />
+                    </div>
                 </div>
 
                 <div className="project-drawer-scroll">
@@ -1220,7 +1274,7 @@ function CommentsPanel({
                         ) : null}
 
                         <div className="project-inspector-grid">
-                            <div><span>ID</span><strong>{project?.project_id || '-'}</strong></div>
+                            <div><span>Project ID</span><strong>{project?.project_id || '-'}</strong></div>
                             <div><span>Region</span><strong>{projectRegion || '-'}</strong></div>
                             <div><span>Sponsor</span><strong>{project?.project_sponsor || '-'}</strong></div>
                             <div><span>Start date</span><strong>{formatDisplayDate(project?.project_start_date)}</strong></div>
@@ -2539,7 +2593,15 @@ export default function App() {
     }, [loadSession]);
 
     useEffect(() => {
-        const onHash = () => setRoute(normalizeRoute(window.location.hash.replace('#', '')));
+        const onHash = () => {
+            const rawHash = window.location.hash.replace('#', '');
+            setRoute(normalizeRoute(rawHash));
+            if (!getTenderIdFromHash(window.location.hash)) {
+                setSelectedProject(null);
+                setSelectedProjectIndex(null);
+                setCommentsOpen(false);
+            }
+        };
         window.addEventListener('hashchange', onHash);
         return () => window.removeEventListener('hashchange', onHash);
     }, []);
@@ -3307,6 +3369,22 @@ export default function App() {
 
     const selectedEntityType = selectedEntity?.type || '';
     const selectedEntityId = selectedEntity?.id || '';
+    const selectedProjectShareUrl = useMemo(
+        () => buildTenderShareUrl(selectedProject?.db_id || ''),
+        [selectedProject?.db_id],
+    );
+
+    useEffect(() => {
+        if (!selectedProject?.db_id || !projects.length) return;
+        const projectIndex = projects.findIndex((item) => String(item.db_id) === String(selectedProject.db_id));
+        if (projectIndex < 0) return;
+        setSelectedProjectIndex(projectIndex);
+        setSelectedProject((prev) => (
+            prev?.db_id === projects[projectIndex]?.db_id
+                ? { ...prev, ...projects[projectIndex], __rowId: projects[projectIndex].__rowId || prev.__rowId }
+                : prev
+        ));
+    }, [projects, selectedProject?.db_id]);
 
     const refreshComments = useCallback(async () => {
         if (!commentsOpen || !selectedEntityId) return;
@@ -3394,10 +3472,43 @@ export default function App() {
         await refreshComments();
     };
 
+    const openProjectByDbId = useCallback(async (projectDbId) => {
+        if (!projectDbId || !authUser || authUser.mustChangePassword) return;
+        const localProject = projects.find((item) => String(item.db_id) === String(projectDbId));
+        let project = localProject;
+        if (!project) {
+            const res = await apiFetch(`${API}/projects/by-db-id/${encodeURIComponent(projectDbId)}`);
+            if (!res.ok) throw new Error('Tender not found');
+            project = await res.json();
+        }
+        const projectIndex = projects.findIndex((item) => String(item.db_id) === String(projectDbId));
+        setRoute('dashboard');
+        setSelectedProject(project);
+        setSelectedProjectIndex(projectIndex >= 0 ? projectIndex : null);
+        setCommentsOpen(true);
+    }, [authUser, projects, apiFetch]);
+
+    useEffect(() => {
+        const tenderId = getTenderIdFromHash(window.location.hash);
+        if (!tenderId || !authUser || authUser.mustChangePassword) return undefined;
+        if (commentsOpen && String(selectedProject?.db_id || '') === String(tenderId)) return undefined;
+
+        let cancelled = false;
+        openProjectByDbId(tenderId).catch(() => {
+            if (!cancelled) window.alert('Tender not found or no longer available.');
+        });
+        return () => {
+            cancelled = true;
+        };
+    }, [authUser, commentsOpen, selectedProject?.db_id, openProjectByDbId]);
+
     const clearActiveProject = useCallback(() => {
         setSelectedProject(null);
         setSelectedProjectIndex(null);
         setCommentsOpen(false);
+        if (getTenderIdFromHash(window.location.hash)) {
+            window.location.hash = '#dashboard';
+        }
     }, []);
 
     const openProjectFromNotification = useCallback(async (notification) => {
@@ -3416,7 +3527,7 @@ export default function App() {
         }
         setNotificationsOpen(false);
         setRoute('dashboard');
-        window.location.hash = '#dashboard';
+        window.location.hash = buildTenderHash(project.db_id);
         setSelectedProject(project);
         setSelectedProjectIndex(projectIndex >= 0 ? projectIndex : null);
         setCommentsOpen(true);
@@ -3531,6 +3642,9 @@ export default function App() {
                                             setSelectedProject(project);
                                             setSelectedProjectIndex(projectIndex);
                                             setCommentsOpen(true);
+                                            if (project?.db_id) {
+                                                window.location.hash = buildTenderHash(project.db_id);
+                                            }
                                         }}
                                     />
                                 </div>
@@ -3559,6 +3673,7 @@ export default function App() {
                 currentUser={authUser}
                 apiFetch={apiFetch}
                 availableUsers={availableUsers}
+                shareUrl={selectedProjectShareUrl}
                 onDecisionChange={(nextDecision) => {
                     if (selectedProjectIndex !== null) handleDecisionChange(selectedProjectIndex, nextDecision);
                 }}
