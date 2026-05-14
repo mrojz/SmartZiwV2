@@ -7,8 +7,10 @@ Fallback: config.json → hardcoded defaults.
 """
 
 import os
+import json
 from datetime import datetime, timedelta
 from openpyxl import Workbook
+from openpyxl.cell.cell import ILLEGAL_CHARACTERS_RE
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.datavalidation import DataValidation
@@ -82,6 +84,26 @@ GT_REGION_CODES = [
     "REG0204",  # South America Region
     "REG0205",  # Latin America Region
 ]
+
+
+def _excel_safe_value(value):
+    """Return a value openpyxl can safely write to a worksheet cell."""
+    if value is None:
+        return ""
+    if isinstance(value, (datetime, int, float, bool)):
+        return value
+    if isinstance(value, (list, tuple, set, dict)):
+        try:
+            value = json.dumps(value, ensure_ascii=False, default=str)
+        except TypeError:
+            value = str(value)
+    elif not isinstance(value, str):
+        value = str(value)
+
+    # Excel cannot store ASCII control chars except tab/newline/carriage return.
+    value = ILLEGAL_CHARACTERS_RE.sub("", value)
+    # Excel cells are limited to 32,767 characters.
+    return value[:32767]
 
 
 # ── Keyword / region loading from database ──────────────────────────────────
@@ -332,7 +354,7 @@ def save_to_excel(all_rows, filename="projects.xlsx"):
     for row_idx, project in enumerate(all_rows, 2):
         is_rejected = project.get("ai_verified", "") == "No"
         for col_idx, (key, _) in enumerate(columns, 1):
-            cell = ws.cell(row=row_idx, column=col_idx, value=project.get(key, ""))
+            cell = ws.cell(row=row_idx, column=col_idx, value=_excel_safe_value(project.get(key, "")))
             cell.alignment = data_align
             cell.border = thin_border
             if is_rejected:

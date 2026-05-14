@@ -23,6 +23,7 @@ import requests
 import urllib3
 from datetime import datetime
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
 try:
     from openpyxl import Workbook
@@ -171,8 +172,8 @@ def create_selenium_driver(proxy_port=8001):
     
     is_windows = platform.system() == "Windows"
     
-    # Headless mode
-    # chrome_options.add_argument("--headless=new")
+    if not is_windows:
+        chrome_options.add_argument("--headless=new")
     
     # Configure proxy
     chrome_options.add_argument(f"--proxy-server=http://127.0.0.1:{proxy_port}")
@@ -186,7 +187,14 @@ def create_selenium_driver(proxy_port=8001):
     chrome_options.add_argument("--disable-gpu")
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-dev-shm-usage")
+    chrome_options.add_argument("--disable-extensions")
+    chrome_options.add_argument("--disable-background-networking")
+    chrome_options.add_argument("--no-first-run")
+    chrome_options.add_argument("--no-zygote")
+    chrome_options.add_argument("--remote-debugging-port=0")
     chrome_options.add_argument("--window-size=1920,1080")
+    user_data_dir = TemporaryDirectory(prefix="iadb-chrome-")
+    chrome_options.add_argument(f"--user-data-dir={user_data_dir.name}")
     
     import os
     chrome_bin = os.environ.get("CHROME_BIN")
@@ -203,6 +211,7 @@ def create_selenium_driver(proxy_port=8001):
             service=Service(chromedriver_path),
             options=chrome_options,
         )
+    driver._iadb_user_data_dir = user_data_dir
     
     print("[+] Chrome driver created with proxy settings")
     return driver
