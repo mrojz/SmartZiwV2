@@ -25,3 +25,6 @@ projects.xlsx
 .jwt_secret
 
 ./package-lock.json
+
+.docx_render_check
+.docx_render_check_2
