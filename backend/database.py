@@ -128,7 +128,6 @@ def insert_projects(projects: list[dict]) -> int:
     return inserted
 
 
-
 def upsert_projects(projects: list[dict]) -> dict:
     if not projects:
         return {'inserted': 0, 'updated': 0}
