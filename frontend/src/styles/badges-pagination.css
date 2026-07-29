@@ -8,6 +8,10 @@
   letter-spacing: 0.03em;
   text-transform: uppercase;
   white-space: nowrap;
+  transition: all var(--transition-fast);
+}
+.badge:hover {
+  filter: brightness(0.96) saturate(1.1);
 }
 
 :root {

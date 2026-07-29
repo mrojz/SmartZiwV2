@@ -2956,6 +2956,29 @@ export default function App() {
 
     const sources = useMemo(() => [...new Set(projects.map((p) => p.source).filter(Boolean))].sort(), [projects]);
 
+    const dashboardStats = useMemo(() => {
+        const now = new Date();
+        const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+        const newThisWeek = projects.filter((p) => {
+            const d = p.scraped_at ? new Date(p.scraped_at) : null;
+            return d && d >= weekAgo;
+        }).length;
+        const pendingReview = projects.filter((p) => !p.decision || p.decision === 'Pending').length;
+        const expiringSoon = projects.filter((p) => {
+            if (!p.project_end_date) return false;
+            const end = new Date(p.project_end_date);
+            const daysLeft = Math.ceil((end - now) / (1000 * 60 * 60 * 24));
+            return daysLeft > 0 && daysLeft <= 30;
+        }).length;
+        return {
+            total: projects.length,
+            newThisWeek,
+            pendingReview,
+            sourcesCount: sources.length,
+            expiringSoon,
+        };
+    }, [projects, sources]);
+
     const clearFilters = () => {
         setChips([]);
         setFreeText('');
@@ -3595,6 +3618,28 @@ export default function App() {
                                             </div>
                                         )}
                                     />
+                                    <div className="stats-row">
+                                        <div className="stat-card">
+                                            <span className="stat-card-label">Total Tenders</span>
+                                            <span className="stat-card-value">{dashboardStats.total}</span>
+                                            <span className="stat-card-sub">Across {dashboardStats.sourcesCount} sources</span>
+                                        </div>
+                                        <div className="stat-card">
+                                            <span className="stat-card-label">New This Week</span>
+                                            <span className="stat-card-value">{dashboardStats.newThisWeek}</span>
+                                            <span className="stat-card-sub">Scraped in last 7 days</span>
+                                        </div>
+                                        <div className="stat-card">
+                                            <span className="stat-card-label">Pending Review</span>
+                                            <span className="stat-card-value">{dashboardStats.pendingReview}</span>
+                                            <span className="stat-card-sub">Awaiting decision</span>
+                                        </div>
+                                        <div className="stat-card">
+                                            <span className="stat-card-label">Expiring Soon</span>
+                                            <span className="stat-card-value">{dashboardStats.expiringSoon}</span>
+                                            <span className="stat-card-sub"><strong>30</strong> day window</span>
+                                        </div>
+                                    </div>
                                     <ProjectTable
                                         projects={filtered}
                                         allProjects={projects}

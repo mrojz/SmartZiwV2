@@ -2,11 +2,11 @@
   overflow-x: auto;
   overflow-y: visible;
   isolation: isolate;
-  border-radius: 0 0 8px 8px;
-  border: 1px solid var(--border-light);
+  border-radius: 0 0 14px 14px;
+  border: 1px solid rgba(31, 123, 246, 0.08);
   border-top: none;
   background: #fff;
-  box-shadow: none;
+  box-shadow: 0 4px 32px rgba(13, 27, 50, 0.06), 0 1px 0 rgba(31, 123, 246, 0.04);
 }
 
 .table-toolbar + .bulk-action-bar + table,
@@ -33,15 +33,15 @@
 }
 
 .projects-table th {
-  background: color-mix(in srgb, var(--bg-muted) 62%, white);
-  padding: 10px 12px;
+  background: linear-gradient(180deg, #f8faff 0%, #f2f7fd 100%);
+  padding: 12px 14px;
   text-align: left;
-  font-size: 0.72rem;
+  font-size: 0.7rem;
   font-weight: 700;
-  color: var(--text-muted);
+  color: #4a6180;
   text-transform: uppercase;
-  letter-spacing: 0.1em;
-  border-bottom: 1px solid var(--border);
+  letter-spacing: 0.11em;
+  border-bottom: 2px solid rgba(31, 123, 246, 0.1);
   white-space: nowrap;
 }
 
@@ -128,23 +128,25 @@
 }
 
 .projects-table tbody tr {
-  transition: background 150ms ease;
+  transition: all 120ms ease;
 }
 
 .projects-table tbody tr:nth-child(even) {
-  background: color-mix(in srgb, var(--bg-zebra) 32%, white);
+  background: rgba(31, 123, 246, 0.012);
 }
 
 .projects-table tbody tr:hover {
-  background: color-mix(in srgb, var(--bg-hover) 48%, white);
+  background: rgba(31, 123, 246, 0.04);
+  box-shadow: inset 3px 0 0 var(--accent);
 }
 
 .projects-table tbody tr.row-nogo {
-  opacity: 0.58;
+  opacity: 0.5;
 }
 
 .projects-table tbody tr.row-selected {
-  background: var(--accent-soft) !important;
+  background: rgba(31, 123, 246, 0.06) !important;
+  box-shadow: inset 3px 0 0 var(--accent), 0 0 24px rgba(31, 123, 246, 0.06);
 }
 
 .th-date-col {
@@ -468,19 +470,22 @@
 }
 
 .projects-table tbody tr {
-  background: var(--bg-surface);
+  background: #fff;
+  transition: all 120ms ease;
 }
 
 .projects-table tbody tr:nth-child(even) {
-  background: color-mix(in srgb, var(--bg-zebra) 72%, white);
+  background: rgba(31, 123, 246, 0.014);
 }
 
 .projects-table tbody tr:hover {
-  background: color-mix(in srgb, var(--bg-hover) 88%, white);
+  background: rgba(31, 123, 246, 0.05);
+  box-shadow: inset 3px 0 0 var(--accent);
 }
 
 .projects-table tbody tr.row-selected {
-  background: color-mix(in srgb, var(--accent-soft) 78%, white) !important;
+  background: rgba(31, 123, 246, 0.07) !important;
+  box-shadow: inset 3px 0 0 var(--accent), 0 0 28px rgba(31, 123, 246, 0.07);
 }
 
 .projects-table tbody tr.row-focused td {

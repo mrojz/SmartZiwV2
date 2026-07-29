@@ -18,6 +18,7 @@
   --sp-7: 28px;
   --sp-8: 32px;
 
+  /* ── Palette (preserved) ── */
   --bg-page: #f2f6fb;
   --bg-page-top: #f7fbff;
   --bg-surface: rgba(255, 255, 255, 0.88);
@@ -43,6 +44,17 @@
   --amber-bg: #fff7e9;
   --amber-border: #f7dfb3;
 
+  /* ── Futuristic SaaS: glow & glass additions ── */
+  --glow-accent: 0 0 20px rgba(31, 123, 246, 0.18), 0 0 60px rgba(31, 123, 246, 0.06);
+  --glow-accent-sm: 0 0 10px rgba(31, 123, 246, 0.14);
+  --glow-card: 0 0 0 1px rgba(31, 123, 246, 0.08), 0 4px 24px rgba(13, 46, 92, 0.06);
+  --glow-card-hover: 0 0 0 1px rgba(31, 123, 246, 0.15), 0 8px 32px rgba(13, 46, 92, 0.1), 0 0 40px rgba(31, 123, 246, 0.04);
+  --glass-bg: rgba(255, 255, 255, 0.72);
+  --glass-bg-strong: rgba(255, 255, 255, 0.88);
+  --glass-border: rgba(214, 227, 244, 0.6);
+  --glass-blur: blur(18px) saturate(180%);
+  --glass-blur-light: blur(10px) saturate(160%);
+
   --shadow-xs: 0 1px 2px rgba(10, 35, 70, 0.06);
   --shadow-sm: 0 10px 24px rgba(18, 57, 107, 0.08);
   --shadow-md: 0 18px 42px rgba(13, 46, 92, 0.12);
@@ -52,6 +64,10 @@
   --radius-md: 12px;
   --radius-lg: 16px;
   --radius-pill: 999px;
+
+  --transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-smooth: 250ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-spring: 300ms cubic-bezier(0.34, 1.56, 0.64, 1);
 
   font-family: 'Manrope', 'Segoe UI', sans-serif;
   font-size: 15px;
@@ -71,7 +87,21 @@ html {
 body {
   min-height: 100vh;
   color-scheme: light;
-  background: radial-gradient(circle at 16% -12%, var(--bg-page-top) 0%, var(--bg-page) 56%);
+  background: #f0f4fa;
+}
+
+/* ── Futuristic glass surface utility ── */
+.glass-surface {
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-border);
+}
+.glass-surface-strong {
+  background: var(--glass-bg-strong);
+  backdrop-filter: var(--glass-blur-light);
+  -webkit-backdrop-filter: var(--glass-blur-light);
+  border: 1px solid var(--glass-border);
 }
 
 .visually-hidden {
@@ -96,10 +126,24 @@ body {
   position: fixed;
   top: -140px;
   right: -120px;
-  width: 360px;
-  height: 360px;
+  width: 460px;
+  height: 460px;
   border-radius: 50%;
-  background: radial-gradient(circle, var(--accent-soft) 0%, rgba(31, 123, 246, 0) 70%);
+  background:
+    radial-gradient(circle at 60% 40%, var(--accent-soft) 0%, rgba(31, 123, 246, 0) 65%),
+    radial-gradient(circle at 30% 70%, rgba(31, 123, 246, 0.04) 0%, transparent 50%);
+  pointer-events: none;
+  z-index: 0;
+}
+.app::after {
+  content: '';
+  position: fixed;
+  bottom: -80px;
+  left: -60px;
+  width: 280px;
+  height: 280px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(31, 123, 246, 0.03) 0%, transparent 60%);
   pointer-events: none;
   z-index: 0;
 }
@@ -123,7 +167,18 @@ body {
 
 .text-muted {
   color: var(--text-muted);
-}.auth-wrap {
+}
+
+/* ── Futuristic dot-grid mesh overlay ── */
+.app {
+  position: relative;
+}
+.app-inner {
+  position: relative;
+  z-index: 1;
+}
+
+.auth-wrap {
   min-height: 100vh;
   display: flex;
   align-items: center;
@@ -133,14 +188,16 @@ body {
 
 .auth-card {
   width: min(440px, 100%);
-  background: var(--bg-surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-md);
-  padding: 20px;
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  border: 1px solid rgba(31, 123, 246, 0.1);
+  border-radius: 18px;
+  box-shadow: 0 24px 64px rgba(13, 27, 50, 0.14), 0 0 0 1px rgba(31, 123, 246, 0.04);
+  padding: 28px;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 16px;
 }
 
 .auth-input {
@@ -260,18 +317,9 @@ body {
   }
 }
 
-.shell { min-height: 100vh; display: grid; grid-template-columns: 260px 1fr; }
-.sidebar { border-right: 1px solid var(--border-light); background: var(--bg-surface); padding: 14px; display: flex; flex-direction: column; gap: 14px; position: sticky; top: 0; height: 100vh; }
-.sidebar.collapsed { width: 72px; }
-.sidebar-top { display: flex; justify-content: space-between; align-items: center; }
+/* ── Legacy shell/sidebar removed — superseded by app-shell.css layout-* classes ── */
 .logo-row { display: flex; align-items: center; gap: 8px; font-weight: 700; }
-.sidebar-nav { display: flex; flex-direction: column; gap: 6px; }
-.nav-item { text-align: left; border: 1px solid transparent; background: transparent; padding: 10px; border-radius: 10px; cursor: pointer; color: var(--text-secondary); }
-.nav-item.active, .nav-item:hover { background: var(--bg-muted); border-color: var(--border-light); color: var(--text-primary); }
-.sidebar-footer { margin-top: auto; display: flex; gap: 10px; align-items: center; }
 .content-shell { min-width: 0; }
-.topbar { height: 64px; border-bottom: 1px solid var(--border-light); background: var(--bg-surface); display: flex; align-items: center; justify-content: space-between; padding: 0 16px; position: sticky; top: 0; z-index: 30; }
-.topbar-left, .topbar-right { display: flex; align-items: center; gap: 10px; }
 .top-search { width: 280px; }
 .page-main { padding: 16px; }
 .dashboard-layout { display: grid; grid-template-columns: 1fr 0; gap: 0; transition: grid-template-columns .2s ease; }

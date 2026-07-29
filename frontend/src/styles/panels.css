@@ -11,25 +11,27 @@
     width: 100vw;
     height: 100dvh;
     z-index: 1000;
-    background: rgba(0, 0, 0, .45);
+    background: rgba(10, 22, 50, 0.45);
     display: grid;
     place-items: center;
     padding: 16px;
     box-sizing: border-box;
     overflow-y: auto;
     overscroll-behavior: contain;
-    backdrop-filter: blur(2px);
-    -webkit-backdrop-filter: blur(2px);
+    backdrop-filter: blur(10px) saturate(140%);
+    -webkit-backdrop-filter: blur(10px) saturate(140%);
 }
 
 /* ── Shared Panel Base ── */
 .sync-panel,
 .config-panel,
 .project-modal {
-    background: var(--bg-surface);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-lg);
-    box-shadow: var(--shadow-md);
+    background: rgba(255, 255, 255, 0.92);
+    backdrop-filter: blur(24px) saturate(180%);
+    -webkit-backdrop-filter: blur(24px) saturate(180%);
+    border: 1px solid rgba(31, 123, 246, 0.1);
+    border-radius: 18px;
+    box-shadow: 0 24px 64px rgba(13, 27, 50, 0.15), 0 0 0 1px rgba(31, 123, 246, 0.04);
     width: 480px;
     max-width: 92vw;
     max-height: calc(100dvh - 32px);
@@ -54,10 +56,12 @@
     display: flex;
     flex-direction: column;
     overflow: hidden;
-    background: color-mix(in srgb, var(--bg-surface) 96%, white);
-    border: 1px solid var(--border-light);
+    background: rgba(255, 255, 255, 0.94);
+    backdrop-filter: blur(28px) saturate(180%);
+    -webkit-backdrop-filter: blur(28px) saturate(180%);
+    border: 1px solid rgba(31, 123, 246, 0.1);
     border-radius: 20px;
-    box-shadow: 0 28px 72px rgb(15 23 42 / 0.22);
+    box-shadow: 0 32px 80px rgba(13, 27, 50, 0.18), 0 0 0 1px rgba(31, 123, 246, 0.05), 0 0 40px rgba(31, 123, 246, 0.04);
 }
 
 .modal-card-sm {

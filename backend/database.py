@@ -141,9 +141,13 @@ def upsert_projects(projects: list[dict]) -> dict:
         doc = {k: v for k, v in p.items() if k != '_id'}
         incoming_deadline = doc.get('project_end_date', '')
         doc['scraped_deadline'] = incoming_deadline or existing.get('scraped_deadline', '')
+        # Exclude scraped_at from $set — MongoDB raises error code 40 (path conflict)
+        # if the same field appears in both $set and $setOnInsert in one update command.
+        # scraped_at is set once on first insert via $setOnInsert and preserved thereafter.
+        set_doc = {k: v for k, v in doc.items() if k != 'scraped_at'}
         result = db.projects.update_one(
             key,
-            {'$set': doc, '$setOnInsert': {'scraped_at': now}},
+            {'$set': set_doc, '$setOnInsert': {'scraped_at': now}},
             upsert=True,
         )
         if result.upserted_id:

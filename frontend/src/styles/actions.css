@@ -30,12 +30,14 @@
 }
 
 .context-menu {
-  background: var(--bg-surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  box-shadow: var(--shadow-md);
+  background: rgba(255, 255, 255, 0.94);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border: 1px solid rgba(31, 123, 246, 0.08);
+  border-radius: 14px;
+  box-shadow: 0 16px 48px rgba(13, 27, 50, 0.14), 0 0 0 1px rgba(31, 123, 246, 0.04);
   min-width: 190px;
-  padding: var(--sp-1);
+  padding: 6px;
 }
 
 .context-menu-item {
