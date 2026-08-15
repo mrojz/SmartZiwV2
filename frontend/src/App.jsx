@@ -16,9 +16,19 @@ import { Table } from '@/components/application/table/table';
 import { Dropdown } from '@/components/base/dropdown/dropdown';
 
 const API = '/api';
-const APP_RELEASE_VERSION = '1.4';
+const APP_RELEASE_VERSION = '1.5';
 const RELEASE_NOTES_STORAGE_KEY = 'pw_release_notes_seen';
 const DEFAULT_RELEASE_NOTES = [
+    {
+        version: '1.5',
+        title: 'Smart-Ziw chat, human-only next actions, and configurable LLM provider',
+        summary: 'Tag @SmartZiw in a project comment to ask the agent questions, next actions now list only tasks a human must do, and the admin can point Smart-Ziw at any OpenAI-compatible LLM (LightLLM).',
+        items: [
+            'Added @SmartZiw mention support: ask the agent directly in the project discussion and it replies as a comment.',
+            'Next actions now contain only human-only obligations; LLM-automatable tasks are filtered out.',
+            'Added an admin LLM provider setting (auto / DeepSeek / LightLLM) with LightLLM base URL, model, and API key.',
+        ],
+    },
     {
         version: '1.4',
         title: 'Smart-Ziw web research',
@@ -1978,6 +1988,10 @@ function AdminPage({ apiFetch }) {
         firecrawl_base_url: 'https://api.firecrawl.dev',
         smart_ziw_research_enabled: true,
         smart_ziw_research_timeout_seconds: 900,
+        smart_ziw_llm_provider: 'auto',
+        lightllm_base_url: '',
+        lightllm_api_key: '',
+        lightllm_model: 'default',
     });
     const [savingSmartZiwConfig, setSavingSmartZiwConfig] = useState(false);
     const handleSearchChange = useCallback((nextValue) => {
@@ -2039,7 +2053,7 @@ function AdminPage({ apiFetch }) {
             });
             if (!res.ok) throw new Error('Failed to save');
             const data = await res.json();
-            setSmartZiwConfig((prev) => ({ ...prev, ...data, gitlab_token: prev.gitlab_token, firecrawl_api_key: prev.firecrawl_api_key }));
+            setSmartZiwConfig((prev) => ({ ...prev, ...data, gitlab_token: prev.gitlab_token, firecrawl_api_key: prev.firecrawl_api_key, lightllm_api_key: prev.lightllm_api_key }));
             setMessage('Smart-Ziw config saved.');
         } catch (error) {
             setMessage(`Failed to save Smart-Ziw config: ${error?.message || 'unknown error'}`);
@@ -2584,6 +2598,27 @@ function AdminPage({ apiFetch }) {
                         <div className="auth-field">
                             <label className="auth-label">Research timeout (seconds)</label>
                             <input className="auth-input" type="number" min={1} value={smartZiwConfig.smart_ziw_research_timeout_seconds} onChange={(e) => { const value = Number(e.target.value); setSmartZiwConfig({ ...smartZiwConfig, smart_ziw_research_timeout_seconds: Number.isFinite(value) && value >= 1 ? value : 900 }) }} />
+                        </div>
+                        <h4 style={{ gridColumn: '1 / -1', margin: '8px 0 0' }}>LLM provider</h4>
+                        <div className="auth-field profile-field-span-2">
+                            <label className="auth-label">Provider</label>
+                            <select className="auth-input" value={smartZiwConfig.smart_ziw_llm_provider} onChange={(e) => setSmartZiwConfig({ ...smartZiwConfig, smart_ziw_llm_provider: e.target.value })}>
+                                <option value="auto">Auto (LightLLM if configured, else DeepSeek env)</option>
+                                <option value="deepseek">DeepSeek (env)</option>
+                                <option value="lightllm">LightLLM</option>
+                            </select>
+                        </div>
+                        <div className="auth-field profile-field-span-2">
+                            <label className="auth-label">LightLLM base URL</label>
+                            <input className="auth-input" value={smartZiwConfig.lightllm_base_url} onChange={(e) => setSmartZiwConfig({ ...smartZiwConfig, lightllm_base_url: e.target.value })} placeholder="http://localhost:8000/v1" />
+                        </div>
+                        <div className="auth-field">
+                            <label className="auth-label">LightLLM model</label>
+                            <input className="auth-input" value={smartZiwConfig.lightllm_model} onChange={(e) => setSmartZiwConfig({ ...smartZiwConfig, lightllm_model: e.target.value })} />
+                        </div>
+                        <div className="auth-field">
+                            <label className="auth-label">LightLLM API key</label>
+                            <input className="auth-input" type="password" value={smartZiwConfig.lightllm_api_key} onChange={(e) => setSmartZiwConfig({ ...smartZiwConfig, lightllm_api_key: e.target.value })} placeholder="Leave blank to keep the stored key" />
                         </div>
                     </div>
                     <div className="profile-card-footer profile-card-footer-end">
