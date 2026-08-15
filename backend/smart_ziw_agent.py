@@ -252,83 +252,92 @@ def render_next_actions_markdown(project: dict, enrichment: dict) -> str:
     return "\n".join(lines)
 
 
-def render_risks_markdown(project: dict, enrichment: dict) -> str:
-    title = project.get("project_name") or "Tender"
-    rows = enrichment.get("risks") or []
-    if not rows:
-        return ""
-    lines = [f"# Risks: {title}", "", "| Risk | Likelihood | Impact | Mitigation |", "|------|------------|--------|------------|"]
-    for row in rows:
-        lines.append(
-            f"| {_escape_table_cell(row.get('risk', '-'))} | "
-            f"{_escape_table_cell(row.get('likelihood', '-'))} | "
-            f"{_escape_table_cell(row.get('impact', '-'))} | "
-            f"{_escape_table_cell(row.get('mitigation', '-'))} |"
-        )
-    return "\n".join(lines)
-
-
-def render_eligibility_markdown(project: dict, enrichment: dict) -> str:
-    notes = enrichment.get("eligibility_notes", "")
-    if not notes:
-        return ""
-    title = project.get("project_name") or "Tender"
-    return f"# Eligibility: {title}\n\n{notes}"
-
-
 def render_source_markdown(project: dict, enrichment: dict) -> str:
+    title = project.get("project_name") or "Tender"
+    lines = [f"# Source Notes: {title}", "", "| Kind | URL | Status |", "|------|-----|--------|"]
+    source_url = project.get("project_url") or ""
+    if source_url:
+        lines.append(f"| aggregator | {_escape_table_cell(source_url)} | from tender metadata |")
+    lines.append(f"| metadata | {_escape_table_cell(project.get('source'))} | tender metadata record |")
     notes = enrichment.get("source_notes", "")
-    if not notes:
-        return ""
-    title = project.get("project_name") or "Tender"
-    return f"# Source Notes: {title}\n\n{notes}"
-
-
-def render_pricing_markdown(project: dict, enrichment: dict) -> str:
-    notes = enrichment.get("pricing_notes", "")
-    if not notes:
-        return ""
-    title = project.get("project_name") or "Tender"
-    return f"# Pricing Notes: {title}\n\n{notes}"
+    if notes:
+        lines.extend(["", notes])
+    return "\n".join(lines)
 
 
 def render_drafting_notes_markdown(project: dict, enrichment: dict) -> str:
     notes = enrichment.get("drafting_notes", "")
-    if not notes:
-        return ""
     title = project.get("project_name") or "Tender"
+    if not notes:
+        notes = "No drafting notes available (no research evidence collected)."
     return f"# Drafting Notes: {title}\n\n{notes}"
 
 
-def render_recap_markdown(project: dict, enrichment: dict) -> str:
-    notes = enrichment.get("recap", "")
-    if not notes:
-        return ""
+def _render_research_tender(project: dict, synthesis: dict) -> str:
     title = project.get("project_name") or "Tender"
-    return f"# Recap: {title}\n\n{notes}"
+    return f"# Tender Intelligence: {title}\n\n{synthesis.get('tender_markdown') or 'No verified information.'}"
 
 
-def render_optional_files(project: dict, enrichment: dict) -> dict[str, str]:
-    files = {}
-    risks = render_risks_markdown(project, enrichment)
-    if risks:
-        files["risks.md"] = risks
-    eligibility = render_eligibility_markdown(project, enrichment)
-    if eligibility:
-        files["eligibility.md"] = eligibility
-    source = render_source_markdown(project, enrichment)
-    if source:
-        files["source.md"] = source
-    pricing = render_pricing_markdown(project, enrichment)
-    if pricing:
-        files["pricing.md"] = pricing
-    drafting_notes = render_drafting_notes_markdown(project, enrichment)
-    if drafting_notes:
-        files["drafting-notes.md"] = drafting_notes
-    recap = render_recap_markdown(project, enrichment)
-    if recap:
-        files["recap.md"] = recap
-    return files
+def _render_research_email(project: dict, synthesis: dict) -> str:
+    title = project.get("project_name") or "Tender"
+    draft = synthesis.get("email_draft") or "No clarification email draft was produced."
+    return f"# Draft Clarification Email: {title}\n\n{draft}"
+
+
+def _render_research_compliance(project: dict, synthesis: dict) -> str:
+    title = project.get("project_name") or "Tender"
+    rows = synthesis.get("compliance_matrix") or []
+    lines = [f"# Compliance Matrix: {title}", ""]
+    if not rows:
+        lines.append("No verified compliance items — see tender.md for the assessment.")
+        return "\n".join(lines)
+    lines.extend(["| Requirement | Status | Action | Source |", "|-------------|--------|--------|--------|"])
+    for row in rows:
+        lines.append(
+            f"| {_escape_table_cell(row.get('requirement', '-'))} | "
+            f"{_escape_table_cell(row.get('status', '-'))} | "
+            f"{_escape_table_cell(row.get('action', '-'))} | "
+            f"{_escape_table_cell(row.get('source', 'unverified'))} |"
+        )
+    return "\n".join(lines)
+
+
+def _render_research_drafting(project: dict, synthesis: dict) -> str:
+    title = project.get("project_name") or "Tender"
+    notes = synthesis.get("drafting_notes") or "No drafting notes available."
+    return f"# Drafting Notes: {title}\n\n{notes}"
+
+
+def _render_research_next_actions(project: dict, synthesis: dict) -> str:
+    title = project.get("project_name") or "Tender"
+    rows = synthesis.get("next_actions") or []
+    lines = [f"# Next Actions: {title}", ""]
+    if not rows:
+        lines.append("No next actions identified.")
+        return "\n".join(lines)
+    lines.extend(["| Action | Priority | Owner | Deadline | Notes |", "|--------|----------|-------|----------|-------|"])
+    for row in rows:
+        lines.append(
+            f"| {_escape_table_cell(row.get('action', '-'))} | "
+            f"{_escape_table_cell(row.get('priority', '-'))} | "
+            f"{_escape_table_cell(row.get('owner', '-'))} | "
+            f"{_escape_table_cell(row.get('deadline', '-'))} | "
+            f"{_escape_table_cell(row.get('notes', '-'))} |"
+        )
+    return "\n".join(lines)
+
+
+def _render_research_source(project: dict, synthesis: dict) -> str:
+    title = project.get("project_name") or "Tender"
+    lines = [f"# Source Inventory: {title}", "", "| Kind | URL | Captured | Status |", "|------|-----|----------|--------|"]
+    for row in synthesis.get("source_rows") or []:
+        lines.append(
+            f"| {_escape_table_cell(row.get('kind', 'other'))} | "
+            f"{_escape_table_cell(row.get('url', '-'))} | "
+            f"{_escape_table_cell('yes' if row.get('captured') else 'no')} | "
+            f"{_escape_table_cell(row.get('status', '-'))} |"
+        )
+    return "\n".join(lines)
 
 
 def push_to_gitlab(repo_path: Path, folder: str, config: dict) -> dict:
@@ -374,7 +383,9 @@ def push_to_gitlab(repo_path: Path, folder: str, config: dict) -> dict:
             _git(["init"], check=False)
         _git(["config", "user.name", author_name], check=False)
         _git(["config", "user.email", author_email], check=False)
-        _git(["add", f"{folder}/"])
+        _git(["add", "--", f"{folder}/"], check=False)
+        if (repo_path / folder / "documents").exists():
+            _git(["rm", "-r", "--cached", "--quiet", "--", f"{folder}/documents"], check=False)
         status = _git(["status", "--porcelain"], check=False)
         if not status.stdout.strip():
             return {"pushed": False, "message": "No changes to commit"}
@@ -388,28 +399,74 @@ def push_to_gitlab(repo_path: Path, folder: str, config: dict) -> dict:
 def run(project: dict, config: dict | None = None) -> dict:
     config = config or {}
     folder = build_folder_name(project)
-    enrichment = _enrich(project)
-    files = {
-        "tender.md": render_tender_markdown(project, enrichment),
-        "email.md": render_email_markdown(project, enrichment),
-        "compliance-matrix.md": render_compliance_matrix_markdown(project, enrichment),
-        "next-actions.md": render_next_actions_markdown(project, enrichment),
-    }
-    files.update(render_optional_files(project, enrichment))
     repo_path = Path(config.get("smart_ziw_repo_path", "/home/kali/Smart-Ziw"))
     folder_path = repo_path / folder
     folder_path.mkdir(parents=True, exist_ok=True)
+
+    research = None
+    synthesis = None
+    error = ""
+    research_ran = bool(config.get("smart_ziw_research_enabled", True)) and bool(config.get("firecrawl_api_key"))
+    if research_ran:
+        from smart_ziw_research import run_research
+        research = run_research(project, config, folder_path=folder_path)
+        if research.error:
+            error = research.error
+        else:
+            from smart_ziw_research import synthesize
+            synthesis = synthesize(project, research)
+            if synthesis.get("_error"):
+                error = synthesis["_error"]
+                synthesis = None
+
+    if synthesis is not None:
+        files = {
+            "tender.md": _render_research_tender(project, synthesis),
+            "email.md": _render_research_email(project, synthesis),
+            "compliance-matrix.md": _render_research_compliance(project, synthesis),
+            "drafting-notes.md": _render_research_drafting(project, synthesis),
+            "next-actions.md": _render_research_next_actions(project, synthesis),
+            "source.md": _render_research_source(project, synthesis),
+        }
+    else:
+        enrichment = _enrich(project)
+        if enrichment.get("error"):
+            error = error or enrichment["error"]
+        files = {
+            "tender.md": render_tender_markdown(project, enrichment),
+            "email.md": render_email_markdown(project, enrichment),
+            "compliance-matrix.md": render_compliance_matrix_markdown(project, enrichment),
+            "drafting-notes.md": render_drafting_notes_markdown(project, enrichment),
+            "next-actions.md": render_next_actions_markdown(project, enrichment),
+            "source.md": render_source_markdown(project, enrichment),
+        }
+
     for name, content in files.items():
         (folder_path / name).write_text(content, encoding="utf-8")
+
+    artifacts_dir = folder_path / "artifacts"
+    artifact_files = []
+    if artifacts_dir.exists():
+        artifact_files = [f"artifacts/{p.name}" for p in sorted(artifacts_dir.glob("*.md"))]
+    documents_dir = folder_path / "documents"
+    document_files = [p.name for p in sorted(documents_dir.glob("*"))] if documents_dir.exists() else []
+
     git_result = push_to_gitlab(repo_path, folder, config)
     result = {
         "folder": folder,
-        "files": list(files.keys()),
+        "files": list(files.keys()) + artifact_files,
         "repo_path": str(repo_path),
         "gitlab_pushed": git_result["pushed"],
         "gitlab_message": git_result["message"],
     }
-    error = enrichment.get("error")
+    if research is not None:
+        result["research"] = True
+        result["research_stats"] = research.stats
+        result["research_verdict"] = (
+            (research.verdict or {}).get("recommendation", "MONITOR") if not research.error else "ERROR"
+        )
+        result["research_timed_out"] = bool(research.timed_out)
+        result["documents"] = document_files
     if error:
         result["error"] = error
     return result
