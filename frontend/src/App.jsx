@@ -1940,6 +1940,18 @@ function AdminPage({ apiFetch }) {
     const [selectedReleaseVersion, setSelectedReleaseVersion] = useState('');
     const [releaseForm, setReleaseForm] = useState({ version: '', title: '', summary: '', itemsText: '' });
     const [savingReleaseNotes, setSavingReleaseNotes] = useState(false);
+    const [smartZiwConfig, setSmartZiwConfig] = useState({
+        smart_ziw_enabled: true,
+        smart_ziw_repo_path: '/home/kali/Smart-Ziw',
+        gitlab_push_enabled: false,
+        gitlab_url: '',
+        gitlab_token: '',
+        gitlab_project_path: '',
+        gitlab_branch: 'main',
+        gitlab_author_name: 'Smart-Ziw Agent',
+        gitlab_author_email: 'smart-ziw@localhost',
+    });
+    const [savingSmartZiwConfig, setSavingSmartZiwConfig] = useState(false);
     const handleSearchChange = useCallback((nextValue) => {
         if (typeof nextValue === 'string') {
             setQ(nextValue);
@@ -1967,6 +1979,14 @@ function AdminPage({ apiFetch }) {
         setSelectedReleaseVersion((current) => current || sortedNotes[0]?.version || '');
     }, [apiFetch]);
 
+    const loadSmartZiwConfig = useCallback(async () => {
+        const res = await apiFetch('/api/admin/smart-ziw-config');
+        if (res.ok) {
+            const data = await res.json();
+            setSmartZiwConfig((prev) => ({ ...prev, ...data }));
+        }
+    }, [apiFetch]);
+
     useEffect(() => {
         loadUsers();
     }, [loadUsers]);
@@ -1975,6 +1995,28 @@ function AdminPage({ apiFetch }) {
         if (adminTab !== 'release-notes') return;
         loadReleaseNotes();
     }, [adminTab, loadReleaseNotes]);
+
+    useEffect(() => {
+        if (adminTab !== 'smart-ziw') return;
+        loadSmartZiwConfig();
+    }, [adminTab, loadSmartZiwConfig]);
+
+    const saveSmartZiwConfig = async () => {
+        setSavingSmartZiwConfig(true);
+        try {
+            const res = await apiFetch('/api/admin/smart-ziw-config', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(smartZiwConfig),
+            });
+            if (!res.ok) throw new Error('Failed to save');
+            const data = await res.json();
+            setSmartZiwConfig((prev) => ({ ...prev, ...data, gitlab_token: prev.gitlab_token }));
+            setMessage('Smart-Ziw config saved.');
+        } finally {
+            setSavingSmartZiwConfig(false);
+        }
+    };
 
     useEffect(() => {
         const note = releaseNotes.find((item) => item.version === selectedReleaseVersion);
@@ -2173,7 +2215,7 @@ function AdminPage({ apiFetch }) {
         <div className="layout-stack admin-users-page">
             <PageHeader
                 title="Admin"
-                subtitle={adminTab === 'users' ? 'Create, edit, deactivate users, and reset passwords.' : 'Create new release notes or update existing versions.'}
+                subtitle={adminTab === 'users' ? 'Create, edit, deactivate users, and reset passwords.' : adminTab === 'release-notes' ? 'Create new release notes or update existing versions.' : 'Configure the Smart-Ziw agent and optional GitLab push.'}
                 action={(
                     <div className="admin-users-header-actions">
                         {adminTab === 'users' ? (
@@ -2185,7 +2227,7 @@ function AdminPage({ apiFetch }) {
                             >
                                 Create User
                             </button>
-                        ) : (
+                        ) : adminTab === 'release-notes' ? (
                             <button
                                 type="button"
                                 className="profile-btn profile-btn-primary admin-toolbar-btn admin-users-create-btn"
@@ -2194,7 +2236,7 @@ function AdminPage({ apiFetch }) {
                             >
                                 New Release Note
                             </button>
-                        )}
+                        ) : null}
                     </div>
                 )}
             />
@@ -2202,6 +2244,7 @@ function AdminPage({ apiFetch }) {
             <div className="admin-page-tabs">
                 <button type="button" className={`admin-page-tab ${adminTab === 'users' ? 'active' : ''}`} onClick={() => setAdminTab('users')}>User Management</button>
                 <button type="button" className={`admin-page-tab ${adminTab === 'release-notes' ? 'active' : ''}`} onClick={() => setAdminTab('release-notes')}>Release Notes</button>
+                <button type="button" className={`admin-page-tab ${adminTab === 'smart-ziw' ? 'active' : ''}`} onClick={() => setAdminTab('smart-ziw')}>Smart-Ziw</button>
             </div>
 
             {adminTab === 'users' ? (
@@ -2445,6 +2488,61 @@ function AdminPage({ apiFetch }) {
                                 </button>
                             </div>
                         </div>
+                    </div>
+                </div>
+            ) : null}
+
+            {adminTab === 'smart-ziw' ? (
+                <div className="panel-card">
+                    <div className="profile-card-head">
+                        <div>
+                            <h3>Smart-Ziw Agent</h3>
+                            <p className="profile-card-description">Configure local mirror path and optional GitLab push.</p>
+                        </div>
+                    </div>
+                    {message ? <div className="admin-users-message">{message}</div> : null}
+                    <div className="profile-settings-grid">
+                        <label className="modal-toggle-row">
+                            <input type="checkbox" checked={smartZiwConfig.smart_ziw_enabled} onChange={(e) => setSmartZiwConfig({ ...smartZiwConfig, smart_ziw_enabled: e.target.checked })} />
+                            <span className={`modal-toggle-label ${smartZiwConfig.smart_ziw_enabled ? 'active' : 'inactive'}`}>Enable Smart-Ziw Agent</span>
+                        </label>
+                        <div className="auth-field profile-field-span-2">
+                            <label className="auth-label">Local repo path</label>
+                            <input className="auth-input" value={smartZiwConfig.smart_ziw_repo_path} onChange={(e) => setSmartZiwConfig({ ...smartZiwConfig, smart_ziw_repo_path: e.target.value })} />
+                        </div>
+                        <label className="modal-toggle-row">
+                            <input type="checkbox" checked={smartZiwConfig.gitlab_push_enabled} onChange={(e) => setSmartZiwConfig({ ...smartZiwConfig, gitlab_push_enabled: e.target.checked })} />
+                            <span className={`modal-toggle-label ${smartZiwConfig.gitlab_push_enabled ? 'active' : 'inactive'}`}>Enable GitLab push</span>
+                        </label>
+                        <div className="auth-field profile-field-span-2">
+                            <label className="auth-label">GitLab URL</label>
+                            <input className="auth-input" value={smartZiwConfig.gitlab_url} onChange={(e) => setSmartZiwConfig({ ...smartZiwConfig, gitlab_url: e.target.value })} />
+                        </div>
+                        <div className="auth-field profile-field-span-2">
+                            <label className="auth-label">GitLab token</label>
+                            <input className="auth-input" type="password" value={smartZiwConfig.gitlab_token} onChange={(e) => setSmartZiwConfig({ ...smartZiwConfig, gitlab_token: e.target.value })} />
+                        </div>
+                        <div className="auth-field profile-field-span-2">
+                            <label className="auth-label">GitLab project path</label>
+                            <input className="auth-input" value={smartZiwConfig.gitlab_project_path} onChange={(e) => setSmartZiwConfig({ ...smartZiwConfig, gitlab_project_path: e.target.value })} />
+                        </div>
+                        <div className="auth-field">
+                            <label className="auth-label">Branch</label>
+                            <input className="auth-input" value={smartZiwConfig.gitlab_branch} onChange={(e) => setSmartZiwConfig({ ...smartZiwConfig, gitlab_branch: e.target.value })} />
+                        </div>
+                        <div className="auth-field">
+                            <label className="auth-label">Author name</label>
+                            <input className="auth-input" value={smartZiwConfig.gitlab_author_name} onChange={(e) => setSmartZiwConfig({ ...smartZiwConfig, gitlab_author_name: e.target.value })} />
+                        </div>
+                        <div className="auth-field profile-field-span-2">
+                            <label className="auth-label">Author email</label>
+                            <input className="auth-input" value={smartZiwConfig.gitlab_author_email} onChange={(e) => setSmartZiwConfig({ ...smartZiwConfig, gitlab_author_email: e.target.value })} />
+                        </div>
+                    </div>
+                    <div className="profile-card-footer profile-card-footer-end">
+                        <button type="button" className="profile-btn profile-btn-primary" onClick={saveSmartZiwConfig} disabled={savingSmartZiwConfig}>
+                            {savingSmartZiwConfig ? 'Saving...' : 'Save config'}
+                        </button>
                     </div>
                 </div>
             ) : null}
