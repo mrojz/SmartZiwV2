@@ -440,6 +440,10 @@ DEFAULT_SMART_ZIW_CONFIG = {
     'gitlab_branch': 'main',
     'gitlab_author_name': 'Smart-Ziw Agent',
     'gitlab_author_email': 'smart-ziw@localhost',
+    'firecrawl_api_key': '',
+    'firecrawl_base_url': 'https://api.firecrawl.dev',
+    'smart_ziw_research_enabled': True,
+    'smart_ziw_research_timeout_seconds': 900,
 }
 
 

@@ -458,6 +458,18 @@ def _format_smart_ziw_comment(result: dict) -> str:
     files = result.get("files") or []
     if files:
         lines.extend(["", "Files:", *[f"- {f}" for f in files]])
+    if result.get("research"):
+        stats = result.get("research_stats") or {}
+        lines.extend([
+            "",
+            f"Web research: {stats.get('queries_run', 0)} queries, {stats.get('pages_scraped', 0)} pages scraped, {stats.get('documents_captured', 0)} documents captured",
+            f"Recommendation: {result.get('research_verdict', 'MONITOR')}",
+        ])
+        documents = result.get("documents") or []
+        if documents:
+            lines.append("Documents: " + ", ".join(documents))
+        if result.get("research_timed_out"):
+            lines.append("Note: research time limit reached — results are partial.")
     if result.get("error"):
         lines.extend(["", "Note: " + str(result["error"])])
     return "\n".join(lines)
@@ -974,6 +986,10 @@ class SmartZiwConfigUpdate(BaseModel):
     gitlab_branch: str = "main"
     gitlab_author_name: str = "Smart-Ziw Agent"
     gitlab_author_email: str = "smart-ziw@localhost"
+    firecrawl_api_key: str = ""
+    firecrawl_base_url: str = "https://api.firecrawl.dev"
+    smart_ziw_research_enabled: bool = True
+    smart_ziw_research_timeout_seconds: int = 900
 
 
 class SavedSearchItem(BaseModel):
@@ -1623,6 +1639,7 @@ def admin_get_smart_ziw_config(request: Request):
     _require_admin(request)
     config = get_smart_ziw_config()
     config["gitlab_token"] = ""
+    config["firecrawl_api_key"] = ""
     return config
 
 
@@ -1633,8 +1650,11 @@ def admin_update_smart_ziw_config(body: SmartZiwConfigUpdate, request: Request):
     existing = get_smart_ziw_config()
     if not data.get("gitlab_token"):
         data["gitlab_token"] = existing.get("gitlab_token", "")
+    if not data.get("firecrawl_api_key"):
+        data["firecrawl_api_key"] = existing.get("firecrawl_api_key", "")
     saved = save_smart_ziw_config(data)
     saved["gitlab_token"] = ""
+    saved["firecrawl_api_key"] = ""
     return saved
 
 
