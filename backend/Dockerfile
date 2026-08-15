@@ -15,6 +15,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libgbm1 \
     && rm -rf /var/lib/apt/lists/*
 
+RUN apt-get update && apt-get install -y \
+    libxml2-dev \
+    libxslt1-dev \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
 # Tell Selenium where to find Chrome and ChromeDriver
 ENV CHROME_BIN=/usr/bin/chromium
 ENV CHROMEDRIVER_PATH=/usr/bin/chromedriver
