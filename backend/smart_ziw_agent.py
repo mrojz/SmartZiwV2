@@ -32,7 +32,7 @@ def _format_date_for_folder(value: str) -> str:
 
 def build_folder_name(project: dict) -> str:
     deadline = _format_date_for_folder(project.get("project_end_date") or project.get("effective_deadline") or "")
-    client = _safe_slug(project.get("primary_country_name_en") or project.get("project_sponsor") or "Unknown")
+    client = _safe_slug(project.get("project_sponsor") or project.get("primary_country_name_en") or "Unknown")
     title = _safe_slug(project.get("project_name") or project.get("project_description") or "Tender")
     # Remove common leading procurement filler words for a concise folder title
     title = re.sub(r"^(recruitment-of-an-|recruitment-of-|recruitment-for-|supply-of-|provision-of-)", "", title, flags=re.IGNORECASE)
@@ -61,12 +61,12 @@ def render_tender_markdown(project: dict, enrichment: dict | None = None) -> str
         "",
         "| Field | Detail |",
         "|-------|--------|",
-        f"| **Tender Title** | {project.get('project_name') or '-'} |",
-        f"| **Buyer** | {project.get('project_sponsor') or '-'} |",
-        f"| **Country** | {project.get('primary_country_name_en') or '-'} |",
-        f"| **Deadline** | {project.get('project_end_date') or '-'} |",
-        f"| **Source** | {project.get('source') or '-'} |",
-        f"| **Source URL** | {project.get('project_url') or '-'} |",
+        f"| **Tender Title** | {_escape_table_cell(project.get('project_name'))} |",
+        f"| **Buyer** | {_escape_table_cell(project.get('project_sponsor'))} |",
+        f"| **Country** | {_escape_table_cell(project.get('primary_country_name_en'))} |",
+        f"| **Deadline** | {_escape_table_cell(project.get('project_end_date'))} |",
+        f"| **Source** | {_escape_table_cell(project.get('source'))} |",
+        f"| **Source URL** | {_escape_table_cell(project.get('project_url'))} |",
         "",
         "## Description",
         "",
@@ -147,7 +147,7 @@ def _call_llm(system_prompt: str, user_prompt: str) -> dict:
             {"role": "user", "content": user_prompt},
         ],
         temperature=0.1,
-        max_tokens=2000,
+        max_tokens=4000,
         response_format={"type": "json_object"},
     )
     content = response.choices[0].message.content or "{}"
@@ -343,20 +343,35 @@ def push_to_gitlab(repo_path: Path, folder: str, config: dict) -> dict:
     if not all([url, token, project_path]):
         return {"pushed": False, "message": "GitLab config incomplete"}
 
-    remote_url = f"{url}/api/v4/projects/{project_path.replace('/', '%2F')}"
-    git_remote = f"https://oauth2:{token}@{url.replace('https://', '').replace('http://', '')}/{project_path}.git"
+    # Credential-free remote URL: auth is injected per-command via env config
+    # below, so the token never lands in .git/config, argv, or git output.
+    git_remote = f"{url}/{project_path}.git"
 
-    def _git(args, check=True):
+    def _scrub(text: str) -> str:
+        # Defense in depth: never let the token reach logs or comments.
+        return (text or "").replace(token, "***")
+
+    def _git(args, check=True, auth=False):
+        env = os.environ.copy()
+        if auth:
+            # http.extraheader via env config — not persisted anywhere.
+            env.update({
+                "GIT_CONFIG_COUNT": "1",
+                "GIT_CONFIG_KEY_0": "http.extraheader",
+                "GIT_CONFIG_VALUE_0": f"PRIVATE-TOKEN: {token}",
+            })
         return subprocess.run(
             ["git"] + args,
             cwd=str(repo_path),
             check=check,
             capture_output=True,
             text=True,
+            env=env,
         )
 
     try:
-        _git(["remote", "set-url", "origin", git_remote], check=False)
+        if not (repo_path / ".git").exists():
+            _git(["init"], check=False)
         _git(["config", "user.name", author_name], check=False)
         _git(["config", "user.email", author_email], check=False)
         _git(["add", f"{folder}/"])
@@ -364,10 +379,10 @@ def push_to_gitlab(repo_path: Path, folder: str, config: dict) -> dict:
         if not status.stdout.strip():
             return {"pushed": False, "message": "No changes to commit"}
         _git(["commit", "-m", f"smart-ziw: add/update {folder}"])
-        push = _git(["push", "origin", branch])
-        return {"pushed": True, "message": push.stdout or "Pushed successfully"}
+        push = _git(["push", git_remote, f"HEAD:{branch}"], auth=True)
+        return {"pushed": True, "message": _scrub(push.stdout or "Pushed successfully")}
     except subprocess.CalledProcessError as exc:
-        return {"pushed": False, "message": f"Git error: {exc.stderr or exc.stdout}"}
+        return {"pushed": False, "message": _scrub(f"Git error: {exc.stderr or exc.stdout}")}
 
 
 def run(project: dict, config: dict | None = None) -> dict:

@@ -449,7 +449,10 @@ def _format_smart_ziw_comment(result: dict) -> str:
     if result.get("gitlab_pushed"):
         lines.append("GitLab push: pushed")
     elif result.get("gitlab_message"):
-        lines.append(f"GitLab push: {result.get('gitlab_message')}")
+        message = result["gitlab_message"]
+        if message == "GitLab push disabled":
+            message = "disabled"
+        lines.append(f"GitLab push: {message}")
     else:
         lines.append("GitLab push: disabled")
     files = result.get("files") or []
@@ -485,10 +488,14 @@ def _run_smart_ziw(project_db_id: str, actor_user: dict):
             body_text=comment_body,
         )
         enrichment_error = result.get("error")
+        push_error = None
+        if config.get("gitlab_push_enabled") and not result.get("gitlab_pushed"):
+            push_error = result.get("gitlab_message") or "GitLab push failed"
+        error = enrichment_error or push_error
         update_project_smart_ziw_state_by_db_id(project_db_id, {
-            "smart_ziw_status": "error" if enrichment_error else "completed",
+            "smart_ziw_status": "error" if error else "completed",
             "smart_ziw_completed_at": now_iso(),
-            "smart_ziw_error": (str(enrichment_error)[:1000] if enrichment_error else ""),
+            "smart_ziw_error": (str(error)[:1000] if error else ""),
             "smart_ziw_folder": result.get("folder", ""),
             "smart_ziw_gitlab_pushed": bool(result.get("gitlab_pushed")),
         })
@@ -1579,6 +1586,8 @@ def trigger_project_smart_ziw(project_db_id: str, body: SmartZiwTriggerRequest, 
     project = get_project_by_db_id(project_db_id)
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
+    if not get_smart_ziw_config().get("smart_ziw_enabled", True):
+        raise HTTPException(status_code=403, detail="Smart-Ziw Agent is disabled by the administrator.")
 
     with _smart_ziw_lock:
         if project_db_id in _smart_ziw_running and not body.force:
