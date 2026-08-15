@@ -38,7 +38,9 @@ from database import (
     update_project_assignments_by_db_id,
     subscribe_project_commenters_by_db_id,
     update_project_vote_by_db_id,
-    update_project_deep_dive_state_by_db_id,
+    update_project_smart_ziw_state_by_db_id,
+    get_smart_ziw_config,
+    save_smart_ziw_config,
     upsert_projects,
     delete_project_by_index,
     delete_project_by_db_id,
@@ -74,7 +76,7 @@ from database import (
     mark_all_notifications_read,
     mark_all_notifications_viewed,
 )
-from deep_dive import run_deep_dive_research
+from smart_ziw_agent import run as run_smart_ziw_agent
 
 BASE_DIR = Path(__file__).resolve().parent
 PROJECTS_XLSX = BASE_DIR / "projects.xlsx"
@@ -120,8 +122,8 @@ DAY_ORDER = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
 _excel_export_lock = threading.Lock()
 _excel_export_running = False
 _excel_export_pending = False
-_deep_dive_lock = threading.Lock()
-_deep_dive_running: set[str] = set()
+_smart_ziw_lock = threading.Lock()
+_smart_ziw_running: set[str] = set()
 
 
 # Auth helpers
@@ -437,47 +439,42 @@ def _create_project_comment_and_notify(*, entity_type: str, entity_id: str, proj
     return comment
 
 
-def _format_deep_dive_comment(project: dict, result: dict) -> str:
-    source_name = result.get("source_name") or "Unknown"
-    primary_url = result.get("primary_url") or ""
-    summary = (result.get("summary") or "").strip()
-    document_links = result.get("document_urls") or []
-
+def _format_smart_ziw_comment(result: dict) -> str:
     lines = [
-        "Deep Dive Search",
+        "Smart-Ziw Agent",
         "",
-        f"Source: {source_name}",
+        f"Generated mirror: `{result.get('folder')}/`",
+        f"Local path: `{result.get('repo_path')}/{result.get('folder')}/`",
     ]
-    if primary_url:
-        lines.append(f"Source page: {primary_url}")
-    if summary:
-        lines.extend(["", "Project:", summary[:420]])
-    if document_links:
-        lines.extend(["", "Files:"])
-        lines.extend([f"- {url}" for url in document_links[:5]])
-    elif primary_url:
-        lines.extend(["", "Files:", "- No clear document links found"])
+    if result.get("gitlab_pushed"):
+        lines.append("GitLab push: pushed")
+    elif result.get("gitlab_message"):
+        lines.append(f"GitLab push: {result.get('gitlab_message')}")
     else:
-        lines.extend(["", "Files:", "- No source files found"])
-    return "\n".join(lines).strip()
+        lines.append("GitLab push: disabled")
+    files = result.get("files") or []
+    if files:
+        lines.extend(["", "Files:", *[f"- {f}" for f in files]])
+    return "\n".join(lines)
 
 
-def _run_project_deep_dive(project_db_id: str, actor_user: dict):
+def _run_smart_ziw(project_db_id: str, actor_user: dict):
     bot_user = {
-        "id": "bot:deep-dive",
-        "name": "Deep Dive Bot",
+        "id": "bot:smart-ziw",
+        "name": "Smart-Ziw Bot",
         "email": "",
         "avatarUrl": "",
     }
     try:
-        project = update_project_deep_dive_state_by_db_id(project_db_id, {
-            "deep_dive_status": "running",
-            "deep_dive_error": "",
+        config = get_smart_ziw_config()
+        project = update_project_smart_ziw_state_by_db_id(project_db_id, {
+            "smart_ziw_status": "running",
+            "smart_ziw_error": "",
         })
         if not project:
             return
-        result = run_deep_dive_research(project)
-        comment_body = _format_deep_dive_comment(project, result)
+        result = run_smart_ziw_agent(project, config)
+        comment_body = _format_smart_ziw_comment(result)
         _create_project_comment_and_notify(
             entity_type="project",
             entity_id=_project_entity_id(project),
@@ -485,10 +482,12 @@ def _run_project_deep_dive(project_db_id: str, actor_user: dict):
             author_user=bot_user,
             body_text=comment_body,
         )
-        update_project_deep_dive_state_by_db_id(project_db_id, {
-            "deep_dive_status": "completed",
-            "deep_dive_completed_at": now_iso(),
-            "deep_dive_error": "",
+        update_project_smart_ziw_state_by_db_id(project_db_id, {
+            "smart_ziw_status": "completed",
+            "smart_ziw_completed_at": now_iso(),
+            "smart_ziw_error": "",
+            "smart_ziw_folder": result.get("folder", ""),
+            "smart_ziw_gitlab_pushed": bool(result.get("gitlab_pushed")),
         })
     except Exception as exc:
         project = get_project_by_db_id(project_db_id)
@@ -498,16 +497,16 @@ def _run_project_deep_dive(project_db_id: str, actor_user: dict):
                 entity_id=_project_entity_id(project),
                 project=project,
                 author_user=bot_user,
-                body_text=f"Deep Dive Search could not complete.\n\nNotes: {str(exc).strip()}",
+                body_text=f"Smart-Ziw Agent could not complete.\n\nNotes: {str(exc).strip()}",
             )
-        update_project_deep_dive_state_by_db_id(project_db_id, {
-            "deep_dive_status": "error",
-            "deep_dive_completed_at": now_iso(),
-            "deep_dive_error": str(exc).strip()[:1000],
+        update_project_smart_ziw_state_by_db_id(project_db_id, {
+            "smart_ziw_status": "error",
+            "smart_ziw_completed_at": now_iso(),
+            "smart_ziw_error": str(exc).strip()[:1000],
         })
     finally:
-        with _deep_dive_lock:
-            _deep_dive_running.discard(project_db_id)
+        with _smart_ziw_lock:
+            _smart_ziw_running.discard(project_db_id)
 
 
 # Scheduler/sync
@@ -951,8 +950,20 @@ class ProjectVoteUpdate(BaseModel):
     value: str = ""
 
 
-class DeepDiveTriggerRequest(BaseModel):
+class SmartZiwTriggerRequest(BaseModel):
     force: bool = False
+
+
+class SmartZiwConfigUpdate(BaseModel):
+    smart_ziw_enabled: bool = True
+    smart_ziw_repo_path: str = "/home/kali/Smart-Ziw"
+    gitlab_push_enabled: bool = False
+    gitlab_url: str = ""
+    gitlab_token: str = ""
+    gitlab_project_path: str = ""
+    gitlab_branch: str = "main"
+    gitlab_author_name: str = "Smart-Ziw Agent"
+    gitlab_author_email: str = "smart-ziw@localhost"
 
 
 class SavedSearchItem(BaseModel):
@@ -1560,39 +1571,59 @@ def update_project_vote(project_db_id: str, body: ProjectVoteUpdate, request: Re
     return _enrich_project_payload(result, current_user_id=request.state.user.get("id"))
 
 
-@app.post("/api/projects/by-db-id/{project_db_id}/deep-dive")
-def trigger_project_deep_dive(project_db_id: str, body: DeepDiveTriggerRequest, request: Request):
+@app.post("/api/projects/by-db-id/{project_db_id}/smart-ziw")
+def trigger_project_smart_ziw(project_db_id: str, body: SmartZiwTriggerRequest, request: Request):
     project = get_project_by_db_id(project_db_id)
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
-    with _deep_dive_lock:
-        if project_db_id in _deep_dive_running and not body.force:
+    with _smart_ziw_lock:
+        if project_db_id in _smart_ziw_running and not body.force:
             current = get_project_by_db_id(project_db_id) or project
             return {
                 "accepted": True,
                 "alreadyRunning": True,
-                "jobId": current.get("deep_dive_job_id") or "",
+                "jobId": current.get("smart_ziw_job_id") or "",
                 "project": _enrich_project_payload(current, current_user_id=request.state.user.get("id")),
             }
-        _deep_dive_running.add(project_db_id)
+        _smart_ziw_running.add(project_db_id)
 
     job_id = str(uuid.uuid4())
-    updated = update_project_deep_dive_state_by_db_id(project_db_id, {
-        "deep_dive_status": "queued",
-        "deep_dive_job_id": job_id,
-        "deep_dive_requested_at": now_iso(),
-        "deep_dive_completed_at": "",
-        "deep_dive_requested_by": request.state.user.get("email", "") or request.state.user.get("name", ""),
-        "deep_dive_error": "",
+    updated = update_project_smart_ziw_state_by_db_id(project_db_id, {
+        "smart_ziw_status": "queued",
+        "smart_ziw_job_id": job_id,
+        "smart_ziw_requested_at": now_iso(),
+        "smart_ziw_completed_at": "",
+        "smart_ziw_requested_by": request.state.user.get("email", "") or request.state.user.get("name", ""),
+        "smart_ziw_error": "",
     })
-    threading.Thread(target=_run_project_deep_dive, args=(project_db_id, request.state.user), daemon=True).start()
+    threading.Thread(target=_run_smart_ziw, args=(project_db_id, request.state.user), daemon=True).start()
     return {
         "accepted": True,
         "alreadyRunning": False,
         "jobId": job_id,
         "project": _enrich_project_payload(updated or project, current_user_id=request.state.user.get("id")),
     }
+
+
+@app.get("/api/admin/smart-ziw-config")
+def admin_get_smart_ziw_config(request: Request):
+    _require_admin(request)
+    config = get_smart_ziw_config()
+    config["gitlab_token"] = ""
+    return config
+
+
+@app.put("/api/admin/smart-ziw-config")
+def admin_update_smart_ziw_config(body: SmartZiwConfigUpdate, request: Request):
+    _require_admin(request)
+    data = body.model_dump()
+    existing = get_smart_ziw_config()
+    if not data.get("gitlab_token"):
+        data["gitlab_token"] = existing.get("gitlab_token", "")
+    saved = save_smart_ziw_config(data)
+    saved["gitlab_token"] = ""
+    return saved
 
 
 @app.get("/api/download")
