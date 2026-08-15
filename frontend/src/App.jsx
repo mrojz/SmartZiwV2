@@ -2074,6 +2074,7 @@ function AdminPage({ apiFetch }) {
         if (adminTab !== 'llm') return;
         if (llmSource !== 'lightllm' || smartZiwConfig.lightllm_provider !== 'openai_compatible' || !smartZiwConfig.lightllm_base_url.trim()) {
             setLlmModels({ status: 'idle', models: [], detail: null });
+            setLlmModelsLoading(false);
             return;
         }
         discoverLlmModels(smartZiwConfig.lightllm_provider, smartZiwConfig.lightllm_base_url, smartZiwConfig.lightllm_api_key);
@@ -2686,14 +2687,14 @@ function AdminPage({ apiFetch }) {
                             <label className="auth-label">Configuration source</label>
                             <div className="llm-source-options">
                                 <label className="llm-source-option">
-                                    <input type="radio" name="llm-source" checked={llmSource === 'environment'} onChange={() => { llmDiscoverySeq.current += 1; setSmartZiwConfig({ ...smartZiwConfig, smart_ziw_llm_provider: 'deepseek' }); }} />
+                                    <input type="radio" name="llm-source" checked={llmSource === 'environment'} onChange={() => { llmDiscoverySeq.current += 1; setLlmModelsLoading(false); setSmartZiwConfig({ ...smartZiwConfig, smart_ziw_llm_provider: 'deepseek' }); }} />
                                     <span>
                                         <strong>Environment (.env)</strong>
                                         <em>Use the DeepSeek settings from the backend .env file.</em>
                                     </span>
                                 </label>
                                 <label className="llm-source-option">
-                                    <input type="radio" name="llm-source" checked={llmSource === 'lightllm'} onChange={() => { llmDiscoverySeq.current += 1; setSmartZiwConfig({ ...smartZiwConfig, smart_ziw_llm_provider: 'lightllm' }); }} />
+                                    <input type="radio" name="llm-source" checked={llmSource === 'lightllm'} onChange={() => { llmDiscoverySeq.current += 1; setLlmModelsLoading(false); setSmartZiwConfig({ ...smartZiwConfig, smart_ziw_llm_provider: 'lightllm' }); }} />
                                     <span>
                                         <strong>LightLLM</strong>
                                         <em>Use your own OpenAI-compatible LightLLM server.</em>
@@ -2714,7 +2715,7 @@ function AdminPage({ apiFetch }) {
                             <>
                                 <div className="auth-field profile-field-span-2">
                                     <label className="auth-label">LightLLM base URL</label>
-                                    <input className="auth-input" value={smartZiwConfig.lightllm_base_url} onChange={(e) => { llmDiscoverySeq.current += 1; setSmartZiwConfig({ ...smartZiwConfig, lightllm_base_url: e.target.value }); }} placeholder="http://localhost:8000/v1" />
+                                    <input className="auth-input" value={smartZiwConfig.lightllm_base_url} onChange={(e) => { llmDiscoverySeq.current += 1; setLlmModelsLoading(false); setSmartZiwConfig({ ...smartZiwConfig, lightllm_base_url: e.target.value }); }} placeholder="http://localhost:8000/v1" />
                                 </div>
                                 <div className="auth-field">
                                     <label className="auth-label">LightLLM API key</label>
@@ -2722,7 +2723,7 @@ function AdminPage({ apiFetch }) {
                                 </div>
                                 <div className="auth-field">
                                     <label className="auth-label">Provider (server type)</label>
-                                    <select className="auth-input" value={smartZiwConfig.lightllm_provider} onChange={(e) => setSmartZiwConfig({ ...smartZiwConfig, lightllm_provider: e.target.value })}>
+                                    <select className="auth-input" value={smartZiwConfig.lightllm_provider} onChange={(e) => { llmDiscoverySeq.current += 1; setLlmModelsLoading(false); setSmartZiwConfig({ ...smartZiwConfig, lightllm_provider: e.target.value }); }}>
                                         <option value="openai_compatible">OpenAI-compatible</option>
                                         <option value="custom">Custom (enter model manually)</option>
                                     </select>
