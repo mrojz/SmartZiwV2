@@ -18,8 +18,10 @@ from smart_ziw_agent import (
     ENRICH_PROMPT,
     CHAT_PROMPT,
     _default_enrichment,
+    _human_only_actions,
+    _render_research_next_actions,
 )
-from smart_ziw_research import ResearchResult
+from smart_ziw_research import ResearchResult, SYNTHESIS_PROMPT
 
 
 def test_build_folder_name():
@@ -138,11 +140,11 @@ def test_render_next_actions_has_actions():
     }
     enrichment = {
         "next_actions": [
-            {"action": "Obtain DCE", "priority": "CRITICAL", "owner": "Commercial", "deadline": "This week", "notes": "Contact buyer"},
+            {"action": "Submit proposal before deadline", "priority": "CRITICAL", "owner": "Commercial", "deadline": "This week", "notes": "Contact buyer"},
         ]
     }
     md = render_next_actions_markdown(project, enrichment)
-    assert "Obtain DCE" in md
+    assert "Submit proposal before deadline" in md
     assert "CRITICAL" in md
 
 
@@ -495,3 +497,77 @@ def test_run_provider_failure_writes_default_files_with_error(monkeypatch, tmp_p
     folder = tmp_path / result["folder"]
     assert (folder / "tender.md").exists()
     assert (folder / "next-actions.md").exists()
+
+
+def _action_row(action):
+    return {"action": action, "priority": "HIGH", "owner": "o", "deadline": "d", "notes": "n"}
+
+
+def test_human_only_actions_keeps_and_drops_fixture_rows():
+    rows = [
+        _action_row("Send clarification email to buyer"),
+        _action_row("Assemble bid team and assign responsibilities"),
+        _action_row("Submit proposal before deadline"),
+        _action_row("Draft and review proposal document"),
+        _action_row("Review eligibility criteria and compliance requirements"),
+        _action_row("Prepare pricing model"),
+        _action_row("Develop technical solution proposal"),
+        _action_row("Obtain full tender document from official SAWES eTender portal"),
+    ]
+    kept = _human_only_actions(rows)
+    assert [row["action"] for row in kept] == [
+        "Send clarification email to buyer",
+        "Assemble bid team and assign responsibilities",
+        "Submit proposal before deadline",
+    ]
+
+
+def test_human_only_actions_handles_malformed_rows():
+    rows = [
+        _action_row("Draft the proposal"),
+        "not a dict",
+        None,
+        {"priority": "HIGH"},
+        {"action": ""},
+        _action_row("Submit proposal"),
+    ]
+    kept = _human_only_actions(rows)
+    assert [row["action"] for row in kept] == ["Submit proposal"]
+
+
+def test_human_only_actions_keeps_unknown_phrasing():
+    kept = _human_only_actions([_action_row("Arrange the kick-off meeting"), _action_row("Book courier for hard copies")])
+    assert [row["action"] for row in kept] == ["Arrange the kick-off meeting", "Book courier for hard copies"]
+
+
+def test_human_only_actions_keeps_marker_verbs_even_with_drop_verb_first():
+    # "obtain" is a drop verb, but the action demands human authority -> keep
+    kept = _human_only_actions([_action_row("Obtain management approval to proceed")])
+    assert len(kept) == 1
+
+
+def test_next_actions_renderer_notes_when_all_rows_automated():
+    project = {"project_name": "IS Security Audit"}
+    enrichment = {"next_actions": [_action_row("Draft and review proposal document")]}
+    markdown = render_next_actions_markdown(project, enrichment)
+    assert "no human-only actions remain" in markdown
+    assert "Draft and review" not in markdown
+
+
+def test_next_actions_renderer_keeps_no_actions_message_when_originally_empty():
+    project = {"project_name": "IS Security Audit"}
+    markdown = render_next_actions_markdown(project, {"next_actions": []})
+    assert "No next actions identified." in markdown
+
+
+def test_research_next_actions_renderer_filters_rows():
+    project = {"project_name": "IS Security Audit"}
+    synthesis = {"next_actions": [_action_row("Prepare pricing model"), _action_row("Submit proposal before deadline")]}
+    markdown = _render_research_next_actions(project, synthesis)
+    assert "Submit proposal before deadline" in markdown
+    assert "Prepare pricing model" not in markdown
+
+
+def test_prompts_require_human_only_next_actions():
+    assert "human authority" in ENRICH_PROMPT
+    assert "human authority" in SYNTHESIS_PROMPT

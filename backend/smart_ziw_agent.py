@@ -159,7 +159,7 @@ Given tender metadata, return JSON with these keys:
 - "tender_summary": string with a concise structured tender overview (title, buyer, country, deadline, source verification, scope, eligibility, practical conclusion) in markdown.
 - "email_draft": string with a draft clarification email body to the buyer.
 - "compliance_matrix": list of objects with keys requirement, status, evidence_needed, owner, notes.
-- "next_actions": list of objects with keys action, priority, owner, deadline, notes.
+- "next_actions": list of objects with keys action, priority, owner, deadline, notes. List ONLY actions that require human authority, legal accountability, physical presence, payment, signatures, team management, or official submission. Exclude anything the agent or LLM already does: drafting, reviewing, summarizing, pricing models, eligibility analysis, retrieving documents, compliance checks, preparing proposals. If every remaining action is automatable, return an empty list.
 - "risks": list of objects with keys risk, likelihood, impact, mitigation (only if uncertainty exists; otherwise empty list).
 - "eligibility_notes": string with eligibility summary.
 - "source_notes": string summarizing source reliability.
@@ -187,6 +187,45 @@ def _default_enrichment() -> dict:
         "drafting_notes": "",
         "recap": "",
     }
+
+
+_HUMAN_ACTION_KEEP_MARKERS = (
+    "submit", "sign", "pay", "notariz", "register", "attend", "meet", "team",
+    "bank guarantee", "bid bond", "authorized", "approval", "call", "negotiat",
+)
+
+_HUMAN_ACTION_DROP_VERBS = (
+    "draft", "prepare", "review", "write", "summarize", "summarise", "research",
+    "analyze", "analyse", "compare", "compile", "create", "generate", "obtain",
+    "retrieve", "download", "check", "verify", "assess", "evaluate", "estimate",
+    "calculate", "develop", "plan", "translate", "extract", "gather", "collect",
+    "find", "list", "outline",
+)
+
+_HUMAN_ACTIONS_AUTOMATED_NOTE = "All identified next actions are automatable by the LLM; no human-only actions remain."
+
+
+def _human_only_actions(rows: list) -> list[dict]:
+    """Keep only next-action rows the LLM cannot perform itself (human authority,
+    legal accountability, physical presence, payment, signatures, team
+    management, official submission)."""
+    kept = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        text = str(row.get("action") or "").strip().lower()
+        if not text:
+            continue
+        if "send" in text and "email" in text:
+            kept.append(row)
+            continue
+        if any(marker in text for marker in _HUMAN_ACTION_KEEP_MARKERS):
+            kept.append(row)
+            continue
+        if text.split()[0] in _HUMAN_ACTION_DROP_VERBS:
+            continue
+        kept.append(row)
+    return kept
 
 
 def _enrich(project: dict, llm_call=None) -> dict:
@@ -244,6 +283,10 @@ def render_next_actions_markdown(project: dict, enrichment: dict) -> str:
     rows = enrichment.get("next_actions") or []
     if not rows:
         lines.append("No next actions identified.")
+        return "\n".join(lines)
+    rows = _human_only_actions(rows)
+    if not rows:
+        lines.append(_HUMAN_ACTIONS_AUTOMATED_NOTE)
         return "\n".join(lines)
     lines.extend(["| Action | Priority | Owner | Deadline | Notes |", "|--------|----------|-------|----------|-------|"])
     for row in rows:
@@ -319,6 +362,10 @@ def _render_research_next_actions(project: dict, synthesis: dict) -> str:
     lines = [f"# Next Actions: {title}", ""]
     if not rows:
         lines.append("No next actions identified.")
+        return "\n".join(lines)
+    rows = _human_only_actions(rows)
+    if not rows:
+        lines.append(_HUMAN_ACTIONS_AUTOMATED_NOTE)
         return "\n".join(lines)
     lines.extend(["| Action | Priority | Owner | Deadline | Notes |", "|--------|----------|-------|----------|-------|"])
     for row in rows:

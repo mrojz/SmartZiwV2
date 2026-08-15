@@ -630,7 +630,7 @@ Return only JSON with exactly these keys:
 - "email_draft": a clarification email body to the buyer asking specifically for the missing inventory items.
 - "compliance_matrix": list of objects with keys requirement, status (one of Compliant | Gap | Risk | Partial), action, source ("[n]" or "unverified").
 - "drafting_notes": markdown with sections "What we can safely say" (cited) and "What we should not assume".
-- "next_actions": list of objects with keys action, priority, owner, deadline, notes.
+- "next_actions": list of objects with keys action, priority, owner, deadline, notes. List ONLY actions that require human authority, legal accountability, physical presence, payment, signatures, team management, or official submission. Exclude anything the agent or LLM already does: drafting, reviewing, summarizing, pricing models, eligibility analysis, retrieving documents, compliance checks, preparing proposals. If every remaining action is automatable, return an empty list.
 - "source_rows": list of objects with keys kind (official | aggregator | document | other), url, captured (true | false), status."""
 
 _COULD_NOT_VERIFY_TENDER = """## Overview
