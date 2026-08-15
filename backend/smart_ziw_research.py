@@ -177,32 +177,29 @@ class DocumentStore:
         if target.exists():
             return target, None
         tmp = target.with_name(target.name + ".part")
-        response = None
         try:
-            response = requests.get(
+            with requests.get(
                 url,
                 stream=True,
                 timeout=self.timeout,
                 headers={"User-Agent": "Mozilla/5.0 (compatible; Smart-Ziw/2.0)"},
-            )
-            response.raise_for_status()
-            if not ext:
-                content_type = (response.headers.get("content-type") or "").split(";")[0].strip().lower()
-                ext = _CONTENT_TYPE_EXTENSIONS.get(content_type, "")
-                target = self.documents_dir / f"{slug}{ext}"
-                tmp = target.with_name(target.name + ".part")
-            with open(tmp, "wb") as handle:
-                for chunk in response.iter_content(chunk_size=65536):
-                    handle.write(chunk)
-                    if handle.tell() > self.max_bytes:
-                        return None, "file exceeds size cap"
+            ) as response:
+                response.raise_for_status()
+                if not ext:
+                    content_type = (response.headers.get("content-type") or "").split(";")[0].strip().lower()
+                    ext = _CONTENT_TYPE_EXTENSIONS.get(content_type, "")
+                    target = self.documents_dir / f"{slug}{ext}"
+                    tmp = target.with_name(target.name + ".part")
+                with open(tmp, "wb") as handle:
+                    for chunk in response.iter_content(chunk_size=65536):
+                        handle.write(chunk)
+                        if handle.tell() > self.max_bytes:
+                            return None, "file exceeds size cap"
             tmp.replace(target)
             return target, None
         except requests.RequestException as exc:
             return None, f"download failed: {type(exc).__name__}"
         finally:
-            if response is not None:
-                response.close()
             if tmp.exists():
                 tmp.unlink(missing_ok=True)
 
@@ -219,11 +216,8 @@ class DocumentStore:
         if suffix == ".pdf":
             try:
                 import pdfplumber
-                pdf = pdfplumber.open(path)
-                try:
+                with pdfplumber.open(path) as pdf:
                     return "\n\n".join(page.extract_text() or "" for page in pdf.pages)
-                finally:
-                    pdf.close()
             except Exception:
                 pass
         elif suffix in (".xlsx", ".xls"):

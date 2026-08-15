@@ -123,6 +123,8 @@ def _fake_get(content=b"%PDF-1.4 fake", status=200, content_type="application/pd
     mock.raise_for_status.return_value = None
     mock.headers = {"content-type": content_type}
     mock.iter_content = lambda chunk_size: iter([content])
+    mock.__enter__ = lambda self: self
+    mock.__exit__ = lambda *args: None
     return mock
 
 
@@ -176,6 +178,8 @@ def test_extract_uses_pdfplumber_fallback(monkeypatch, tmp_path):
     monkeypatch.setitem(sys.modules, "markitdown", None)
     fake_pdf = MagicMock()
     fake_pdf.pages = [MagicMock(extract_text=lambda: "PDF page text")]
+    fake_pdf.__enter__ = lambda self: self
+    fake_pdf.__exit__ = lambda *args: None
     import pdfplumber
     monkeypatch.setattr(pdfplumber, "open", lambda path: fake_pdf)
     store = DocumentStore(tmp_path)
