@@ -834,7 +834,7 @@ function CommentsPanel({
     availableUsers,
     onAssignmentsChange,
     onVoteChange,
-    onDeepDiveSearch,
+    onSmartZiwSearch,
     shareUrl,
 }) {
     const listRef = useRef(null);
@@ -851,7 +851,7 @@ function CommentsPanel({
     const [selectedMentions, setSelectedMentions] = useState([]);
     const [mentionState, setMentionState] = useState({ open: false, query: '', start: -1, end: -1, index: 0 });
     const [savingAssignments, setSavingAssignments] = useState(false);
-    const [runningDeepDive, setRunningDeepDive] = useState(false);
+    const [runningSmartZiw, setRunningSmartZiw] = useState(false);
     const [mentionUsers, setMentionUsers] = useState([]);
     const [shareCopied, setShareCopied] = useState(false);
 
@@ -879,7 +879,7 @@ function CommentsPanel({
             setPreviewAttachment(null);
             setSelectedMentions([]);
             setMentionState({ open: false, query: '', start: -1, end: -1, index: 0 });
-            setRunningDeepDive(false);
+            setRunningSmartZiw(false);
             setShareCopied(false);
         }
     }, [open, entity?.id, project?.manual_deadline]);
@@ -1039,13 +1039,13 @@ function CommentsPanel({
         }
     };
 
-    const handleDeepDiveSearch = async () => {
-        if (!project?.db_id || runningDeepDive) return;
-        setRunningDeepDive(true);
+    const handleSmartZiwSearch = async () => {
+        if (!project?.db_id || runningSmartZiw) return;
+        setRunningSmartZiw(true);
         try {
-            await onDeepDiveSearch?.(project.db_id);
+            await onSmartZiwSearch?.(project.db_id);
         } finally {
-            setRunningDeepDive(false);
+            setRunningSmartZiw(false);
         }
     };
 
@@ -1326,16 +1326,16 @@ function CommentsPanel({
                                 <button
                                     type="button"
                                     className="profile-btn profile-btn-primary"
-                                    onClick={handleDeepDiveSearch}
-                                    disabled={!project?.db_id || runningDeepDive || project?.deep_dive_status === 'queued' || project?.deep_dive_status === 'running'}
+                                    onClick={handleSmartZiwSearch}
+                                    disabled={!project?.db_id || runningSmartZiw || project?.smart_ziw_status === 'queued' || project?.smart_ziw_status === 'running'}
                                 >
-                                    {runningDeepDive || project?.deep_dive_status === 'queued' || project?.deep_dive_status === 'running' ? 'Searching...' : 'Deep Dive Search'}
+                                    {runningSmartZiw || project?.smart_ziw_status === 'queued' || project?.smart_ziw_status === 'running' ? 'Generating...' : 'Smart-Ziw Agent'}
                                 </button>
-                                {project?.deep_dive_status ? (
-                                    <span className={`project-deep-dive-status is-${project.deep_dive_status}`}>
-                                        {project?.deep_dive_status === 'error' && project?.deep_dive_error
-                                            ? `Last run failed: ${project.deep_dive_error}`
-                                            : `Deep dive status: ${project.deep_dive_status}`}
+                                {project?.smart_ziw_status ? (
+                                    <span className={`project-smart-ziw-status is-${project.smart_ziw_status}`}>
+                                        {project?.smart_ziw_status === 'error' && project?.smart_ziw_error
+                                            ? `Last run failed: ${project.smart_ziw_error}`
+                                            : `Smart-Ziw status: ${project.smart_ziw_status}`}
                                     </span>
                                 ) : null}
                             </div>
@@ -3208,15 +3208,15 @@ export default function App() {
         return updated;
     }, [selectedProject?.db_id, apiFetch]);
 
-    const handleDeepDiveSearch = async (projectDbId) => {
-        const res = await apiFetch(`${API}/projects/by-db-id/${encodeURIComponent(projectDbId)}/deep-dive`, {
+    const handleSmartZiwSearch = async (projectDbId) => {
+        const res = await apiFetch(`${API}/projects/by-db-id/${encodeURIComponent(projectDbId)}/smart-ziw`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({}),
+            body: JSON.stringify({ force: false }),
         });
         if (!res.ok) {
             const errorData = await res.json().catch(() => ({}));
-            throw new Error(errorData?.detail || 'Failed to start Deep Dive Search');
+            throw new Error(errorData?.detail || 'Failed to start Smart-Ziw Agent');
         }
         const data = await res.json().catch(() => ({}));
         const updated = data?.project;
@@ -3728,7 +3728,7 @@ export default function App() {
                 }}
                 onAssignmentsChange={handleAssignmentsChange}
                 onVoteChange={handleVoteChange}
-                onDeepDiveSearch={handleDeepDiveSearch}
+                onSmartZiwSearch={handleSmartZiwSearch}
             />
 
             <SyncPanel open={syncOpen} onClose={() => setSyncOpen(false)} onSyncDone={handleSyncDone} onSyncStart={snapshotBeforeSync} apiFetch={apiFetch} />

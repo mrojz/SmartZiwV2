@@ -3240,22 +3240,22 @@ body {
   margin-top: 12px;
 }
 
-.project-deep-dive-status {
-  font-size: 0.82rem;
+.project-smart-ziw-status {
+  font-size: 0.75rem;
   color: var(--text-muted);
 }
 
-.project-deep-dive-status.is-running,
-.project-deep-dive-status.is-queued {
-  color: var(--accent);
+.project-smart-ziw-status.is-running,
+.project-smart-ziw-status.is-queued {
+  color: var(--warning, #f59e0b);
 }
 
-.project-deep-dive-status.is-completed {
-  color: var(--green);
+.project-smart-ziw-status.is-completed {
+  color: var(--success, #10b981);
 }
 
-.project-deep-dive-status.is-error {
-  color: #c0392b;
+.project-smart-ziw-status.is-error {
+  color: var(--danger, #ef4444);
 }
 
 .inspector-discussion-head {
