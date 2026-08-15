@@ -990,6 +990,10 @@ class SmartZiwConfigUpdate(BaseModel):
     firecrawl_base_url: str = "https://api.firecrawl.dev"
     smart_ziw_research_enabled: bool = True
     smart_ziw_research_timeout_seconds: int = 900
+    smart_ziw_llm_provider: str = "auto"
+    lightllm_base_url: str = ""
+    lightllm_api_key: str = ""
+    lightllm_model: str = "default"
 
 
 class SavedSearchItem(BaseModel):
@@ -1640,6 +1644,7 @@ def admin_get_smart_ziw_config(request: Request):
     config = get_smart_ziw_config()
     config["gitlab_token"] = ""
     config["firecrawl_api_key"] = ""
+    config["lightllm_api_key"] = ""
     return config
 
 
@@ -1652,9 +1657,12 @@ def admin_update_smart_ziw_config(body: SmartZiwConfigUpdate, request: Request):
         data["gitlab_token"] = existing.get("gitlab_token", "")
     if not data.get("firecrawl_api_key"):
         data["firecrawl_api_key"] = existing.get("firecrawl_api_key", "")
+    if not data.get("lightllm_api_key"):
+        data["lightllm_api_key"] = existing.get("lightllm_api_key", "")
     saved = save_smart_ziw_config(data)
     saved["gitlab_token"] = ""
     saved["firecrawl_api_key"] = ""
+    saved["lightllm_api_key"] = ""
     return saved
 
 

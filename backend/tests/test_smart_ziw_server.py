@@ -25,6 +25,7 @@ def _config_with_secrets():
     return {
         "firecrawl_api_key": "SECRET-FC-KEY",
         "gitlab_token": "SECRET-GL-TOKEN",
+        "lightllm_api_key": "SECRET-LL-KEY",
         "firecrawl_base_url": "https://api.firecrawl.dev",
         "smart_ziw_research_enabled": True,
         "smart_ziw_research_timeout_seconds": 900,
@@ -40,6 +41,7 @@ def test_admin_get_redacts_firecrawl_and_gitlab_keys(monkeypatch):
     data = r.json()
     assert data["firecrawl_api_key"] == ""
     assert data["gitlab_token"] == ""
+    assert data["lightllm_api_key"] == ""
 
 
 def test_admin_update_preserves_empty_tokens(monkeypatch):
@@ -53,12 +55,14 @@ def test_admin_update_preserves_empty_tokens(monkeypatch):
 
     monkeypatch.setattr(server, "save_smart_ziw_config", fake_save)
     client = TestClient(server.app)
-    r = client.put("/api/admin/smart-ziw-config", json={"firecrawl_api_key": "", "gitlab_token": ""})
+    r = client.put("/api/admin/smart-ziw-config", json={"firecrawl_api_key": "", "gitlab_token": "", "lightllm_api_key": ""})
     assert r.status_code == 200
     assert saved["firecrawl_api_key"] == "SECRET-FC-KEY"
     assert saved["gitlab_token"] == "SECRET-GL-TOKEN"
+    assert saved["lightllm_api_key"] == "SECRET-LL-KEY"
     assert r.json()["firecrawl_api_key"] == ""
     assert r.json()["gitlab_token"] == ""
+    assert r.json()["lightllm_api_key"] == ""
 
 
 def test_admin_update_stores_new_firecrawl_key(monkeypatch):
@@ -72,9 +76,34 @@ def test_admin_update_stores_new_firecrawl_key(monkeypatch):
 
     monkeypatch.setattr(server, "save_smart_ziw_config", fake_save)
     client = TestClient(server.app)
-    r = client.put("/api/admin/smart-ziw-config", json={"firecrawl_api_key": "NEW-KEY"})
+    r = client.put("/api/admin/smart-ziw-config", json={"firecrawl_api_key": "NEW-KEY", "lightllm_api_key": "NEW-LL-KEY"})
     assert r.status_code == 200
     assert saved["firecrawl_api_key"] == "NEW-KEY"
+    assert saved["lightllm_api_key"] == "NEW-LL-KEY"
+
+
+def test_admin_update_stores_llm_provider_fields(monkeypatch):
+    saved = {}
+    monkeypatch.setattr(server, "_get_request_user", lambda req: _mk_admin())
+    monkeypatch.setattr(server, "get_smart_ziw_config", _config_with_secrets)
+
+    def fake_save(config):
+        saved.update(config)
+        return config
+
+    monkeypatch.setattr(server, "save_smart_ziw_config", fake_save)
+    client = TestClient(server.app)
+    r = client.put("/api/admin/smart-ziw-config", json={
+        "smart_ziw_llm_provider": "lightllm",
+        "lightllm_base_url": "http://localhost:8000/v1",
+        "lightllm_model": "Qwen/Qwen2.5-7B-Instruct",
+    })
+    assert r.status_code == 200
+    assert saved["smart_ziw_llm_provider"] == "lightllm"
+    assert saved["lightllm_base_url"] == "http://localhost:8000/v1"
+    assert saved["lightllm_model"] == "Qwen/Qwen2.5-7B-Instruct"
+    assert saved["lightllm_api_key"] == "SECRET-LL-KEY"
+    assert r.json()["lightllm_api_key"] == ""
 
 
 def test_format_comment_includes_research_summary():
