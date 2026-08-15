@@ -11,6 +11,7 @@ from smart_ziw_agent import (
     _enrich,
     _safe_json_loads,
     run,
+    push_to_gitlab,
 )
 
 
@@ -211,3 +212,12 @@ def test_run_gracefully_handles_missing_api_key(monkeypatch, tmp_path):
     assert (tmp_path / result["folder"] / "email.md").exists()
     assert (tmp_path / result["folder"] / "compliance-matrix.md").exists()
     assert (tmp_path / result["folder"] / "next-actions.md").exists()
+
+
+from unittest.mock import patch
+
+
+def test_push_to_gitlab_config_missing_skips():
+    result = push_to_gitlab(Path("/tmp/fake"), "folder", {})
+    assert result["pushed"] is False
+    assert "disabled" in result["message"].lower()

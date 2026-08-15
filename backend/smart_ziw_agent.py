@@ -1,6 +1,7 @@
 import json
 import os
 import re
+import subprocess
 from datetime import datetime
 from pathlib import Path
 
@@ -330,6 +331,45 @@ def render_optional_files(project: dict, enrichment: dict) -> dict[str, str]:
     return files
 
 
+def push_to_gitlab(repo_path: Path, folder: str, config: dict) -> dict:
+    if not config.get("gitlab_push_enabled"):
+        return {"pushed": False, "message": "GitLab push disabled"}
+    url = config.get("gitlab_url", "").rstrip("/")
+    token = config.get("gitlab_token", "")
+    project_path = config.get("gitlab_project_path", "").strip("/")
+    branch = config.get("gitlab_branch", "main")
+    author_name = config.get("gitlab_author_name", "Smart-Ziw Agent")
+    author_email = config.get("gitlab_author_email", "smart-ziw@localhost")
+    if not all([url, token, project_path]):
+        return {"pushed": False, "message": "GitLab config incomplete"}
+
+    remote_url = f"{url}/api/v4/projects/{project_path.replace('/', '%2F')}"
+    git_remote = f"https://oauth2:{token}@{url.replace('https://', '').replace('http://', '')}/{project_path}.git"
+
+    def _git(args, check=True):
+        return subprocess.run(
+            ["git"] + args,
+            cwd=str(repo_path),
+            check=check,
+            capture_output=True,
+            text=True,
+        )
+
+    try:
+        _git(["remote", "set-url", "origin", git_remote], check=False)
+        _git(["config", "user.name", author_name], check=False)
+        _git(["config", "user.email", author_email], check=False)
+        _git(["add", f"{folder}/"])
+        status = _git(["status", "--porcelain"], check=False)
+        if not status.stdout.strip():
+            return {"pushed": False, "message": "No changes to commit"}
+        _git(["commit", "-m", f"smart-ziw: add/update {folder}"])
+        push = _git(["push", "origin", branch])
+        return {"pushed": True, "message": push.stdout or "Pushed successfully"}
+    except subprocess.CalledProcessError as exc:
+        return {"pushed": False, "message": f"Git error: {exc.stderr or exc.stdout}"}
+
+
 def run(project: dict, config: dict | None = None) -> dict:
     config = config or {}
     folder = build_folder_name(project)
@@ -346,11 +386,13 @@ def run(project: dict, config: dict | None = None) -> dict:
     folder_path.mkdir(parents=True, exist_ok=True)
     for name, content in files.items():
         (folder_path / name).write_text(content, encoding="utf-8")
+    git_result = push_to_gitlab(repo_path, folder, config)
     result = {
         "folder": folder,
         "files": list(files.keys()),
         "repo_path": str(repo_path),
-        "gitlab_pushed": False,
+        "gitlab_pushed": git_result["pushed"],
+        "gitlab_message": git_result["message"],
     }
     error = enrichment.get("error")
     if error:
