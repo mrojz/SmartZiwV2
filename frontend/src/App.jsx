@@ -16,9 +16,20 @@ import { Table } from '@/components/application/table/table';
 import { Dropdown } from '@/components/base/dropdown/dropdown';
 
 const API = '/api';
-const APP_RELEASE_VERSION = '1.2';
+const APP_RELEASE_VERSION = '1.3';
 const RELEASE_NOTES_STORAGE_KEY = 'pw_release_notes_seen';
 const DEFAULT_RELEASE_NOTES = [
+    {
+        version: '1.3',
+        title: 'Smart-Ziw Agent replaces Deep Dive',
+        summary: 'Replaced Deep Dive research with Smart-Ziw project mirror generation and added configurable GitLab push.',
+        items: [
+            'Replaced Deep Dive Search with Smart-Ziw Agent in the project inspector.',
+            'Smart-Ziw Agent generates dated tender folders with markdown mirrors.',
+            'Added admin settings for local repo path and optional GitLab push.',
+            'Removed the legacy Deep Dive feature and API.',
+        ],
+    },
     {
         version: '1.2',
         title: 'More sources and richer discussion previews',
