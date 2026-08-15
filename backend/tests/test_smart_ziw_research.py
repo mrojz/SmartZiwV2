@@ -431,3 +431,80 @@ def test_run_research_no_key_returns_error(monkeypatch, tmp_path):
     result = run_research(PROJECT, {"smart_ziw_repo_path": "/tmp/x"}, folder_path=tmp_path / "f", llm_call=call)
     assert result.error == "firecrawl_api_key is not configured"
     assert counters["seed"] == 0
+
+
+from smart_ziw_research import (
+    SUMMARIZE_PROMPT,
+    SYNTHESIS_PROMPT,
+    CorpusItem,
+    ResearchResult,
+    synthesize,
+)
+
+SYNTH_FULL = {
+    "tender_markdown": "## Overview\n\nVerified [1]",
+    "email_draft": "Dear buyer,",
+    "compliance_matrix": [{"requirement": "r", "status": "Compliant", "action": "a", "source": "[1]"}],
+    "drafting_notes": "safe to say: [1]",
+    "next_actions": [{"action": "a", "priority": "HIGH", "owner": "o", "deadline": "d", "notes": "n"}],
+    "source_rows": [{"kind": "official", "url": "https://example.com", "captured": True, "status": "ok"}],
+}
+
+
+def _make_research(num_items: int) -> ResearchResult:
+    corpus = EvidenceCorpus()
+    for index in range(num_items):
+        corpus.add("page", f"https://example.com/p{index}", f"P{index}", f"content {index}")
+    return ResearchResult(items=corpus.items, citation_map=corpus.citation_map())
+
+
+def test_synthesize_chunks_and_returns_coerced_dict():
+    research = _make_research(10)  # 2 chunks of 8
+    calls = {"summarize": 0, "final": 0}
+
+    def call(system, user):
+        if system == SUMMARIZE_PROMPT:
+            calls["summarize"] += 1
+            return {"summaries": [{"citation": 1, "summary": "s"}]}
+        if system == SYNTHESIS_PROMPT:
+            calls["final"] += 1
+            return SYNTH_FULL
+        raise AssertionError(f"unexpected prompt: {system[:60]}")
+
+    result = synthesize(PROJECT, research, llm_call=call)
+    assert calls["summarize"] == 2
+    assert calls["final"] == 1
+    assert result["tender_markdown"] == "## Overview\n\nVerified [1]"
+    assert result["compliance_matrix"][0]["status"] == "Compliant"
+    assert result["email_draft"] == "Dear buyer,"
+    assert len(result["source_rows"]) == 1
+
+
+def test_synthesize_coerces_bad_fields_to_safe_defaults():
+    research = _make_research(0)
+
+    def call(system, user):
+        if system == SUMMARIZE_PROMPT:
+            raise AssertionError("no chunks expected")
+        if system == SYNTHESIS_PROMPT:
+            return {"compliance_matrix": "not a list", "next_actions": None, "source_rows": "bad"}
+        raise AssertionError(f"unexpected prompt: {system[:60]}")
+
+    result = synthesize(PROJECT, research, llm_call=call)
+    assert result["compliance_matrix"] == []
+    assert result["next_actions"] == []
+    assert result["tender_markdown"]  # honest fallback body
+    assert "MONITOR" in result["tender_markdown"]
+    assert isinstance(result["source_rows"], list)
+    assert result["source_rows"] == []  # no corpus items to fall back on
+
+
+def test_synthesize_llm_failure_returns_error_dict():
+    research = _make_research(2)
+
+    def call(system, user):
+        raise RuntimeError("DeepSeek down")
+
+    result = synthesize(PROJECT, research, llm_call=call)
+    assert "_error" in result
+    assert "DeepSeek synthesis failed" in result["_error"]
