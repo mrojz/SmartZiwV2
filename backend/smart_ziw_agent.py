@@ -1,7 +1,10 @@
+import json
 import os
 import re
 from datetime import datetime
 from pathlib import Path
+
+from openai import OpenAI
 
 
 def _safe_slug(text: str, max_len: int = 40) -> str:
@@ -83,11 +86,183 @@ def render_email_markdown(project: dict) -> str:
     return "\n".join(lines)
 
 
+def _deepseek_client():
+    api_key = os.environ.get("DEEPSEEK_API_KEY", "")
+    base_url = os.environ.get("DEEPSEEK_BASE_URL", "https://api.deepseek.com")
+    if not api_key:
+        raise RuntimeError("DEEPSEEK_API_KEY is not configured")
+    return OpenAI(api_key=api_key, base_url=base_url)
+
+
+def _safe_json_loads(content: str) -> dict:
+    text = (content or "").strip()
+    if text.startswith("```"):
+        parts = text.split("```")
+        if len(parts) >= 2:
+            text = parts[1]
+            if text.startswith("json"):
+                text = text[4:]
+            text = text.strip()
+    try:
+        parsed = json.loads(text)
+        return parsed if isinstance(parsed, dict) else {}
+    except Exception:
+        match = re.search(r"\{[\s\S]*\}", text)
+        if not match:
+            return {}
+        try:
+            parsed = json.loads(match.group(0))
+            return parsed if isinstance(parsed, dict) else {}
+        except Exception:
+            return {}
+
+
+def _call_llm(system_prompt: str, user_prompt: str) -> dict:
+    client = _deepseek_client()
+    model = os.environ.get("DEEPSEEK_MODEL", os.environ.get("DEEPSEEK_WEB_MODEL", "deepseek-chat"))
+    response = client.chat.completions.create(
+        model=model,
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ],
+        temperature=0.1,
+        max_tokens=2000,
+        response_format={"type": "json_object"},
+    )
+    content = response.choices[0].message.content or "{}"
+    return _safe_json_loads(content)
+
+
+ENRICH_PROMPT = """You are a tender intelligence assistant.
+Given tender metadata, return JSON with these keys:
+- "compliance_matrix": list of objects with keys requirement, status, evidence_needed, owner, notes.
+- "next_actions": list of objects with keys action, priority, owner, deadline, notes.
+- "risks": list of objects with keys risk, likelihood, impact, mitigation (only if uncertainty exists; otherwise empty list).
+- "eligibility_notes": string with eligibility summary.
+- "source_notes": string summarizing source reliability.
+- "pricing_notes": string with budget/value assessment.
+Keep each list concise (max 8 items). Mark uncertain items clearly."""
+
+
+def _enrich(project: dict) -> dict:
+    user_prompt = "\n".join([
+        f"Tender name: {project.get('project_name') or ''}",
+        f"Buyer: {project.get('project_sponsor') or ''}",
+        f"Country: {project.get('primary_country_name_en') or ''}",
+        f"Deadline: {project.get('project_end_date') or project.get('effective_deadline') or ''}",
+        f"Source: {project.get('source') or ''}",
+        f"Source URL: {project.get('project_url') or ''}",
+        f"Description: {project.get('project_description') or ''}",
+    ])
+    result = _call_llm(ENRICH_PROMPT, user_prompt)
+    return {
+        "compliance_matrix": result.get("compliance_matrix") or [],
+        "next_actions": result.get("next_actions") or [],
+        "risks": result.get("risks") or [],
+        "eligibility_notes": str(result.get("eligibility_notes") or "").strip(),
+        "source_notes": str(result.get("source_notes") or "").strip(),
+        "pricing_notes": str(result.get("pricing_notes") or "").strip(),
+    }
+
+
+def render_compliance_matrix_markdown(project: dict, enrichment: dict) -> str:
+    title = project.get("project_name") or "Tender"
+    lines = [f"# Compliance Matrix: {title}", ""]
+    rows = enrichment.get("compliance_matrix") or []
+    if not rows:
+        lines.append("No compliance items identified.")
+        return "\n".join(lines)
+    lines.extend(["| Requirement | Status | Evidence Needed | Owner | Notes |", "|-------------|--------|-----------------|-------|-------|"])
+    for row in rows:
+        lines.append(f"| {row.get('requirement', '-')} | {row.get('status', '-')} | {row.get('evidence_needed', row.get('evidence', '-'))} | {row.get('owner', '-')} | {row.get('notes', '-')} |")
+    return "\n".join(lines)
+
+
+def render_next_actions_markdown(project: dict, enrichment: dict) -> str:
+    title = project.get("project_name") or "Tender"
+    lines = [f"# Next Actions: {title}", ""]
+    rows = enrichment.get("next_actions") or []
+    if not rows:
+        lines.append("No next actions identified.")
+        return "\n".join(lines)
+    lines.extend(["| Action | Priority | Owner | Deadline | Notes |", "|--------|----------|-------|----------|-------|"])
+    for row in rows:
+        lines.append(f"| {row.get('action', '-')} | {row.get('priority', '-')} | {row.get('owner', '-')} | {row.get('deadline', '-')} | {row.get('notes', '-')} |")
+    return "\n".join(lines)
+
+
+def render_risks_markdown(project: dict, enrichment: dict) -> str:
+    title = project.get("project_name") or "Tender"
+    rows = enrichment.get("risks") or []
+    if not rows:
+        return ""
+    lines = [f"# Risks: {title}", "", "| Risk | Likelihood | Impact | Mitigation |", "|------|------------|--------|------------|"]
+    for row in rows:
+        lines.append(f"| {row.get('risk', '-')} | {row.get('likelihood', '-')} | {row.get('impact', '-')} | {row.get('mitigation', '-')} |")
+    return "\n".join(lines)
+
+
+def render_eligibility_markdown(project: dict, enrichment: dict) -> str:
+    notes = enrichment.get("eligibility_notes", "")
+    if not notes:
+        return ""
+    title = project.get("project_name") or "Tender"
+    return f"# Eligibility: {title}\n\n{notes}"
+
+
+def render_source_markdown(project: dict, enrichment: dict) -> str:
+    notes = enrichment.get("source_notes", "")
+    if not notes:
+        return ""
+    title = project.get("project_name") or "Tender"
+    return f"# Source Notes: {title}\n\n{notes}"
+
+
+def render_pricing_markdown(project: dict, enrichment: dict) -> str:
+    notes = enrichment.get("pricing_notes", "")
+    if not notes:
+        return ""
+    title = project.get("project_name") or "Tender"
+    return f"# Pricing Notes: {title}\n\n{notes}"
+
+
+def render_optional_files(project: dict, enrichment: dict) -> dict[str, str]:
+    files = {}
+    risks = render_risks_markdown(project, enrichment)
+    if risks:
+        files["risks.md"] = risks
+    eligibility = render_eligibility_markdown(project, enrichment)
+    if eligibility:
+        files["eligibility.md"] = eligibility
+    source = render_source_markdown(project, enrichment)
+    if source:
+        files["source.md"] = source
+    pricing = render_pricing_markdown(project, enrichment)
+    if pricing:
+        files["pricing.md"] = pricing
+    return files
+
+
 def run(project: dict, config: dict | None = None) -> dict:
+    config = config or {}
     folder = build_folder_name(project)
+    enrichment = _enrich(project)
+    files = {
+        "tender.md": render_tender_markdown(project),
+        "email.md": render_email_markdown(project),
+        "compliance-matrix.md": render_compliance_matrix_markdown(project, enrichment),
+        "next-actions.md": render_next_actions_markdown(project, enrichment),
+    }
+    files.update(render_optional_files(project, enrichment))
+    repo_path = Path(config.get("smart_ziw_repo_path", "/home/kali/Smart-Ziw"))
+    folder_path = repo_path / folder
+    folder_path.mkdir(parents=True, exist_ok=True)
+    for name, content in files.items():
+        (folder_path / name).write_text(content, encoding="utf-8")
     return {
         "folder": folder,
-        "files": ["tender.md", "email.md"],
-        "repo_path": (config or {}).get("smart_ziw_repo_path", "/home/kali/Smart-Ziw"),
+        "files": list(files.keys()),
+        "repo_path": str(repo_path),
         "gitlab_pushed": False,
     }
