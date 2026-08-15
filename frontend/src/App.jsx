@@ -2039,7 +2039,7 @@ function AdminPage({ apiFetch }) {
     }, [adminTab, loadReleaseNotes]);
 
     useEffect(() => {
-        if (adminTab !== 'smart-ziw') return;
+        if (adminTab !== 'smart-ziw' && adminTab !== 'llm') return;
         loadSmartZiwConfig();
     }, [adminTab, loadSmartZiwConfig]);
 
@@ -2259,7 +2259,7 @@ function AdminPage({ apiFetch }) {
         <div className="layout-stack admin-users-page">
             <PageHeader
                 title="Admin"
-                subtitle={adminTab === 'users' ? 'Create, edit, deactivate users, and reset passwords.' : adminTab === 'release-notes' ? 'Create new release notes or update existing versions.' : 'Configure the Smart-Ziw agent and optional GitLab push.'}
+                subtitle={adminTab === 'users' ? 'Create, edit, deactivate users, and reset passwords.' : adminTab === 'release-notes' ? 'Create new release notes or update existing versions.' : adminTab === 'llm' ? 'Configure the LLM backend used by the Smart-Ziw agent.' : 'Configure the Smart-Ziw agent and optional GitLab push.'}
                 action={(
                     <div className="admin-users-header-actions">
                         {adminTab === 'users' ? (
@@ -2289,6 +2289,7 @@ function AdminPage({ apiFetch }) {
                 <button type="button" className={`admin-page-tab ${adminTab === 'users' ? 'active' : ''}`} onClick={() => setAdminTab('users')}>User Management</button>
                 <button type="button" className={`admin-page-tab ${adminTab === 'release-notes' ? 'active' : ''}`} onClick={() => setAdminTab('release-notes')}>Release Notes</button>
                 <button type="button" className={`admin-page-tab ${adminTab === 'smart-ziw' ? 'active' : ''}`} onClick={() => setAdminTab('smart-ziw')}>Smart-Ziw</button>
+                <button type="button" className={`admin-page-tab ${adminTab === 'llm' ? 'active' : ''}`} onClick={() => setAdminTab('llm')}>LLM Provider</button>
             </div>
 
             {adminTab === 'users' ? (
@@ -2599,7 +2600,25 @@ function AdminPage({ apiFetch }) {
                             <label className="auth-label">Research timeout (seconds)</label>
                             <input className="auth-input" type="number" min={1} value={smartZiwConfig.smart_ziw_research_timeout_seconds} onChange={(e) => { const value = Number(e.target.value); setSmartZiwConfig({ ...smartZiwConfig, smart_ziw_research_timeout_seconds: Number.isFinite(value) && value >= 1 ? value : 900 }) }} />
                         </div>
-                        <h4 style={{ gridColumn: '1 / -1', margin: '8px 0 0' }}>LLM provider</h4>
+                    </div>
+                    <div className="profile-card-footer profile-card-footer-end">
+                        <button type="button" className="profile-btn profile-btn-primary" onClick={saveSmartZiwConfig} disabled={savingSmartZiwConfig}>
+                            {savingSmartZiwConfig ? 'Saving...' : 'Save config'}
+                        </button>
+                    </div>
+                </div>
+            ) : null}
+
+            {adminTab === 'llm' ? (
+                <div className="panel-card">
+                    <div className="profile-card-head">
+                        <div>
+                            <h3>LLM Provider</h3>
+                            <p className="profile-card-description">Configure the LLM backend used by the Smart-Ziw agent.</p>
+                        </div>
+                    </div>
+                    {message ? <div className="admin-users-message">{message}</div> : null}
+                    <div className="profile-settings-grid">
                         <div className="auth-field profile-field-span-2">
                             <label className="auth-label">Provider</label>
                             <select className="auth-input" value={smartZiwConfig.smart_ziw_llm_provider} onChange={(e) => setSmartZiwConfig({ ...smartZiwConfig, smart_ziw_llm_provider: e.target.value })}>
