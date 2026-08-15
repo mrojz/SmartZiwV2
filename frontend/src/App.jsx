@@ -2715,7 +2715,7 @@ function AdminPage({ apiFetch }) {
                             <>
                                 <div className="auth-field profile-field-span-2">
                                     <label className="auth-label">LightLLM base URL</label>
-                                    <input className="auth-input" value={smartZiwConfig.lightllm_base_url} onChange={(e) => { llmDiscoverySeq.current += 1; setLlmModelsLoading(false); setSmartZiwConfig({ ...smartZiwConfig, lightllm_base_url: e.target.value }); }} placeholder="http://localhost:8000/v1" />
+                                    <input className="auth-input" value={smartZiwConfig.lightllm_base_url} onChange={(e) => { llmDiscoverySeq.current += 1; setLlmModelsLoading(false); setLlmModels({ status: 'idle', models: [], detail: null }); setSmartZiwConfig({ ...smartZiwConfig, lightllm_base_url: e.target.value }); }} placeholder="http://localhost:8000/v1" />
                                 </div>
                                 <div className="auth-field">
                                     <label className="auth-label">LightLLM API key</label>
