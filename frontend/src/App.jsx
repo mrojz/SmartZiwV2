@@ -1055,6 +1055,8 @@ function CommentsPanel({
         setRunningSmartZiw(true);
         try {
             await onSmartZiwSearch?.(project.db_id);
+        } catch (error) {
+            window.alert(error?.message || 'Failed to start Smart-Ziw Agent');
         } finally {
             setRunningSmartZiw(false);
         }
@@ -2024,6 +2026,8 @@ function AdminPage({ apiFetch }) {
             const data = await res.json();
             setSmartZiwConfig((prev) => ({ ...prev, ...data, gitlab_token: prev.gitlab_token }));
             setMessage('Smart-Ziw config saved.');
+        } catch (error) {
+            setMessage(`Failed to save Smart-Ziw config: ${error?.message || 'unknown error'}`);
         } finally {
             setSavingSmartZiwConfig(false);
         }

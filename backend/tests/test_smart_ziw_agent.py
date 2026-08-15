@@ -27,7 +27,7 @@ def test_build_folder_name():
         "project_description": "IS Security Audit and Pentesting",
     }
     name = build_folder_name(project)
-    assert name == "13072026-Benin-IS-Security-Audit-Firm"
+    assert name == "13072026-CDC-Benin-IS-Security-Audit-Firm"
 
 
 def test_render_tender_markdown_contains_title():
@@ -221,3 +221,44 @@ def test_push_to_gitlab_config_missing_skips():
     result = push_to_gitlab(Path("/tmp/fake"), "folder", {})
     assert result["pushed"] is False
     assert "disabled" in result["message"].lower()
+
+
+def test_push_to_gitlab_incomplete_config():
+    config = {
+        "gitlab_push_enabled": True,
+        "gitlab_url": "https://gitlab.example.com",
+        "gitlab_token": "",
+        "gitlab_project_path": "group/project",
+        "gitlab_branch": "main",
+    }
+    result = push_to_gitlab(Path("/tmp/fake"), "folder", config)
+    assert result["pushed"] is False
+    assert result["message"] == "GitLab config incomplete"
+
+
+def test_push_to_gitlab_token_never_persisted_or_leaked(tmp_path):
+    repo_path = tmp_path / "mirror-repo"
+    repo_path.mkdir()
+    (repo_path / "folder").mkdir()
+    (repo_path / "folder" / "tender.md").write_text("test", encoding="utf-8")
+    token = "super-secret-token-12345"
+    config = {
+        "gitlab_push_enabled": True,
+        # Unroutable host: push fails fast regardless of auth handling.
+        "gitlab_url": "https://127.0.0.1:1",
+        "gitlab_token": token,
+        "gitlab_project_path": "group/project",
+        "gitlab_branch": "main",
+    }
+    result = push_to_gitlab(repo_path, "folder", config)
+    # Push must fail (unreachable host) but never expose the token.
+    assert result["pushed"] is False
+    assert token not in result["message"]
+    # Token must not be persisted in the repo config; remote URL is clean.
+    config_text = ""
+    if (repo_path / ".git" / "config").exists():
+        config_text = (repo_path / ".git" / "config").read_text(encoding="utf-8")
+    assert token not in config_text
+    assert "oauth2:" not in config_text
+    # The folder is committed locally even when the push fails.
+    assert (repo_path / ".git").exists()
