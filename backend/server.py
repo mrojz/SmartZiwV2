@@ -7,6 +7,7 @@ import asyncio
 import json
 import mimetypes
 import os
+import re
 import secrets
 import subprocess
 import sys
@@ -76,7 +77,8 @@ from database import (
     mark_all_notifications_read,
     mark_all_notifications_viewed,
 )
-from smart_ziw_agent import run as run_smart_ziw_agent
+from smart_ziw_agent import run as run_smart_ziw_agent, CHAT_PROMPT
+from smart_ziw_llm import get_llm_call
 
 BASE_DIR = Path(__file__).resolve().parent
 PROJECTS_XLSX = BASE_DIR / "projects.xlsx"
@@ -475,13 +477,12 @@ def _format_smart_ziw_comment(result: dict) -> str:
     return "\n".join(lines)
 
 
+SMART_ZIW_BOT_USER = {"id": "bot:smart-ziw", "name": "Smart-Ziw Bot", "email": "", "avatarUrl": ""}
+_SMART_ZIW_MENTION_TOKEN = "@smartziw"
+_SMART_ZIW_REPLY_MAX_CHARS = 2000
+
+
 def _run_smart_ziw(project_db_id: str, actor_user: dict):
-    bot_user = {
-        "id": "bot:smart-ziw",
-        "name": "Smart-Ziw Bot",
-        "email": "",
-        "avatarUrl": "",
-    }
     try:
         config = get_smart_ziw_config()
         project = update_project_smart_ziw_state_by_db_id(project_db_id, {
@@ -496,7 +497,7 @@ def _run_smart_ziw(project_db_id: str, actor_user: dict):
             entity_type="project",
             entity_id=_project_entity_id(project),
             project=project,
-            author_user=bot_user,
+            author_user=SMART_ZIW_BOT_USER,
             body_text=comment_body,
         )
         enrichment_error = result.get("error")
@@ -518,7 +519,7 @@ def _run_smart_ziw(project_db_id: str, actor_user: dict):
                 entity_type="project",
                 entity_id=_project_entity_id(project),
                 project=project,
-                author_user=bot_user,
+                author_user=SMART_ZIW_BOT_USER,
                 body_text=f"Smart-Ziw Agent could not complete.\n\nNotes: {str(exc).strip()}",
             )
         update_project_smart_ziw_state_by_db_id(project_db_id, {
@@ -529,6 +530,97 @@ def _run_smart_ziw(project_db_id: str, actor_user: dict):
     finally:
         with _smart_ziw_lock:
             _smart_ziw_running.discard(project_db_id)
+
+
+def _build_smart_ziw_chat_prompt(project: dict, comment: dict, thread_comments: list[dict]) -> str:
+    body = re.sub(_SMART_ZIW_MENTION_TOKEN, "", str(comment.get("body") or ""), flags=re.IGNORECASE).strip()
+    lines = [
+        f"Project name: {project.get('project_name') or ''}",
+        f"Buyer: {project.get('project_sponsor') or ''}",
+        f"Country: {project.get('primary_country_name_en') or ''}",
+        f"Deadline: {project.get('project_end_date') or project.get('effective_deadline') or ''}",
+        f"Description: {project.get('project_description') or ''}",
+        f"Source URL: {project.get('project_url') or ''}",
+        f"Smart-Ziw status: {project.get('smart_ziw_status') or 'never run'}",
+        f"Smart-Ziw folder: {project.get('smart_ziw_folder') or 'none'}",
+        "",
+        "Previous comments (oldest first):",
+    ]
+    previous = [c for c in thread_comments if c.get("id") != comment.get("id")][-10:]
+    for previous_comment in previous:
+        body_text = str(previous_comment.get("body") or "").strip()
+        if not body_text:
+            continue
+        lines.append(f"{previous_comment.get('authorName') or 'Unknown'}: {body_text}")
+    lines.extend(["", f"User comment: {body}"])
+    return "\n".join(lines)
+
+
+def _smart_ziw_bot_note(project: dict, body_text: str) -> None:
+    _create_project_comment_and_notify(
+        entity_type="project",
+        entity_id=_project_entity_id(project),
+        project=project,
+        author_user=SMART_ZIW_BOT_USER,
+        body_text=body_text,
+    )
+
+
+def _answer_smart_ziw_mention(project_db_id: str, project: dict, requester: dict, comment: dict) -> None:
+    try:
+        config = get_smart_ziw_config()
+        call = get_llm_call(config, json_mode=False)
+        prompt = _build_smart_ziw_chat_prompt(
+            project,
+            comment,
+            list_comments(comment.get("entityType"), comment.get("entityId")),
+        )
+        answer = str(call(CHAT_PROMPT, prompt) or "").strip() or "Smart-Ziw has no answer for this question."
+        if len(answer) > _SMART_ZIW_REPLY_MAX_CHARS:
+            answer = answer[:_SMART_ZIW_REPLY_MAX_CHARS] + "…"
+        _create_project_comment_and_notify(
+            entity_type="project",
+            entity_id=_project_entity_id(project),
+            project=project,
+            author_user=SMART_ZIW_BOT_USER,
+            body_text=answer,
+            mentions=[{
+                "userId": requester.get("id") or "",
+                "name": requester.get("name") or "",
+                "email": requester.get("email") or "",
+            }],
+        )
+    except Exception as exc:
+        _smart_ziw_bot_note(project, f"Smart-Ziw could not answer: {exc}")
+    finally:
+        with _smart_ziw_lock:
+            _smart_ziw_running.discard(project_db_id)
+
+
+def _maybe_start_smart_ziw_chat(comment: dict, project: dict | None, requester: dict | None) -> None:
+    if not project or not requester:
+        return
+    if comment.get("entityType") != "project":
+        return
+    if _SMART_ZIW_MENTION_TOKEN not in str(comment.get("body") or "").lower():
+        return
+    config = get_smart_ziw_config()
+    if not config.get("smart_ziw_enabled", True):
+        _smart_ziw_bot_note(project, "Smart-Ziw is disabled by the administrator.")
+        return
+    project_db_id = str(project.get("db_id") or "")
+    if not project_db_id:
+        return
+    with _smart_ziw_lock:
+        if project_db_id in _smart_ziw_running:
+            busy = True
+        else:
+            busy = False
+            _smart_ziw_running.add(project_db_id)
+    if busy:
+        _smart_ziw_bot_note(project, "Smart-Ziw is already working on this project. Please wait for the current run to finish.")
+        return
+    threading.Thread(target=_answer_smart_ziw_mention, args=(project_db_id, project, requester, comment), daemon=True).start()
 
 
 # Scheduler/sync
@@ -1266,6 +1358,11 @@ def post_comment(body: CommentCreateRequest, request: Request):
         attachments=body.attachments or [],
         mentions=mentions,
     )
+    if body.entityType == "project":
+        try:
+            _maybe_start_smart_ziw_chat(comment, project, request.state.user)
+        except Exception:
+            pass  # the mention reply must never fail the comment POST
     return {"comment": comment}
 
 
