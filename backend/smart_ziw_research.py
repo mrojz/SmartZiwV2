@@ -16,7 +16,7 @@ from dataclasses import dataclass, field
 
 import requests
 
-from smart_ziw_agent import _safe_slug
+from smart_ziw_agent import _call_llm, _safe_slug, build_folder_name
 
 
 # ---------- SSRF guard ----------
@@ -336,3 +336,234 @@ class EvidenceCorpus:
         if not self.items and not self.failed and not self.blocked:
             lines.append("No research activity recorded.")
         return "\n".join(lines)
+
+
+# ---------- Research loop ----------
+
+GROUP_SIZE = 8
+MAX_CANDIDATES_PER_PROMPT = 30
+MAX_SELECTED_PER_ROUND = 6
+
+SEED_PROMPT = """You are a procurement research planner. Given tender metadata, propose a research plan as JSON:
+- "queries": list of 3-5 search query strings for a web search engine (aim at the official tender notice, the buyer's website, and the national e-GP portal).
+- "official_domains": list of likely official domains (lowercase, no paths, e.g. "presidence.bj").
+- "aggregator_urls": list of 0-3 URLs of tender aggregators likely listing this tender (to verify against official sources).
+Return only JSON."""
+
+SELECT_PROMPT = """You are a procurement research assistant selecting which candidate web pages to scrape next.
+You are given tender metadata, a list of candidates (url, title, description) and the list of already-visited URLs.
+Select at most 6 candidates most likely to be the official tender notice, official buyer pages, or documents. Prefer official sources (government, buyer, e-procurement portals) over aggregators, and novel URLs over visited ones. Ignore obvious noise (job boards, unrelated news, PDF viewers).
+Return only JSON: {"selected": [{"url": "...", "reason": "short reason"}]}"""
+
+ROUND_PROMPT = """You are a procurement research loop controller.
+You are given tender metadata and a list of the sources captured this round (numbered [n] with title, url and a short excerpt).
+Decide whether the round found new relevant leads and propose the next search queries:
+- "stop": true only if the new sources add nothing relevant to the tender (duplicates, unrelated pages, or empty rounds).
+- "next_queries": list of 0-3 NEW search query strings to deepen the research (buyer name, tender title verbatim, document names, national portal). Return an empty list if nothing else is worth searching.
+Return only JSON: {"stop": bool, "next_queries": ["..."]}"""
+
+VERDICT_PROMPT = """You are a procurement bid advisor. Given tender metadata and a numbered list of verified research sources with summaries, decide whether to pursue.
+Return only JSON:
+- "recommendation": one of "GO" (live tender, we are eligible and the deadline allows a bid), "NO-GO" (not a live tender, we are not eligible, or the deadline has passed), "MONITOR" (not yet confirmable or not yet applicable).
+- "reasoning": 2-4 sentences citing sources like [n]."""
+
+
+def _llm_json(system_prompt: str, user_prompt: str, llm_call) -> dict:
+    result = llm_call(system_prompt, user_prompt)
+    return result if isinstance(result, dict) else {}
+
+
+def _metadata_block(project: dict) -> str:
+    return "\n".join([
+        f"Tender name: {project.get('project_name') or ''}",
+        f"Buyer: {project.get('project_sponsor') or ''}",
+        f"Country: {project.get('primary_country_name_en') or ''}",
+        f"Deadline: {project.get('project_end_date') or project.get('effective_deadline') or ''}",
+        f"Source: {project.get('source') or ''}",
+        f"Source URL: {project.get('project_url') or ''}",
+        f"Description: {project.get('project_description') or ''}",
+    ])
+
+
+def _candidate_block(candidates: list[dict]) -> str:
+    lines = []
+    for cand in candidates:
+        lines.append(f"- {cand['url']} — {cand.get('title') or ''} — {(cand.get('description') or '')[:200]}")
+    return "\n".join(lines) or "(none)"
+
+
+def _items_block(items: list, numbers: dict, excerpt_len: int = 500) -> str:
+    lines = []
+    for item in items:
+        number = numbers.get(EvidenceCorpus.normalize_url(item.url), "?")
+        excerpt = (item.markdown or "")[:excerpt_len].replace("\n", " ")
+        lines.append(f"[{number}] {item.title or item.url} ({item.kind}) — {item.url}\n{excerpt}")
+    return "\n\n".join(lines)
+
+
+def _citation_lines(items: list, numbers: dict) -> str:
+    lines = []
+    for item in items:
+        number = numbers.get(EvidenceCorpus.normalize_url(item.url), "?")
+        lines.append(f"[{number}] {item.title or item.url} — {item.url}")
+    return "\n".join(lines)
+
+
+def run_research(project: dict, config: dict, folder_path: Path | None = None, llm_call=None) -> ResearchResult:
+    """Run the adaptive research loop until convergence, dedupe exhaustion, or timeout.
+
+    Never raises; failures are returned in ResearchResult.error with whatever
+    evidence was collected before the failure.
+    """
+    result = ResearchResult()
+    started = time.monotonic()
+    timeout = int(config.get("smart_ziw_research_timeout_seconds", 900))
+    call = llm_call or _call_llm
+    client = FirecrawlClient(config)
+    if not client.api_key:
+        result.error = "firecrawl_api_key is not configured"
+        return result
+    try:
+        if folder_path is None:
+            folder_path = Path(config.get("smart_ziw_repo_path", "/home/kali/Smart-Ziw")) / build_folder_name(project)
+        store = DocumentStore(folder_path)
+        corpus = EvidenceCorpus()
+        stats = {"queries_run": 0, "pages_scraped": 0, "documents_captured": 0}
+        queries_used: set = set()
+
+        # --- Seed: plan queries and verification targets ---
+        seed = _llm_json(SEED_PROMPT, _metadata_block(project), call)
+        queries = [q for q in (seed.get("queries") or []) if isinstance(q, str) and q.strip()][:5]
+        candidate_pool = [
+            {"url": u, "title": "", "description": ""}
+            for u in (seed.get("aggregator_urls") or [])
+            if isinstance(u, str) and u.startswith("http")
+        ]
+        visited: set = set()
+        consecutive_no_new = 0
+
+        while True:
+            if time.monotonic() - started > timeout:
+                result.timed_out = True
+                break
+            # 1. Run pending queries.
+            for query in queries:
+                if query in queries_used:
+                    continue
+                queries_used.add(query)
+                stats["queries_run"] += 1
+                for row in client.search(query, limit=10):
+                    if isinstance(row, dict) and not row.get("_error") and isinstance(row.get("url"), str):
+                        candidate_pool.append({
+                            "url": row["url"],
+                            "title": row.get("title") or "",
+                            "description": row.get("description") or "",
+                        })
+            queries = []
+            # 2. Select candidates (LLM).
+            selection = _llm_json(SELECT_PROMPT, "\n\n".join([
+                _metadata_block(project),
+                "Candidates:",
+                _candidate_block(candidate_pool[:MAX_CANDIDATES_PER_PROMPT]),
+                "Visited URLs:",
+                "\n".join(sorted(visited)) or "(none)",
+            ]), call)
+            candidate_pool = candidate_pool[MAX_CANDIDATES_PER_PROMPT:]
+            selected = [
+                row for row in (selection.get("selected") or [])
+                if isinstance(row, dict) and isinstance(row.get("url"), str)
+            ][:MAX_SELECTED_PER_ROUND]
+            # 3. Scrape pages, download documents, save artifacts.
+            new_urls = 0
+            for row in selected:
+                if time.monotonic() - started > timeout:
+                    result.timed_out = True
+                    break
+                url = row["url"]
+                normalized = EvidenceCorpus.normalize_url(url)
+                if normalized in visited:
+                    continue
+                visited.add(normalized)
+                page = client.scrape(url)
+                if not isinstance(page, dict) or page.get("_error"):
+                    error = page.get("_error", "scrape failed") if isinstance(page, dict) else "scrape failed"
+                    if "blocked" in error:
+                        corpus.record_blocked(url)
+                    else:
+                        corpus.record_failure(url, error)
+                    continue
+                markdown = page.get("markdown") or ""
+                if not markdown.strip():
+                    corpus.record_failure(url, "page returned no content")
+                    continue
+                added = corpus.add("page", url, page.get("title") or row.get("title") or "", markdown, note=row.get("reason", ""))
+                if not added:
+                    continue
+                stats["pages_scraped"] += 1
+                new_urls += 1
+                number = corpus.citation_number(url)
+                (store.artifacts_dir / f"page-{number}.md").write_text(
+                    f"# {page.get('title') or url}\n\nSource: {url}\n\n{markdown}", encoding="utf-8")
+                for link in (page.get("links") or []):
+                    if not isinstance(link, str) or not is_document_url(link):
+                        continue
+                    doc_path, doc_error = store.download(link, title=page.get("title") or "")
+                    if doc_error:
+                        if "blocked" in doc_error:
+                            corpus.record_blocked(link)
+                        else:
+                            corpus.record_failure(link, doc_error)
+                        continue
+                    stats["documents_captured"] += 1
+                    new_urls += 1
+                    artifact_name, extraction_ok = store.save_extraction(doc_path)
+                    artifact_text = (store.artifacts_dir / artifact_name).read_text(encoding="utf-8")
+                    note = f"captured {doc_path.name}" + ("" if extraction_ok else " (extraction failed)")
+                    corpus.add("document", link, doc_path.name, artifact_text, note=note)
+            if result.timed_out:
+                break
+            # 4. Round verdict + next queries (LLM).
+            new_items = corpus.items[-new_urls:] if new_urls else []
+            round_verdict = _llm_json(ROUND_PROMPT, "\n\n".join([
+                _metadata_block(project),
+                "Sources captured this round:",
+                _items_block(new_items, corpus.citation_map(), excerpt_len=500) or "(none)",
+            ]), call)
+            stop = bool(round_verdict.get("stop"))
+            next_queries = [
+                q for q in (round_verdict.get("next_queries") or [])
+                if isinstance(q, str) and q.strip() and q not in queries_used
+            ][:3]
+            if stop:
+                consecutive_no_new += 1
+            else:
+                consecutive_no_new = 0
+            if consecutive_no_new >= 2:
+                break
+            if new_urls == 0 and not next_queries and not candidate_pool and not stop:
+                break  # dedupe exhaustion: nothing left to try
+            queries = next_queries
+
+        # --- Final verdict ---
+        if corpus.items:
+            verdict = _llm_json(VERDICT_PROMPT, "\n\n".join([
+                _metadata_block(project),
+                "Sources:",
+                _citation_lines(corpus.items, corpus.citation_map()),
+                "Summaries:",
+                _items_block(corpus.items, corpus.citation_map(), excerpt_len=1500),
+            ]), call)
+            result.verdict = {
+                "recommendation": str(verdict.get("recommendation") or "MONITOR").upper(),
+                "reasoning": str(verdict.get("reasoning") or ""),
+            }
+        else:
+            result.verdict = {"recommendation": "MONITOR", "reasoning": "could not verify"}
+        result.items = corpus.items
+        result.citation_map = corpus.citation_map()
+        result.stats = stats
+        (store.artifacts_dir / "research-log.md").write_text(corpus.render_log(), encoding="utf-8")
+        return result
+    except Exception as exc:
+        result.error = f"research failed: {exc}"
+        return result

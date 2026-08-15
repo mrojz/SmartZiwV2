@@ -247,3 +247,187 @@ def test_corpus_render_log_lists_sources_failed_blocked():
 def test_corpus_render_log_empty():
     log = EvidenceCorpus().render_log()
     assert "No research activity recorded" in log
+
+
+from smart_ziw_research import (
+    ROUND_PROMPT,
+    SEED_PROMPT,
+    SELECT_PROMPT,
+    VERDICT_PROMPT,
+    DocumentStore,
+    run_research,
+)
+
+PROJECT = {
+    "project_name": "IS Security Audit",
+    "project_sponsor": "CDC Benin",
+    "primary_country_name_en": "Benin",
+    "project_end_date": "2026-07-13",
+    "project_url": "https://example.com/tender",
+    "source": "Global Tenders",
+    "project_description": "Audit and pentesting.",
+}
+
+STUB_CONFIG = {
+    "firecrawl_api_key": "k",
+    "smart_ziw_repo_path": "/tmp/unused",
+    "smart_ziw_research_timeout_seconds": 900,
+}
+
+
+def _counting_call(system, user, counters, seed=None, selects=None, rounds=None, verdict=None):
+    if system == SEED_PROMPT:
+        counters["seed"] += 1
+        return seed or {}
+    if system == SELECT_PROMPT:
+        counters["select"] += 1
+        select = selects.pop(0) if selects else {"selected": []}
+        return select
+    if system == ROUND_PROMPT:
+        counters["round"] += 1
+        return rounds.pop(0) if rounds else {"stop": True, "next_queries": []}
+    if system == VERDICT_PROMPT:
+        counters["verdict"] += 1
+        return verdict or {"recommendation": "MONITOR", "reasoning": "default"}
+    raise AssertionError(f"unexpected prompt: {system[:60]}")
+
+
+def test_run_research_converges_after_two_stops(monkeypatch, tmp_path):
+    class StubClient:
+        def __init__(self, config):
+            self.api_key = "k"
+        def search(self, query, limit=10):
+            return [{"url": "https://example.com/x", "title": "X", "description": "d"}]
+        def scrape(self, url):
+            return {"_error": "not used"}
+
+    monkeypatch.setattr("smart_ziw_research.FirecrawlClient", StubClient)
+    counters = {"seed": 0, "select": 0, "round": 0, "verdict": 0}
+
+    def call(system, user):
+        return _counting_call(
+            system, user, counters,
+            seed={"queries": ["q1"], "official_domains": [], "aggregator_urls": []},
+            selects=[{"selected": []}, {"selected": []}],
+            rounds=[{"stop": True, "next_queries": []}, {"stop": True, "next_queries": []}],
+            verdict={"recommendation": "MONITOR", "reasoning": "no sources"},
+        )
+
+    result = run_research(PROJECT, STUB_CONFIG, folder_path=tmp_path / "folder", llm_call=call)
+    assert result.error == ""
+    assert result.timed_out is False
+    assert counters["round"] == 2
+    assert result.verdict["recommendation"] == "MONITOR"
+    assert result.stats["queries_run"] == 1
+    assert (tmp_path / "folder" / "artifacts" / "research-log.md").exists()
+
+
+def test_run_research_dedupe_exhaustion_stops(monkeypatch, tmp_path):
+    class StubClient:
+        def __init__(self, config):
+            self.api_key = "k"
+        def search(self, query, limit=10):
+            return []
+        def scrape(self, url):
+            return {"_error": "not used"}
+
+    monkeypatch.setattr("smart_ziw_research.FirecrawlClient", StubClient)
+    counters = {"seed": 0, "select": 0, "round": 0, "verdict": 0}
+
+    def call(system, user):
+        return _counting_call(
+            system, user, counters,
+            seed={"queries": [], "official_domains": [], "aggregator_urls": []},
+            rounds=[{"stop": False, "next_queries": []}],
+        )
+
+    result = run_research(PROJECT, STUB_CONFIG, folder_path=tmp_path / "folder", llm_call=call)
+    assert result.error == ""
+    assert counters["round"] == 1  # nothing left to try -> exhaustion
+    assert result.verdict["recommendation"] == "MONITOR"
+
+
+def test_run_research_scrapes_page_and_captures_document(monkeypatch, tmp_path):
+    class StubClient:
+        def __init__(self, config):
+            self.api_key = "k"
+        def search(self, query, limit=10):
+            return [{"url": "https://example.com/notice", "title": "Notice", "description": ""}]
+        def scrape(self, url):
+            return {
+                "markdown": "Tender notice text",
+                "title": "Notice",
+                "url": "https://example.com/notice",
+                "links": ["https://example.com/dce.pdf"],
+            }
+
+    monkeypatch.setattr("smart_ziw_research.FirecrawlClient", StubClient)
+
+    def fake_download(self, url, title=""):
+        path = self.documents_dir / "dce.pdf"
+        path.write_bytes(b"%PDF fake")
+        return path, None
+
+    def fake_save_extraction(self, doc_path):
+        artifact = self.artifacts_dir / "dce.md"
+        artifact.write_text("extracted text", encoding="utf-8")
+        return "dce.md", True
+
+    monkeypatch.setattr(DocumentStore, "download", fake_download)
+    monkeypatch.setattr(DocumentStore, "save_extraction", fake_save_extraction)
+    counters = {"seed": 0, "select": 0, "round": 0, "verdict": 0}
+
+    def call(system, user):
+        return _counting_call(
+            system, user, counters,
+            seed={"queries": [], "official_domains": [], "aggregator_urls": []},
+            selects=[{"selected": [{"url": "https://example.com/notice", "reason": "official"}]},
+                     {"selected": []}],
+            rounds=[{"stop": True, "next_queries": []}, {"stop": True, "next_queries": []}],
+            verdict={"recommendation": "GO", "reasoning": "live tender [1]"},
+        )
+
+    result = run_research(PROJECT, STUB_CONFIG, folder_path=tmp_path / "folder", llm_call=call)
+    assert result.error == ""
+    assert result.stats["pages_scraped"] == 1
+    assert result.stats["documents_captured"] == 1
+    assert len(result.items) == 2
+    assert result.citation_map[EvidenceCorpus.normalize_url("https://example.com/notice")] == 1
+    assert result.verdict["recommendation"] == "GO"
+    assert (tmp_path / "folder" / "artifacts" / "page-1.md").exists()
+    assert (tmp_path / "folder" / "documents" / "dce.pdf").exists()
+    assert (tmp_path / "folder" / "artifacts" / "dce.md").exists()
+
+
+def test_run_research_times_out(monkeypatch, tmp_path):
+    class StubClient:
+        def __init__(self, config):
+            self.api_key = "k"
+        def search(self, query, limit=10):
+            return []
+        def scrape(self, url):
+            return {"_error": "not used"}
+
+    monkeypatch.setattr("smart_ziw_research.FirecrawlClient", StubClient)
+    counters = {"seed": 0, "select": 0, "round": 0, "verdict": 0}
+
+    def call(system, user):
+        return _counting_call(system, user, counters, seed={"queries": [], "official_domains": [], "aggregator_urls": []})
+
+    config = dict(STUB_CONFIG, smart_ziw_research_timeout_seconds=-1)
+    result = run_research(PROJECT, config, folder_path=tmp_path / "folder", llm_call=call)
+    assert result.timed_out is True
+    assert result.error == ""
+    assert counters["round"] == 0
+
+
+def test_run_research_no_key_returns_error(monkeypatch, tmp_path):
+    counters = {"seed": 0, "select": 0, "round": 0, "verdict": 0}
+
+    def call(system, user):
+        counters["seed"] += 1
+        return {}
+
+    result = run_research(PROJECT, {"smart_ziw_repo_path": "/tmp/x"}, folder_path=tmp_path / "f", llm_call=call)
+    assert result.error == "firecrawl_api_key is not configured"
+    assert counters["seed"] == 0
