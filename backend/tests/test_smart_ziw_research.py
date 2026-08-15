@@ -107,7 +107,7 @@ def test_search_without_key_returns_config_error():
     client._session.post.assert_not_called()
 
 
-from smart_ziw_research import DocumentStore, is_document_url
+from smart_ziw_research import DocumentStore, is_document_url, EvidenceCorpus
 
 
 def test_is_document_url_table():
@@ -209,3 +209,41 @@ def test_save_extraction_writes_text(monkeypatch, tmp_path):
     name, ok = store.save_extraction(doc)
     assert ok is True
     assert (store.artifacts_dir / name).read_text(encoding="utf-8") == "extracted text"
+
+
+def test_corpus_dedupes_and_numbers():
+    corpus = EvidenceCorpus()
+    assert corpus.add("page", "https://example.com/a", "A", "text") is True
+    assert corpus.add("page", "https://example.com/a", "A again", "text") is False
+    assert corpus.add("document", "https://example.com/b.pdf", "B", "text") is True
+    assert corpus.citation_number("https://example.com/a") == 1
+    assert corpus.citation_number("https://example.com/b.pdf") == 2
+    assert len(corpus.items) == 2
+
+
+def test_corpus_dedupes_tracking_params_and_fragments():
+    corpus = EvidenceCorpus()
+    assert corpus.add("page", "https://example.com/p?utm_source=x", "P", "text") is True
+    assert corpus.add("page", "https://example.com/p", "P2", "text") is False
+    assert corpus.add("page", "https://example.com/p#section", "P3", "text") is False
+    assert corpus.add("page", "https://example.com/p?ref=keep", "P4", "text") is True
+    assert len(corpus.items) == 2
+
+
+def test_corpus_render_log_lists_sources_failed_blocked():
+    corpus = EvidenceCorpus()
+    corpus.add("page", "https://official.gov.tn/notice", "Notice", "md")
+    corpus.add("document", "https://official.gov.tn/dce.pdf", "DCE", "extracted")
+    corpus.record_failure("https://broken.example.com/x", "download failed: Timeout")
+    corpus.record_blocked("http://10.0.0.5/internal.pdf")
+    log = corpus.render_log()
+    assert "[1] Notice" in log
+    assert "[2] DCE" in log
+    assert "download failed: Timeout" in log
+    assert "http://10.0.0.5/internal.pdf" in log
+    assert "## Sources" in log
+
+
+def test_corpus_render_log_empty():
+    log = EvidenceCorpus().render_log()
+    assert "No research activity recorded" in log

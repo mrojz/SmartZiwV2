@@ -12,6 +12,8 @@ import time
 from pathlib import Path
 from urllib.parse import urlparse, urlunparse
 
+from dataclasses import dataclass, field
+
 import requests
 
 from smart_ziw_agent import _safe_slug
@@ -245,3 +247,92 @@ class DocumentStore:
             f"# {doc_path.name}\n\n> Extraction failed: no text could be extracted.\n", encoding="utf-8"
         )
         return artifact.name, False
+
+
+# ---------- Evidence corpus ----------
+
+@dataclass
+class CorpusItem:
+    kind: str        # "page" | "document"
+    url: str
+    title: str
+    markdown: str
+    note: str = ""
+
+
+@dataclass
+class ResearchResult:
+    items: list = field(default_factory=list)
+    citation_map: dict = field(default_factory=dict)   # normalized url -> [n]
+    verdict: dict = field(default_factory=dict)        # {"recommendation": "GO|NO-GO|MONITOR", "reasoning": "..."}
+    stats: dict = field(default_factory=dict)
+    timed_out: bool = False
+    error: str = ""
+
+
+class EvidenceCorpus:
+    """Ordered, deduplicated collection of sources with [n] citation numbering."""
+
+    def __init__(self):
+        self.items: list[CorpusItem] = []
+        self._url_index: dict[str, int] = {}
+        self.failed: list[dict] = []
+        self.blocked: list[str] = []
+
+    @staticmethod
+    def normalize_url(url: str) -> str:
+        parsed = urlparse(url)
+        query = "&".join(
+            part for part in parsed.query.split("&")
+            if not part.lower().startswith(("utm_", "fbclid", "gclid"))
+        )
+        return urlunparse((parsed.scheme, parsed.netloc.lower(), parsed.path, "", query, ""))
+
+    def add(self, kind: str, url: str, title: str, markdown: str, note: str = "") -> bool:
+        """Add a source; returns False if the URL is already in the corpus."""
+        normalized = self.normalize_url(url)
+        if normalized in self._url_index:
+            return False
+        number = len(self._url_index) + 1
+        self._url_index[normalized] = number
+        self.items.append(CorpusItem(kind=kind, url=url, title=title, markdown=markdown, note=note))
+        return True
+
+    def citation_number(self, url: str) -> int | None:
+        return self._url_index.get(self.normalize_url(url))
+
+    def citation_map(self) -> dict:
+        return dict(self._url_index)
+
+    def record_failure(self, url: str, error: str):
+        self.failed.append({"url": url, "error": error})
+
+    def record_blocked(self, url: str):
+        self.blocked.append(url)
+
+    def render_log(self) -> str:
+        lines = ["# Research Log", ""]
+        if self.items:
+            lines.append("## Sources")
+            lines.append("")
+            for item in self.items:
+                number = self._url_index[self.normalize_url(item.url)]
+                lines.append(f"- [{number}] {item.title or item.url} ({item.kind}) — {item.url}")
+                if item.note:
+                    lines.append(f"  - {item.note}")
+            lines.append("")
+        if self.failed:
+            lines.append("## Failed")
+            lines.append("")
+            for entry in self.failed:
+                lines.append(f"- {entry['url']} — {entry['error']}")
+            lines.append("")
+        if self.blocked:
+            lines.append("## Blocked")
+            lines.append("")
+            for url in self.blocked:
+                lines.append(f"- {url}")
+            lines.append("")
+        if not self.items and not self.failed and not self.blocked:
+            lines.append("No research activity recorded.")
+        return "\n".join(lines)
