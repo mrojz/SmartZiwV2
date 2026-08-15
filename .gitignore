@@ -28,4 +28,4 @@ projects.xlsx
 
 .docx_render_check
 .docx_render_check_2
-.playwright-mcp
+.playwright-mcp.worktrees/
