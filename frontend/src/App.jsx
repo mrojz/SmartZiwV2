@@ -2583,7 +2583,7 @@ function AdminPage({ apiFetch }) {
                         </div>
                         <div className="auth-field">
                             <label className="auth-label">Research timeout (seconds)</label>
-                            <input className="auth-input" type="number" value={smartZiwConfig.smart_ziw_research_timeout_seconds} onChange={(e) => setSmartZiwConfig({ ...smartZiwConfig, smart_ziw_research_timeout_seconds: Number(e.target.value) })} />
+                            <input className="auth-input" type="number" min={1} value={smartZiwConfig.smart_ziw_research_timeout_seconds} onChange={(e) => { const value = Number(e.target.value); setSmartZiwConfig({ ...smartZiwConfig, smart_ziw_research_timeout_seconds: Number.isFinite(value) && value >= 1 ? value : 900 }) }} />
                         </div>
                     </div>
                     <div className="profile-card-footer profile-card-footer-end">

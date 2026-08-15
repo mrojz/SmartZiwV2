@@ -11,7 +11,7 @@ import json
 import socket
 import time
 from pathlib import Path
-from urllib.parse import urlparse, urlunparse
+from urllib.parse import urljoin, urlparse, urlunparse
 
 from dataclasses import dataclass, field
 
@@ -28,6 +28,11 @@ _PRIVATE_NETWORKS = [
     ipaddress.ip_network("172.16.0.0/12"),
     ipaddress.ip_network("192.168.0.0/16"),
     ipaddress.ip_network("169.254.0.0/16"),
+    ipaddress.ip_network("0.0.0.0/8"),
+    ipaddress.ip_network("100.64.0.0/10"),
+    ipaddress.ip_network("192.0.0.0/24"),
+    ipaddress.ip_network("198.18.0.0/15"),
+    ipaddress.ip_network("224.0.0.0/4"),
     ipaddress.ip_network("::1/128"),
     ipaddress.ip_network("fc00::/7"),
     ipaddress.ip_network("fe80::/10"),
@@ -42,7 +47,10 @@ def url_is_safe(url: str) -> bool:
         return False
     if parsed.scheme not in ("http", "https") or not parsed.hostname:
         return False
-    port = parsed.port or (443 if parsed.scheme == "https" else 80)
+    try:
+        port = parsed.port or (443 if parsed.scheme == "https" else 80)
+    except ValueError:
+        return False
     try:
         infos = socket.getaddrinfo(parsed.hostname, port)
     except OSError:
@@ -181,12 +189,31 @@ class DocumentStore:
             return target, None
         tmp = target.with_name(target.name + ".part")
         try:
-            with requests.get(
-                url,
-                stream=True,
-                timeout=self.timeout,
-                headers={"User-Agent": "Mozilla/5.0 (compatible; Smart-Ziw/2.0)"},
-            ) as response:
+            # Follow redirects manually (max 5 hops) so every hop is
+            # re-validated against url_is_safe before being followed.
+            current_url = url
+            hops = 0
+            while True:
+                response = requests.get(
+                    current_url,
+                    stream=True,
+                    timeout=self.timeout,
+                    allow_redirects=False,
+                    headers={"User-Agent": "Mozilla/5.0 (compatible; Smart-Ziw/2.0)"},
+                )
+                if response.status_code in (301, 302, 303, 307, 308) and response.headers.get("Location"):
+                    hops += 1
+                    if hops > 5:
+                        response.close()
+                        return None, "download failed: TooManyRedirects"
+                    next_url = urljoin(current_url, response.headers["Location"])
+                    response.close()
+                    if not url_is_safe(next_url):
+                        return None, "blocked (unsafe URL)"
+                    current_url = next_url
+                    continue
+                break
+            with response:
                 response.raise_for_status()
                 if not ext:
                     content_type = (response.headers.get("content-type") or "").split(";")[0].strip().lower()
@@ -418,12 +445,17 @@ def run_research(project: dict, config: dict, folder_path: Path | None = None, l
     """
     result = ResearchResult()
     started = time.monotonic()
-    timeout = int(config.get("smart_ziw_research_timeout_seconds", 900))
+    try:
+        timeout = int(config.get("smart_ziw_research_timeout_seconds") or 900)
+    except (TypeError, ValueError):
+        timeout = 900
     call = llm_call or _call_llm
     client = FirecrawlClient(config)
     if not client.api_key:
         result.error = "firecrawl_api_key is not configured"
         return result
+    store = None
+    corpus = None
     try:
         if folder_path is None:
             folder_path = Path(config.get("smart_ziw_repo_path", "/home/kali/Smart-Ziw")) / build_folder_name(project)
@@ -515,12 +547,14 @@ def run_research(project: dict, config: dict, folder_path: Path | None = None, l
                         else:
                             corpus.record_failure(link, doc_error)
                         continue
-                    stats["documents_captured"] += 1
-                    new_urls += 1
                     artifact_name, extraction_ok = store.save_extraction(doc_path)
                     artifact_text = (store.artifacts_dir / artifact_name).read_text(encoding="utf-8")
                     note = f"captured {doc_path.name}" + ("" if extraction_ok else " (extraction failed)")
-                    corpus.add("document", link, doc_path.name, artifact_text, note=note)
+                    added_doc = corpus.add("document", link, doc_path.name, artifact_text, note=note)
+                    if not added_doc:
+                        continue
+                    stats["documents_captured"] += 1
+                    new_urls += 1
             if result.timed_out:
                 break
             # 4. Round verdict + next queries (LLM).
@@ -554,8 +588,11 @@ def run_research(project: dict, config: dict, folder_path: Path | None = None, l
                 "Summaries:",
                 _items_block(corpus.items, corpus.citation_map(), excerpt_len=1500),
             ]), call)
+            recommendation = str(verdict.get("recommendation") or "").upper().strip()
+            if recommendation not in ("GO", "NO-GO", "MONITOR"):
+                recommendation = "MONITOR"
             result.verdict = {
-                "recommendation": str(verdict.get("recommendation") or "MONITOR").upper(),
+                "recommendation": recommendation,
                 "reasoning": str(verdict.get("reasoning") or ""),
             }
         else:
@@ -567,6 +604,11 @@ def run_research(project: dict, config: dict, folder_path: Path | None = None, l
         return result
     except Exception as exc:
         result.error = f"research failed: {exc}"
+        if store is not None and corpus is not None:
+            try:
+                (store.artifacts_dir / "research-log.md").write_text(corpus.render_log(), encoding="utf-8")
+            except Exception:
+                pass
         return result
 
 

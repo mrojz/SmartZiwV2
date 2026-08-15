@@ -383,7 +383,7 @@ def push_to_gitlab(repo_path: Path, folder: str, config: dict) -> dict:
             _git(["init"], check=False)
         _git(["config", "user.name", author_name], check=False)
         _git(["config", "user.email", author_email], check=False)
-        _git(["add", "--", f"{folder}/"], check=False)
+        _git(["add", "--", f"{folder}/"], check=True)
         if (repo_path / folder / "documents").exists():
             _git(["rm", "-r", "--cached", "--quiet", "--", f"{folder}/documents"], check=False)
         status = _git(["status", "--porcelain"], check=False)

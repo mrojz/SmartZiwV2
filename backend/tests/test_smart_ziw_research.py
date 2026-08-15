@@ -508,3 +508,183 @@ def test_synthesize_llm_failure_returns_error_dict():
     result = synthesize(PROJECT, research, llm_call=call)
     assert "_error" in result
     assert "DeepSeek synthesis failed" in result["_error"]
+
+
+# ---------- Final review regression tests (I1/I2/I3, M1/M2/M4/M7) ----------
+
+
+def test_url_is_safe_rejects_malformed_ports():
+    # I2: parsed.port must not raise on ":abc" or out-of-range ports.
+    assert url_is_safe("http://example.com:abc/path") is False
+    assert url_is_safe("http://example.com:99999/path") is False
+
+
+def test_url_is_safe_rejects_more_private_ranges(monkeypatch):
+    # M4: 0.0.0.0/8, 100.64.0.0/10, 192.0.0.0/24, 198.18.0.0/15, 224.0.0.0/4.
+    def _echo_dns(host, port):
+        return [(2, 1, 6, "", (host, port))]
+
+    monkeypatch.setattr("smart_ziw_research.socket.getaddrinfo", _echo_dns)
+    assert url_is_safe("http://0.0.0.0/x.pdf") is False
+    assert url_is_safe("http://100.64.0.1/x.pdf") is False
+    assert url_is_safe("http://192.0.0.1/x.pdf") is False
+    assert url_is_safe("http://198.18.0.1/x.pdf") is False
+    assert url_is_safe("http://224.0.0.1/x.pdf") is False
+    assert url_is_safe("http://8.8.8.8/x.pdf") is True  # public still allowed
+
+
+def test_download_blocks_redirect_to_private_url(monkeypatch, tmp_path):
+    # I1: a public-looking URL that 302-redirects to loopback must be blocked.
+    def _mixed_dns(host, port):
+        if host == "127.0.0.1":
+            return [(2, 1, 6, "", ("127.0.0.1", port))]
+        return [(2, 1, 6, "", ("8.8.8.8", port))]
+
+    monkeypatch.setattr("smart_ziw_research.socket.getaddrinfo", _mixed_dns)
+    redirect = MagicMock()
+    redirect.status_code = 302
+    redirect.headers = {"Location": "http://127.0.0.1/secret.pdf"}
+    get = MagicMock(return_value=redirect)
+    monkeypatch.setattr("smart_ziw_research.requests.get", get)
+    store = DocumentStore(tmp_path)
+    path, error = store.download("https://example.com/file.pdf")
+    assert path is None
+    assert error == "blocked (unsafe URL)"
+    get.assert_called_once()
+    assert get.call_args.kwargs["allow_redirects"] is False
+
+
+def test_run_research_none_timeout_still_returns_config_error(tmp_path):
+    # I3: timeout coercion must not raise when the config value is None.
+    counters = {"seed": 0, "select": 0, "round": 0, "verdict": 0}
+
+    def call(system, user):
+        counters["seed"] += 1
+        return {}
+
+    result = run_research(
+        PROJECT,
+        {"firecrawl_api_key": "", "smart_ziw_research_timeout_seconds": None},
+        folder_path=tmp_path / "f",
+        llm_call=call,
+    )
+    assert result.error == "firecrawl_api_key is not configured"
+    assert counters["seed"] == 0
+
+
+def test_run_research_document_stats_count_only_new_urls(monkeypatch, tmp_path):
+    # M1: duplicate document links in one scrape result count once.
+    class StubClient:
+        def __init__(self, config):
+            self.api_key = "k"
+
+        def search(self, query, limit=10):
+            return [{"url": "https://example.com/notice", "title": "Notice", "description": ""}]
+
+        def scrape(self, url):
+            return {
+                "markdown": "Tender notice text",
+                "title": "Notice",
+                "url": "https://example.com/notice",
+                "links": ["https://example.com/dce.pdf", "https://example.com/dce.pdf"],
+            }
+
+    monkeypatch.setattr("smart_ziw_research.FirecrawlClient", StubClient)
+
+    def fake_download(self, url, title=""):
+        path = self.documents_dir / "dce.pdf"
+        path.write_bytes(b"%PDF fake")
+        return path, None
+
+    def fake_save_extraction(self, doc_path):
+        artifact = self.artifacts_dir / "dce.md"
+        artifact.write_text("extracted text", encoding="utf-8")
+        return "dce.md", True
+
+    monkeypatch.setattr(DocumentStore, "download", fake_download)
+    monkeypatch.setattr(DocumentStore, "save_extraction", fake_save_extraction)
+    counters = {"seed": 0, "select": 0, "round": 0, "verdict": 0}
+
+    def call(system, user):
+        return _counting_call(
+            system, user, counters,
+            seed={"queries": [], "official_domains": [], "aggregator_urls": []},
+            selects=[{"selected": [{"url": "https://example.com/notice", "reason": "official"}]},
+                     {"selected": []}],
+            rounds=[{"stop": True, "next_queries": []}, {"stop": True, "next_queries": []}],
+            verdict={"recommendation": "MONITOR", "reasoning": "default"},
+        )
+
+    result = run_research(PROJECT, STUB_CONFIG, folder_path=tmp_path / "folder", llm_call=call)
+    assert result.error == ""
+    assert result.stats["documents_captured"] == 1
+    doc_items = [item for item in result.items if item.kind == "document"]
+    assert len(doc_items) == 1
+
+
+def test_run_research_verdict_whitelisted(monkeypatch, tmp_path):
+    # M2: non-GO/NO-GO/MONITOR recommendations collapse to MONITOR.
+    class StubClient:
+        def __init__(self, config):
+            self.api_key = "k"
+
+        def search(self, query, limit=10):
+            return [{"url": "https://example.com/notice", "title": "Notice", "description": ""}]
+
+        def scrape(self, url):
+            return {"markdown": "Tender notice text", "title": "Notice",
+                    "url": "https://example.com/notice", "links": []}
+
+    monkeypatch.setattr("smart_ziw_research.FirecrawlClient", StubClient)
+    counters = {"seed": 0, "select": 0, "round": 0, "verdict": 0}
+
+    def call(system, user):
+        return _counting_call(
+            system, user, counters,
+            seed={"queries": [], "official_domains": [], "aggregator_urls": []},
+            selects=[{"selected": [{"url": "https://example.com/notice", "reason": "official"}]},
+                     {"selected": []}],
+            rounds=[{"stop": True, "next_queries": []}, {"stop": True, "next_queries": []}],
+            verdict={"recommendation": "MAYBE", "reasoning": "not sure"},
+        )
+
+    result = run_research(PROJECT, STUB_CONFIG, folder_path=tmp_path / "folder", llm_call=call)
+    assert result.error == ""
+    assert counters["verdict"] == 1
+    assert result.verdict["recommendation"] == "MONITOR"
+    assert result.verdict["reasoning"] == "not sure"
+
+
+def test_run_research_writes_log_on_exception(monkeypatch, tmp_path):
+    # M7: research-log.md is written even when a mid-research exception aborts.
+    class StubClient:
+        def __init__(self, config):
+            self.api_key = "k"
+
+        def search(self, query, limit=10):
+            return [{"url": "https://example.com/notice", "title": "Notice", "description": ""}]
+
+        def scrape(self, url):
+            return {"markdown": "Tender notice text", "title": "Notice",
+                    "url": "https://example.com/notice", "links": []}
+
+    monkeypatch.setattr("smart_ziw_research.FirecrawlClient", StubClient)
+    calls = {"select": 0}
+
+    def call(system, user):
+        if system == SEED_PROMPT:
+            return {"queries": [], "official_domains": [], "aggregator_urls": []}
+        if system == SELECT_PROMPT:
+            calls["select"] += 1
+            if calls["select"] == 2:
+                raise RuntimeError("boom mid-research")
+            return {"selected": [{"url": "https://example.com/notice", "reason": "official"}]}
+        if system == ROUND_PROMPT:
+            return {"stop": True, "next_queries": []}
+        raise AssertionError(f"unexpected prompt: {system[:60]}")
+
+    result = run_research(PROJECT, STUB_CONFIG, folder_path=tmp_path / "folder", llm_call=call)
+    assert result.error == "research failed: boom mid-research"
+    log = tmp_path / "folder" / "artifacts" / "research-log.md"
+    assert log.exists()
+    assert "Notice" in log.read_text(encoding="utf-8")
