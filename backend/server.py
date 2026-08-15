@@ -455,6 +455,8 @@ def _format_smart_ziw_comment(result: dict) -> str:
     files = result.get("files") or []
     if files:
         lines.extend(["", "Files:", *[f"- {f}" for f in files]])
+    if result.get("error"):
+        lines.extend(["", "Note: " + str(result["error"])])
     return "\n".join(lines)
 
 
@@ -482,10 +484,11 @@ def _run_smart_ziw(project_db_id: str, actor_user: dict):
             author_user=bot_user,
             body_text=comment_body,
         )
+        enrichment_error = result.get("error")
         update_project_smart_ziw_state_by_db_id(project_db_id, {
-            "smart_ziw_status": "completed",
+            "smart_ziw_status": "error" if enrichment_error else "completed",
             "smart_ziw_completed_at": now_iso(),
-            "smart_ziw_error": "",
+            "smart_ziw_error": (str(enrichment_error)[:1000] if enrichment_error else ""),
             "smart_ziw_folder": result.get("folder", ""),
             "smart_ziw_gitlab_pushed": bool(result.get("gitlab_pushed")),
         })
