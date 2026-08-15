@@ -448,6 +448,7 @@ DEFAULT_SMART_ZIW_CONFIG = {
     'lightllm_base_url': '',
     'lightllm_api_key': '',
     'lightllm_model': 'default',
+    'lightllm_provider': 'openai_compatible',
 }
 
 

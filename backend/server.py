@@ -78,7 +78,7 @@ from database import (
     mark_all_notifications_viewed,
 )
 from smart_ziw_agent import run as run_smart_ziw_agent, CHAT_PROMPT
-from smart_ziw_llm import get_llm_call
+from smart_ziw_llm import discover_lightllm_models, get_llm_call
 
 BASE_DIR = Path(__file__).resolve().parent
 PROJECTS_XLSX = BASE_DIR / "projects.xlsx"
@@ -1086,6 +1086,13 @@ class SmartZiwConfigUpdate(BaseModel):
     lightllm_base_url: str = ""
     lightllm_api_key: str = ""
     lightllm_model: str = "default"
+    lightllm_provider: str = "openai_compatible"
+
+
+class LlmModelsRequest(BaseModel):
+    provider: str = "openai_compatible"
+    base_url: str = ""
+    api_key: str = ""
 
 
 class SavedSearchItem(BaseModel):
@@ -1761,6 +1768,19 @@ def admin_update_smart_ziw_config(body: SmartZiwConfigUpdate, request: Request):
     saved["firecrawl_api_key"] = ""
     saved["lightllm_api_key"] = ""
     return saved
+
+
+@app.post("/api/admin/llm-models")
+def admin_discover_llm_models(body: LlmModelsRequest, request: Request):
+    _require_admin(request)
+    return discover_lightllm_models(body.provider, body.base_url, body.api_key)
+
+
+@app.get("/api/admin/llm-env-status")
+def admin_llm_env_status(request: Request):
+    _require_admin(request)
+    model = os.environ.get("DEEPSEEK_MODEL") or os.environ.get("DEEPSEEK_WEB_MODEL") or "deepseek-chat"
+    return {"model": model, "api_key_set": bool(os.environ.get("DEEPSEEK_API_KEY"))}
 
 
 @app.get("/api/download")
