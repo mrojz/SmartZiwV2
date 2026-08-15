@@ -39,7 +39,7 @@ next actions (smart_ziw_agent.py)
 
 ### 1. `backend/smart_ziw_llm.py` (new module)
 
-The provider abstraction. Imports `_call_llm` and `_safe_json_loads` from `smart_ziw_agent` at module level. **`smart_ziw_agent.py` must never import `smart_ziw_llm` at module level** (it imports it lazily inside `run()` and nowhere else at top level) — this keeps the import graph acyclic, since `smart_ziw_research.py` imports `smart_ziw_agent` at module level.
+The provider abstraction. Resolves `_call_llm` and `_safe_json_loads` from `smart_ziw_agent` via **function-level (lazy) imports at call time** — never at module level — so tests monkeypatching `smart_ziw_agent._call_llm` keep working through the factory. **`smart_ziw_agent.py` must never import `smart_ziw_llm` at module level** (it imports it lazily inside `run()` and nowhere else at top level) — this keeps the import graph acyclic, since `smart_ziw_research.py` imports `smart_ziw_agent` at module level.
 
 - `get_llm_call(config: dict | None = None, json_mode: bool = True) -> Callable[[str, str], dict | str]`
   - Reads `smart_ziw_llm_provider` from config (default `"auto"`). Resolution per the table above. `"auto"` never raises; `"lightllm"` raises `RuntimeError("LightLLM base URL is not configured")` when `lightllm_base_url` is blank (stripped).
@@ -70,9 +70,9 @@ Backend: add `lightllm_api_key` to BOTH redaction lists and the preservation blo
     try:
         from smart_ziw_llm import get_llm_call
         llm_call = get_llm_call(config)
-    except RuntimeError as exc:
+    except Exception as exc:   # forced-lightllm config error + OpenAI SDK construction errors
         llm_call = None
-        error = str(exc)      # forced "lightllm" with blank base_url
+        error = str(exc)      # e.g. forced "lightllm" with blank base_url
         research_ran = False  # and enrichment replaced by defaults below
     ```
     - Research path: `run_research(project, config, folder_path=folder_path, llm_call=llm_call)` and `synthesize(project, research, llm_call=llm_call)` — the injection seam already exists in both (research.py:440, 682).
