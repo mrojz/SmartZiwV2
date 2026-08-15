@@ -95,12 +95,14 @@ def _normalize_project(doc: dict, geography: dict | None = None, geography_looku
         for item in (doc.get('votes') or [])
         if item.get('userId') and item.get('value') in ('up', 'down')
     ]
-    doc['deep_dive_status'] = str(doc.get('deep_dive_status') or '')
-    doc['deep_dive_job_id'] = str(doc.get('deep_dive_job_id') or '')
-    doc['deep_dive_requested_at'] = doc.get('deep_dive_requested_at') or ''
-    doc['deep_dive_completed_at'] = doc.get('deep_dive_completed_at') or ''
-    doc['deep_dive_requested_by'] = doc.get('deep_dive_requested_by') or ''
-    doc['deep_dive_error'] = doc.get('deep_dive_error') or ''
+    doc['smart_ziw_status'] = str(doc.get('smart_ziw_status') or '')
+    doc['smart_ziw_job_id'] = str(doc.get('smart_ziw_job_id') or '')
+    doc['smart_ziw_requested_at'] = doc.get('smart_ziw_requested_at') or ''
+    doc['smart_ziw_completed_at'] = doc.get('smart_ziw_completed_at') or ''
+    doc['smart_ziw_requested_by'] = doc.get('smart_ziw_requested_by') or ''
+    doc['smart_ziw_error'] = doc.get('smart_ziw_error') or ''
+    doc['smart_ziw_folder'] = str(doc.get('smart_ziw_folder') or '')
+    doc['smart_ziw_gitlab_pushed'] = bool(doc.get('smart_ziw_gitlab_pushed', False))
     return doc
 
 
@@ -294,19 +296,30 @@ def subscribe_project_commenters_by_db_id(project_db_id: str, user_ids: list[str
     return _normalize_project(_strip_id(doc), get_geography())
 
 
-def update_project_deep_dive_state_by_db_id(project_db_id: str, updates: dict) -> dict | None:
+def update_project_smart_ziw_state_by_db_id(project_db_id: str, updates: dict) -> dict | None:
     db = get_db()
-    object_id = _parse_object_id(project_db_id)
-    if not object_id:
+    oid = _parse_object_id(project_db_id)
+    if not oid:
         return None
-    doc = db.projects.find_one_and_update(
-        {'_id': object_id},
-        {'$set': updates},
+    allowed = {
+        'smart_ziw_status',
+        'smart_ziw_job_id',
+        'smart_ziw_requested_at',
+        'smart_ziw_completed_at',
+        'smart_ziw_requested_by',
+        'smart_ziw_error',
+        'smart_ziw_folder',
+        'smart_ziw_gitlab_pushed',
+    }
+    filtered = {k: v for k, v in updates.items() if k in allowed}
+    if not filtered:
+        return None
+    result = db.projects.find_one_and_update(
+        {'_id': oid},
+        {'$set': filtered},
         return_document=ReturnDocument.AFTER,
     )
-    if not doc:
-        return None
-    return _normalize_project(_strip_id(doc), get_geography())
+    return _normalize_project(_strip_id(result)) if result else None
 
 
 def update_project_vote_by_db_id(project_db_id: str, user_id: str, value: str) -> dict | None:
@@ -415,6 +428,40 @@ def save_config(keywords: list[str], regions: dict[str, list[str]]):
         {'$set': {'keywords': keywords, 'regions': regions}},
         upsert=True,
     )
+
+
+DEFAULT_SMART_ZIW_CONFIG = {
+    'smart_ziw_enabled': True,
+    'smart_ziw_repo_path': '/home/kali/Smart-Ziw',
+    'gitlab_push_enabled': False,
+    'gitlab_url': '',
+    'gitlab_token': '',
+    'gitlab_project_path': '',
+    'gitlab_branch': 'main',
+    'gitlab_author_name': 'Smart-Ziw Agent',
+    'gitlab_author_email': 'smart-ziw@localhost',
+}
+
+
+def get_smart_ziw_config() -> dict:
+    db = get_db()
+    doc = db.config.find_one({'_type': 'smart_ziw_config'}) or {}
+    config = DEFAULT_SMART_ZIW_CONFIG.copy()
+    for key in config:
+        if key in doc:
+            config[key] = doc[key]
+    return config
+
+
+def save_smart_ziw_config(config: dict) -> dict:
+    db = get_db()
+    cleaned = {k: v for k, v in config.items() if k in DEFAULT_SMART_ZIW_CONFIG}
+    db.config.update_one(
+        {'_type': 'smart_ziw_config'},
+        {'$set': cleaned},
+        upsert=True,
+    )
+    return get_smart_ziw_config()
 
 
 def get_release_notes() -> list[dict]:
