@@ -16,9 +16,20 @@ import { Table } from '@/components/application/table/table';
 import { Dropdown } from '@/components/base/dropdown/dropdown';
 
 const API = '/api';
-const APP_RELEASE_VERSION = '1.3';
+const APP_RELEASE_VERSION = '1.4';
 const RELEASE_NOTES_STORAGE_KEY = 'pw_release_notes_seen';
 const DEFAULT_RELEASE_NOTES = [
+    {
+        version: '1.4',
+        title: 'Smart-Ziw web research',
+        summary: 'Smart-Ziw now researches the web with Firecrawl, downloads tender documents, and produces cited GO/NO-GO assessments.',
+        items: [
+            'Added Firecrawl-powered web research with unlimited page and document discovery.',
+            'Tender documents are downloaded and converted to readable markdown (markitdown).',
+            'Smart-Ziw reports now include a GO/NO-GO/MONITOR recommendation with numbered source citations.',
+            'Added admin settings for the Firecrawl API key, research toggle, and time limit.',
+        ],
+    },
     {
         version: '1.3',
         title: 'Smart-Ziw Agent replaces Deep Dive',
@@ -1963,6 +1974,10 @@ function AdminPage({ apiFetch }) {
         gitlab_branch: 'main',
         gitlab_author_name: 'Smart-Ziw Agent',
         gitlab_author_email: 'smart-ziw@localhost',
+        firecrawl_api_key: '',
+        firecrawl_base_url: 'https://api.firecrawl.dev',
+        smart_ziw_research_enabled: true,
+        smart_ziw_research_timeout_seconds: 900,
     });
     const [savingSmartZiwConfig, setSavingSmartZiwConfig] = useState(false);
     const handleSearchChange = useCallback((nextValue) => {
@@ -2024,7 +2039,7 @@ function AdminPage({ apiFetch }) {
             });
             if (!res.ok) throw new Error('Failed to save');
             const data = await res.json();
-            setSmartZiwConfig((prev) => ({ ...prev, ...data, gitlab_token: prev.gitlab_token }));
+            setSmartZiwConfig((prev) => ({ ...prev, ...data, gitlab_token: prev.gitlab_token, firecrawl_api_key: prev.firecrawl_api_key }));
             setMessage('Smart-Ziw config saved.');
         } catch (error) {
             setMessage(`Failed to save Smart-Ziw config: ${error?.message || 'unknown error'}`);
@@ -2512,7 +2527,7 @@ function AdminPage({ apiFetch }) {
                     <div className="profile-card-head">
                         <div>
                             <h3>Smart-Ziw Agent</h3>
-                            <p className="profile-card-description">Configure local mirror path and optional GitLab push.</p>
+                            <p className="profile-card-description">Configure local mirror path, web research, and optional GitLab push.</p>
                         </div>
                     </div>
                     {message ? <div className="admin-users-message">{message}</div> : null}
@@ -2552,6 +2567,23 @@ function AdminPage({ apiFetch }) {
                         <div className="auth-field profile-field-span-2">
                             <label className="auth-label">Author email</label>
                             <input className="auth-input" value={smartZiwConfig.gitlab_author_email} onChange={(e) => setSmartZiwConfig({ ...smartZiwConfig, gitlab_author_email: e.target.value })} />
+                        </div>
+                        <h4 style={{ gridColumn: '1 / -1', margin: '8px 0 0' }}>Web research</h4>
+                        <label className="modal-toggle-row">
+                            <input type="checkbox" checked={smartZiwConfig.smart_ziw_research_enabled} onChange={(e) => setSmartZiwConfig({ ...smartZiwConfig, smart_ziw_research_enabled: e.target.checked })} />
+                            <span className={`modal-toggle-label ${smartZiwConfig.smart_ziw_research_enabled ? 'active' : 'inactive'}`}>Enable web research (Firecrawl)</span>
+                        </label>
+                        <div className="auth-field profile-field-span-2">
+                            <label className="auth-label">Firecrawl API key</label>
+                            <input className="auth-input" type="password" value={smartZiwConfig.firecrawl_api_key} onChange={(e) => setSmartZiwConfig({ ...smartZiwConfig, firecrawl_api_key: e.target.value })} placeholder="Leave blank to keep the stored key" />
+                        </div>
+                        <div className="auth-field profile-field-span-2">
+                            <label className="auth-label">Firecrawl base URL</label>
+                            <input className="auth-input" value={smartZiwConfig.firecrawl_base_url} onChange={(e) => setSmartZiwConfig({ ...smartZiwConfig, firecrawl_base_url: e.target.value })} />
+                        </div>
+                        <div className="auth-field">
+                            <label className="auth-label">Research timeout (seconds)</label>
+                            <input className="auth-input" type="number" value={smartZiwConfig.smart_ziw_research_timeout_seconds} onChange={(e) => setSmartZiwConfig({ ...smartZiwConfig, smart_ziw_research_timeout_seconds: Number(e.target.value) })} />
                         </div>
                     </div>
                     <div className="profile-card-footer profile-card-footer-end">
