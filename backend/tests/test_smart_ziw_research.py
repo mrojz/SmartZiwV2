@@ -507,7 +507,7 @@ def test_synthesize_llm_failure_returns_error_dict():
 
     result = synthesize(PROJECT, research, llm_call=call)
     assert "_error" in result
-    assert "DeepSeek synthesis failed" in result["_error"]
+    assert "LLM synthesis failed" in result["_error"]
 
 
 # ---------- Final review regression tests (I1/I2/I3, M1/M2/M4/M7) ----------

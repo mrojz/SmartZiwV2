@@ -168,6 +168,11 @@ Given tender metadata, return JSON with these keys:
 - "recap": one-page executive recap string.
 Keep each list concise (max 8 items). Mark uncertain items clearly."""
 
+CHAT_PROMPT = """You are Smart-Ziw, the tender-bidding assistant for this procurement platform.
+Answer the user's comment about the project using only the provided context.
+Be concise: a short paragraph or a bullet list. Cite project facts accurately.
+If the question needs full web research, tell the user to trigger the Smart-Ziw agent run for this project."""
+
 
 def _default_enrichment() -> dict:
     return {
@@ -184,7 +189,7 @@ def _default_enrichment() -> dict:
     }
 
 
-def _enrich(project: dict) -> dict:
+def _enrich(project: dict, llm_call=None) -> dict:
     user_prompt = "\n".join([
         f"Tender name: {project.get('project_name') or ''}",
         f"Buyer: {project.get('project_sponsor') or ''}",
@@ -195,10 +200,10 @@ def _enrich(project: dict) -> dict:
         f"Description: {project.get('project_description') or ''}",
     ])
     try:
-        result = _call_llm(ENRICH_PROMPT, user_prompt)
+        result = (llm_call or _call_llm)(ENRICH_PROMPT, user_prompt)
     except Exception as exc:
         enrichment = _default_enrichment()
-        enrichment["error"] = f"DeepSeek enrichment failed: {exc}"
+        enrichment["error"] = f"LLM enrichment failed: {exc}"
         return enrichment
     enrichment = _default_enrichment()
     enrichment["tender_summary"] = str(result.get("tender_summary") or "").strip()
@@ -406,15 +411,23 @@ def run(project: dict, config: dict | None = None) -> dict:
     research = None
     synthesis = None
     error = ""
+    llm_call = None
+    try:
+        from smart_ziw_llm import get_llm_call
+        llm_call = get_llm_call(config)
+    except Exception as exc:   # forced-lightllm config error + OpenAI SDK construction errors
+        error = str(exc)
     research_ran = bool(config.get("smart_ziw_research_enabled", True)) and bool(config.get("firecrawl_api_key"))
+    if error:
+        research_ran = False
     if research_ran:
         from smart_ziw_research import run_research
-        research = run_research(project, config, folder_path=folder_path)
+        research = run_research(project, config, folder_path=folder_path, llm_call=llm_call)
         if research.error:
             error = research.error
         else:
             from smart_ziw_research import synthesize
-            synthesis = synthesize(project, research)
+            synthesis = synthesize(project, research, llm_call=llm_call)
             if synthesis.get("_error"):
                 error = synthesis["_error"]
                 synthesis = None
@@ -429,7 +442,11 @@ def run(project: dict, config: dict | None = None) -> dict:
             "source.md": _render_research_source(project, synthesis),
         }
     else:
-        enrichment = _enrich(project)
+        if llm_call is None and error:
+            enrichment = _default_enrichment()
+            enrichment["error"] = error
+        else:
+            enrichment = _enrich(project, llm_call=llm_call)
         if enrichment.get("error"):
             error = error or enrichment["error"]
         files = {

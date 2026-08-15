@@ -682,7 +682,7 @@ def _coerce_synthesis(final: dict, research: ResearchResult) -> dict:
 def synthesize(project: dict, research: ResearchResult, llm_call=None) -> dict:
     """Two-pass hierarchical synthesis: per-group summaries (chunks of 8), then
     one final grounded synthesis over the summaries plus the top-3 items' full
-    text. Returns the coerced synthesis dict, or {"_error": ...} on DeepSeek failure."""
+    text. Returns the coerced synthesis dict, or {"_error": ...} on LLM failure."""
     call = llm_call or _call_llm
     items = research.items
     try:
@@ -705,5 +705,5 @@ def synthesize(project: dict, research: ResearchResult, llm_call=None) -> dict:
             _items_block(_top_official_items(items), research.citation_map, excerpt_len=20000),
         ]), call)
     except Exception as exc:
-        return {"_error": f"DeepSeek synthesis failed: {exc}"}
+        return {"_error": f"LLM synthesis failed: {exc}"}
     return _coerce_synthesis(final, research)

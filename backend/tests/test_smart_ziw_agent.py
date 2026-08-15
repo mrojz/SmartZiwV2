@@ -15,6 +15,9 @@ from smart_ziw_agent import (
     _safe_json_loads,
     run,
     push_to_gitlab,
+    ENRICH_PROMPT,
+    CHAT_PROMPT,
+    _default_enrichment,
 )
 from smart_ziw_research import ResearchResult
 
@@ -385,3 +388,110 @@ def test_push_to_gitlab_token_never_persisted_or_leaked(tmp_path):
     assert "oauth2:" not in config_text
     # The folder is committed locally even when the push fails.
     assert (repo_path / ".git").exists()
+
+
+def test_enrich_uses_injected_llm_call():
+    project = {"project_name": "IS Security Audit"}
+    captured = {}
+
+    def fake_call(system, user):
+        captured["system"] = system
+        captured["user"] = user
+        return {"tender_summary": "summary"}
+
+    enrichment = _enrich(project, llm_call=fake_call)
+    assert captured["system"] == ENRICH_PROMPT
+    assert "IS Security Audit" in captured["user"]
+    assert enrichment["tender_summary"] == "summary"
+
+
+def test_enrich_error_message_is_provider_neutral(monkeypatch):
+    project = {"project_name": "IS Security Audit"}
+
+    def _raise(*args, **kwargs):
+        raise RuntimeError("API down")
+
+    monkeypatch.setattr("smart_ziw_agent._call_llm", _raise)
+    enrichment = _enrich(project)
+    assert "LLM enrichment failed" in enrichment["error"]
+    assert "DeepSeek" not in enrichment["error"]
+
+
+def test_run_passes_selected_llm_call_to_research_and_synthesis(monkeypatch, tmp_path):
+    project = {"project_name": "IS Security Audit", "project_end_date": "2026-07-13"}
+    sentinel = lambda system, user: {}
+    seen = {}
+
+    monkeypatch.setattr("smart_ziw_llm.get_llm_call", lambda config, json_mode=True: sentinel)
+
+    def fake_run_research(project, config, folder_path=None, llm_call=None):
+        seen["run_research_llm_call"] = llm_call
+        research = ResearchResult(
+            verdict={"recommendation": "GO", "reasoning": ""},
+            stats={"queries_run": 1, "pages_scraped": 0, "documents_captured": 0},
+        )
+        return research
+
+    def fake_synthesize(project, research, llm_call=None):
+        seen["synthesize_llm_call"] = llm_call
+        return {
+            "tender_markdown": "## Overview\n\nok",
+            "email_draft": "draft",
+            "compliance_matrix": [],
+            "drafting_notes": "notes",
+            "next_actions": [],
+            "source_rows": [],
+        }
+
+    monkeypatch.setattr("smart_ziw_research.run_research", fake_run_research)
+    monkeypatch.setattr("smart_ziw_research.synthesize", fake_synthesize)
+    result = run(project, config={
+        "smart_ziw_repo_path": str(tmp_path),
+        "firecrawl_api_key": "k",
+        "smart_ziw_research_enabled": True,
+    })
+    assert seen["run_research_llm_call"] is sentinel
+    assert seen["synthesize_llm_call"] is sentinel
+    assert result["research_verdict"] == "GO"
+
+
+def test_run_passes_selected_llm_call_to_enrichment(monkeypatch, tmp_path):
+    project = {"project_name": "IS Security Audit", "project_end_date": "2026-07-13"}
+    sentinel = lambda system, user: {"tender_summary": "summary"}
+    seen = {}
+
+    monkeypatch.setattr("smart_ziw_llm.get_llm_call", lambda config, json_mode=True: sentinel)
+
+    def fake_enrich(project, llm_call=None):
+        seen["enrich_llm_call"] = llm_call
+        return _default_enrichment()
+
+    monkeypatch.setattr("smart_ziw_agent._enrich", fake_enrich)
+    result = run(project, config={"smart_ziw_repo_path": str(tmp_path)})
+    assert seen["enrich_llm_call"] is sentinel
+    assert "tender.md" in result["files"]
+
+
+def test_run_provider_failure_writes_default_files_with_error(monkeypatch, tmp_path):
+    project = {"project_name": "IS Security Audit", "project_end_date": "2026-07-13"}
+
+    def _fail(config, json_mode=True):
+        raise RuntimeError("LightLLM base URL is not configured")
+
+    def _no_enrich(*args, **kwargs):
+        raise AssertionError("_enrich must not be called when the provider failed")
+
+    monkeypatch.setattr("smart_ziw_llm.get_llm_call", _fail)
+    monkeypatch.setattr("smart_ziw_agent._enrich", _no_enrich)
+    result = run(project, config={
+        "smart_ziw_repo_path": str(tmp_path),
+        "firecrawl_api_key": "k",
+        "smart_ziw_research_enabled": True,
+        "smart_ziw_llm_provider": "lightllm",
+        "lightllm_base_url": "",
+    })
+    assert "LightLLM base URL is not configured" in result["error"]
+    assert "research" not in result
+    folder = tmp_path / result["folder"]
+    assert (folder / "tender.md").exists()
+    assert (folder / "next-actions.md").exists()
