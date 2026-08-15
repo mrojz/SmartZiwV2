@@ -14,7 +14,7 @@ inside run() without an import cycle.
 import os
 from typing import Callable
 
-from openai import OpenAI
+from openai import APIConnectionError, APITimeoutError, APIStatusError, OpenAI
 
 AUTO = "auto"
 DEEPSEEK = "deepseek"
@@ -89,3 +89,75 @@ def get_llm_call(config: dict | None = None, json_mode: bool = True) -> Callable
         model=str(config.get("lightllm_model") or "default"),
         json_mode=json_mode,
     )
+
+_LIGHTLLM_DISCOVERY_TIMEOUT = 8.0
+
+
+def _stored_lightllm_api_key() -> str:
+    """Stored LightLLM API key from the admin config; empty on any failure."""
+    try:
+        from database import get_smart_ziw_config
+        return str(get_smart_ziw_config().get("lightllm_api_key") or "")
+    except Exception:
+        return ""
+
+
+def _normalize_llm_models(entries) -> list[dict]:
+    """Normalize a models listing into [{"id", "name"}] — deduped by id, sorted by name."""
+    models: list[dict] = []
+    seen: set = set()
+    for entry in entries or []:
+        if isinstance(entry, str):
+            model_id = entry.strip()
+            name = ""
+        elif isinstance(entry, dict):
+            model_id = str(entry.get("id") or "").strip()
+            name = str(entry.get("name") or "").strip()
+        else:
+            continue
+        if not model_id or model_id in seen:
+            continue
+        seen.add(model_id)
+        models.append({"id": model_id, "name": name or model_id})
+    models.sort(key=lambda m: (m["name"] or m["id"]).lower())
+    return models
+
+
+def discover_lightllm_models(provider: str, base_url: str, api_key: str = "") -> dict:
+    """Discover models on a LightLLM server (OpenAI-compatible).
+
+    Attempts keyless discovery first; on 401/403 retries with the resolved
+    key (the provided api_key when non-blank, else the stored
+    lightllm_api_key). Returns {"status", "models", ...} with status one of
+    ok | no_models | auth_required | unsupported | error. The API key never
+    appears in the returned dict.
+    """
+    if str(provider or "").strip() != "openai_compatible":
+        return {"status": "unsupported", "models": []}
+    base_url = str(base_url or "").strip()
+    if not base_url:
+        return {"status": "error", "models": [], "detail": "LightLLM base URL is not set"}
+    resolved_key = str(api_key or "").strip() or _stored_lightllm_api_key()
+    keys = [_LIGHTLLM_PLACEHOLDER_KEY]
+    if resolved_key:
+        keys.append(resolved_key)
+    for key in keys:
+        try:
+            client = OpenAI(api_key=key, base_url=base_url, timeout=_LIGHTLLM_DISCOVERY_TIMEOUT)
+            listing = client.models.list()
+            entries = listing.data if hasattr(listing, "data") else listing
+            models = _normalize_llm_models(entries)
+            if models:
+                return {"status": "ok", "models": models}
+            return {"status": "no_models", "models": []}
+        except APIStatusError as exc:
+            if exc.status_code in (401, 403):
+                continue
+            if exc.status_code == 404:
+                return {"status": "unsupported", "models": []}
+            return {"status": "error", "models": [], "detail": f"The server returned HTTP {exc.status_code}"}
+        except (APIConnectionError, APITimeoutError):
+            return {"status": "error", "models": [], "detail": "Connection to the LightLLM server failed"}
+        except Exception:
+            return {"status": "error", "models": [], "detail": "Failed to discover models from the LightLLM server"}
+    return {"status": "auth_required", "models": []}
