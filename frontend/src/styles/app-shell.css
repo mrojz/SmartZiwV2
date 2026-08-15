@@ -4878,3 +4878,20 @@ body {
     justify-content: center;
   }
 }
+.llm-source-options { display: flex; flex-direction: column; gap: 10px; }
+.llm-source-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+  cursor: pointer;
+}
+.llm-source-option input { margin-top: 3px; accent-color: #1f7bf6; }
+.llm-source-option strong { display: block; color: var(--text-primary); }
+.llm-source-option em { display: block; font-style: normal; color: var(--text-muted); font-size: 0.85rem; }
+.llm-env-info { color: var(--text-muted); font-size: 0.9rem; margin: 0; }
+.llm-env-info code { color: var(--text-primary); }
+.llm-models-status { color: var(--text-muted); font-size: 0.85rem; margin: 6px 0; }

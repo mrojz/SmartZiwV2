@@ -16,9 +16,19 @@ import { Table } from '@/components/application/table/table';
 import { Dropdown } from '@/components/base/dropdown/dropdown';
 
 const API = '/api';
-const APP_RELEASE_VERSION = '1.5';
+const APP_RELEASE_VERSION = '1.6';
 const RELEASE_NOTES_STORAGE_KEY = 'pw_release_notes_seen';
 const DEFAULT_RELEASE_NOTES = [
+    {
+        version: '1.6',
+        title: 'Simplified LLM Provider configuration',
+        summary: 'Choose between environment or LightLLM configuration with a click, and discover available models automatically from your LightLLM server.',
+        items: [
+            'LLM provider settings now use a simple Environment / LightLLM choice.',
+            'Models are discovered automatically from your LightLLM server — no need to know model names.',
+            'The environment configuration now shows which model and API key are in use.',
+        ],
+    },
     {
         version: '1.5',
         title: 'Smart-Ziw chat, human-only next actions, and configurable LLM provider',
@@ -1992,8 +2002,16 @@ function AdminPage({ apiFetch }) {
         lightllm_base_url: '',
         lightllm_api_key: '',
         lightllm_model: 'default',
+        lightllm_provider: 'openai_compatible',
     });
     const [savingSmartZiwConfig, setSavingSmartZiwConfig] = useState(false);
+    const llmSource = smartZiwConfig.smart_ziw_llm_provider === 'lightllm' ? 'lightllm'
+        : smartZiwConfig.smart_ziw_llm_provider === 'deepseek' ? 'environment'
+        : (smartZiwConfig.lightllm_base_url.trim() ? 'lightllm' : 'environment');
+    const llmDiscoverySeq = useRef(0);
+    const [llmModels, setLlmModels] = useState({ status: 'idle', models: [], detail: null });
+    const [llmModelsLoading, setLlmModelsLoading] = useState(false);
+    const [llmEnvStatus, setLlmEnvStatus] = useState({ model: '', api_key_set: false });
     const handleSearchChange = useCallback((nextValue) => {
         if (typeof nextValue === 'string') {
             setQ(nextValue);
@@ -2029,6 +2047,51 @@ function AdminPage({ apiFetch }) {
         }
     }, [apiFetch]);
 
+    const discoverLlmModels = useCallback(async (provider, baseUrl, apiKey) => {
+        const seq = ++llmDiscoverySeq.current;
+        setLlmModelsLoading(true);
+        setLlmModels({ status: 'loading', models: [], detail: null });
+        try {
+            const res = await apiFetch('/api/admin/llm-models', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ provider, base_url: baseUrl, api_key: apiKey || '' }),
+            });
+            const data = res.ok ? await res.json() : { status: 'error', models: [], detail: null };
+            if (seq === llmDiscoverySeq.current) {
+                setLlmModels({ status: data?.status || 'error', models: Array.isArray(data?.models) ? data.models : [], detail: data?.detail || null });
+            }
+        } catch (error) {
+            if (seq === llmDiscoverySeq.current) {
+                setLlmModels({ status: 'error', models: [], detail: null });
+            }
+        } finally {
+            if (seq === llmDiscoverySeq.current) setLlmModelsLoading(false);
+        }
+    }, [apiFetch]);
+
+    useEffect(() => {
+        if (adminTab !== 'llm') return;
+        if (llmSource !== 'lightllm' || smartZiwConfig.lightllm_provider !== 'openai_compatible' || !smartZiwConfig.lightllm_base_url.trim()) {
+            setLlmModels({ status: 'idle', models: [], detail: null });
+            return;
+        }
+        discoverLlmModels(smartZiwConfig.lightllm_provider, smartZiwConfig.lightllm_base_url, smartZiwConfig.lightllm_api_key);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [adminTab, llmSource, smartZiwConfig.lightllm_provider]);
+
+    useEffect(() => {
+        if (adminTab !== 'llm') return;
+        let cancelled = false;
+        apiFetch('/api/admin/llm-env-status')
+            .then((res) => (res.ok ? res.json() : null))
+            .then((data) => {
+                if (data && !cancelled) setLlmEnvStatus({ model: data.model || '', api_key_set: !!data.api_key_set });
+            })
+            .catch(() => {});
+        return () => { cancelled = true; };
+    }, [adminTab, apiFetch]);
+
     useEffect(() => {
         loadUsers();
     }, [loadUsers]);
@@ -2053,7 +2116,7 @@ function AdminPage({ apiFetch }) {
             });
             if (!res.ok) throw new Error('Failed to save');
             const data = await res.json();
-            setSmartZiwConfig((prev) => ({ ...prev, ...data, gitlab_token: prev.gitlab_token, firecrawl_api_key: prev.firecrawl_api_key, lightllm_api_key: prev.lightllm_api_key }));
+            setSmartZiwConfig((prev) => ({ ...prev, ...data, gitlab_token: prev.gitlab_token, firecrawl_api_key: prev.firecrawl_api_key, lightllm_api_key: '' }));
             setMessage('Smart-Ziw config saved.');
         } catch (error) {
             setMessage(`Failed to save Smart-Ziw config: ${error?.message || 'unknown error'}`);
@@ -2620,25 +2683,77 @@ function AdminPage({ apiFetch }) {
                     {message ? <div className="admin-users-message">{message}</div> : null}
                     <div className="profile-settings-grid">
                         <div className="auth-field profile-field-span-2">
-                            <label className="auth-label">Provider</label>
-                            <select className="auth-input" value={smartZiwConfig.smart_ziw_llm_provider} onChange={(e) => setSmartZiwConfig({ ...smartZiwConfig, smart_ziw_llm_provider: e.target.value })}>
-                                <option value="auto">Auto (LightLLM if configured, else DeepSeek env)</option>
-                                <option value="deepseek">DeepSeek (env)</option>
-                                <option value="lightllm">LightLLM</option>
-                            </select>
+                            <label className="auth-label">Configuration source</label>
+                            <div className="llm-source-options">
+                                <label className="llm-source-option">
+                                    <input type="radio" name="llm-source" checked={llmSource === 'environment'} onChange={() => { llmDiscoverySeq.current += 1; setSmartZiwConfig({ ...smartZiwConfig, smart_ziw_llm_provider: 'deepseek' }); }} />
+                                    <span>
+                                        <strong>Environment (.env)</strong>
+                                        <em>Use the DeepSeek settings from the backend .env file.</em>
+                                    </span>
+                                </label>
+                                <label className="llm-source-option">
+                                    <input type="radio" name="llm-source" checked={llmSource === 'lightllm'} onChange={() => { llmDiscoverySeq.current += 1; setSmartZiwConfig({ ...smartZiwConfig, smart_ziw_llm_provider: 'lightllm' }); }} />
+                                    <span>
+                                        <strong>LightLLM</strong>
+                                        <em>Use your own OpenAI-compatible LightLLM server.</em>
+                                    </span>
+                                </label>
+                            </div>
                         </div>
-                        <div className="auth-field profile-field-span-2">
-                            <label className="auth-label">LightLLM base URL</label>
-                            <input className="auth-input" value={smartZiwConfig.lightllm_base_url} onChange={(e) => setSmartZiwConfig({ ...smartZiwConfig, lightllm_base_url: e.target.value })} placeholder="http://localhost:8000/v1" />
-                        </div>
-                        <div className="auth-field">
-                            <label className="auth-label">LightLLM model</label>
-                            <input className="auth-input" value={smartZiwConfig.lightllm_model} onChange={(e) => setSmartZiwConfig({ ...smartZiwConfig, lightllm_model: e.target.value })} />
-                        </div>
-                        <div className="auth-field">
-                            <label className="auth-label">LightLLM API key</label>
-                            <input className="auth-input" type="password" value={smartZiwConfig.lightllm_api_key} onChange={(e) => setSmartZiwConfig({ ...smartZiwConfig, lightllm_api_key: e.target.value })} placeholder="Leave blank to keep the stored key" />
-                        </div>
+                        {llmSource === 'environment' ? (
+                            <div className="auth-field profile-field-span-2">
+                                <label className="auth-label">Environment configuration</label>
+                                <p className="llm-env-info">
+                                    {llmEnvStatus.model
+                                        ? <>Using model <code>{llmEnvStatus.model}</code> from environment configuration ({llmEnvStatus.api_key_set ? 'API key set' : 'no API key set'}). To change these values, edit the .env file on the server and restart the backend.</>
+                                        : 'Loading environment status…'}
+                                </p>
+                            </div>
+                        ) : (
+                            <>
+                                <div className="auth-field profile-field-span-2">
+                                    <label className="auth-label">LightLLM base URL</label>
+                                    <input className="auth-input" value={smartZiwConfig.lightllm_base_url} onChange={(e) => { llmDiscoverySeq.current += 1; setSmartZiwConfig({ ...smartZiwConfig, lightllm_base_url: e.target.value }); }} placeholder="http://localhost:8000/v1" />
+                                </div>
+                                <div className="auth-field">
+                                    <label className="auth-label">LightLLM API key</label>
+                                    <input className="auth-input" type="password" value={smartZiwConfig.lightllm_api_key} onChange={(e) => setSmartZiwConfig({ ...smartZiwConfig, lightllm_api_key: e.target.value })} placeholder="Leave blank to keep the stored key" />
+                                </div>
+                                <div className="auth-field">
+                                    <label className="auth-label">Provider (server type)</label>
+                                    <select className="auth-input" value={smartZiwConfig.lightllm_provider} onChange={(e) => setSmartZiwConfig({ ...smartZiwConfig, lightllm_provider: e.target.value })}>
+                                        <option value="openai_compatible">OpenAI-compatible</option>
+                                        <option value="custom">Custom (enter model manually)</option>
+                                    </select>
+                                </div>
+                                <div className="auth-field profile-field-span-2">
+                                    <label className="auth-label">LightLLM model</label>
+                                    {smartZiwConfig.lightllm_provider === 'openai_compatible' && llmModels.status === 'ok' ? (
+                                        <select className="auth-input" value={smartZiwConfig.lightllm_model} onChange={(e) => setSmartZiwConfig({ ...smartZiwConfig, lightllm_model: e.target.value })}>
+                                            {!llmModels.models.some((m) => m.id === smartZiwConfig.lightllm_model) && smartZiwConfig.lightllm_model ? (
+                                                <option value={smartZiwConfig.lightllm_model}>{smartZiwConfig.lightllm_model} (current)</option>
+                                            ) : null}
+                                            {llmModels.models.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+                                        </select>
+                                    ) : (
+                                        <input className="auth-input" value={smartZiwConfig.lightllm_model} onChange={(e) => setSmartZiwConfig({ ...smartZiwConfig, lightllm_model: e.target.value })} />
+                                    )}
+                                    <p className="llm-models-status">
+                                        {llmModels.status === 'loading' ? 'Loading available models…'
+                                            : llmModels.status === 'ok' ? 'Models loaded.'
+                                            : llmModels.status === 'no_models' ? 'No models available from this server. You can type the model name manually.'
+                                            : llmModels.status === 'auth_required' ? 'This provider requires an API key to retrieve available models. Enter the API key and refresh.'
+                                            : llmModels.status === 'unsupported' ? 'This provider does not support automatic model discovery. Enter the model name manually.'
+                                            : llmModels.status === 'error' ? (llmModels.detail || 'Unable to connect to the LightLLM server. Check the base URL.')
+                                            : ''}
+                                    </p>
+                                    <button type="button" className="profile-btn" onClick={() => discoverLlmModels(smartZiwConfig.lightllm_provider, smartZiwConfig.lightllm_base_url, smartZiwConfig.lightllm_api_key)} disabled={llmModelsLoading || smartZiwConfig.lightllm_provider === 'custom' || !smartZiwConfig.lightllm_base_url.trim()}>
+                                        Refresh models
+                                    </button>
+                                </div>
+                            </>
+                        )}
                     </div>
                     <div className="profile-card-footer profile-card-footer-end">
                         <button type="button" className="profile-btn profile-btn-primary" onClick={saveSmartZiwConfig} disabled={savingSmartZiwConfig}>
