@@ -118,7 +118,7 @@ def _safe_json_loads(content: str) -> dict:
         parts = text.split("```")
         if len(parts) >= 2:
             text = parts[1]
-            if text.startswith("json"):
+            if text.lower().startswith("json"):
                 text = text[4:]
             text = text.strip()
     try:
@@ -126,11 +126,11 @@ def _safe_json_loads(content: str) -> dict:
         return parsed if isinstance(parsed, dict) else {}
     except Exception:
         pass
-    match = re.search(r"\{[\s\S]*?\}", text)
-    if not match:
+    start = text.find("{")
+    if start == -1:
         return {}
     try:
-        parsed = json.loads(match.group(0))
+        parsed, _ = json.JSONDecoder().raw_decode(text, start)
         return parsed if isinstance(parsed, dict) else {}
     except Exception:
         return {}
@@ -183,7 +183,7 @@ def _default_enrichment() -> dict:
     }
 
 
-def _enrich(project: dict) -> tuple[dict, str]:
+def _enrich(project: dict) -> dict:
     user_prompt = "\n".join([
         f"Tender name: {project.get('project_name') or ''}",
         f"Buyer: {project.get('project_sponsor') or ''}",
@@ -197,19 +197,20 @@ def _enrich(project: dict) -> tuple[dict, str]:
         result = _call_llm(ENRICH_PROMPT, user_prompt)
     except Exception as exc:
         enrichment = _default_enrichment()
-        return enrichment, f"DeepSeek enrichment failed: {exc}"
+        enrichment["error"] = f"DeepSeek enrichment failed: {exc}"
+        return enrichment
     enrichment = _default_enrichment()
     enrichment["tender_summary"] = str(result.get("tender_summary") or "").strip()
     enrichment["email_draft"] = str(result.get("email_draft") or "").strip()
-    enrichment["compliance_matrix"] = result.get("compliance_matrix") or []
-    enrichment["next_actions"] = result.get("next_actions") or []
-    enrichment["risks"] = result.get("risks") or []
+    enrichment["compliance_matrix"] = result.get("compliance_matrix") if isinstance(result.get("compliance_matrix"), list) else []
+    enrichment["next_actions"] = result.get("next_actions") if isinstance(result.get("next_actions"), list) else []
+    enrichment["risks"] = result.get("risks") if isinstance(result.get("risks"), list) else []
     enrichment["eligibility_notes"] = str(result.get("eligibility_notes") or "").strip()
     enrichment["source_notes"] = str(result.get("source_notes") or "").strip()
     enrichment["pricing_notes"] = str(result.get("pricing_notes") or "").strip()
     enrichment["drafting_notes"] = str(result.get("drafting_notes") or "").strip()
     enrichment["recap"] = str(result.get("recap") or "").strip()
-    return enrichment, ""
+    return enrichment
 
 
 def render_compliance_matrix_markdown(project: dict, enrichment: dict) -> str:
@@ -332,7 +333,7 @@ def render_optional_files(project: dict, enrichment: dict) -> dict[str, str]:
 def run(project: dict, config: dict | None = None) -> dict:
     config = config or {}
     folder = build_folder_name(project)
-    enrichment, error = _enrich(project)
+    enrichment = _enrich(project)
     files = {
         "tender.md": render_tender_markdown(project, enrichment),
         "email.md": render_email_markdown(project, enrichment),
@@ -351,6 +352,7 @@ def run(project: dict, config: dict | None = None) -> dict:
         "repo_path": str(repo_path),
         "gitlab_pushed": False,
     }
+    error = enrichment.get("error")
     if error:
         result["error"] = error
     return result

@@ -9,7 +9,7 @@ from smart_ziw_agent import (
     render_compliance_matrix_markdown,
     render_next_actions_markdown,
     _enrich,
-    _call_llm,
+    _safe_json_loads,
     run,
 )
 
@@ -138,6 +138,18 @@ def test_render_next_actions_has_actions():
     assert "CRITICAL" in md
 
 
+def test_safe_json_loads_extracts_nested_object():
+    content = 'Some text {"a": {"b": [1, 2]}, "c": "d"} trailing'
+    parsed = _safe_json_loads(content)
+    assert parsed == {"a": {"b": [1, 2]}, "c": "d"}
+
+
+def test_safe_json_loads_strips_case_insensitive_code_fence():
+    content = "```JSON\n{\"foo\": \"bar\"}\n```"
+    parsed = _safe_json_loads(content)
+    assert parsed == {"foo": "bar"}
+
+
 def test_enrich_fallback_on_llm_error(monkeypatch):
     project = {
         "project_name": "IS Security Audit",
@@ -150,10 +162,33 @@ def test_enrich_fallback_on_llm_error(monkeypatch):
         raise RuntimeError("API down")
 
     monkeypatch.setattr("smart_ziw_agent._call_llm", _raise)
-    enrichment, error = _enrich(project)
+    enrichment = _enrich(project)
+    assert isinstance(enrichment, dict)
     assert enrichment["compliance_matrix"] == []
     assert enrichment["next_actions"] == []
-    assert "API down" in error
+    assert "API down" in enrichment["error"]
+
+
+def test_enrich_coerces_non_list_fields_to_empty_lists(monkeypatch):
+    project = {
+        "project_name": "IS Security Audit",
+        "project_sponsor": "CDC Benin",
+        "primary_country_name_en": "Benin",
+        "project_end_date": "2026-07-13",
+    }
+
+    def _return_bad(*args, **kwargs):
+        return {
+            "compliance_matrix": "not a list",
+            "next_actions": {"action": "x"},
+            "risks": None,
+        }
+
+    monkeypatch.setattr("smart_ziw_agent._call_llm", _return_bad)
+    enrichment = _enrich(project)
+    assert enrichment["compliance_matrix"] == []
+    assert enrichment["next_actions"] == []
+    assert enrichment["risks"] == []
 
 
 def test_run_gracefully_handles_missing_api_key(monkeypatch, tmp_path):
