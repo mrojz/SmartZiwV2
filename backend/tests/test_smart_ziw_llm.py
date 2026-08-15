@@ -126,6 +126,7 @@ def _status_error(status_code):
 def test_discover_keyless_success_normalizes_models(monkeypatch):
     _reset_fake_openai()
     monkeypatch.setattr("smart_ziw_llm.OpenAI", _FakeOpenAI)
+    monkeypatch.setattr(sll, "_stored_lightllm_api_key", lambda: "")
     _FakeOpenAI.next_models = ["gpt-4o", {"id": "", "name": "Empty"}, {"id": "a1", "name": "Alpha"},
                                 {"id": "a1", "name": "Alpha Dupe"}, {"id": "b1"}]
     result = sll.discover_lightllm_models("openai_compatible", "http://localhost:8000/v1")
@@ -143,6 +144,7 @@ def test_discover_keyless_success_normalizes_models(monkeypatch):
 def test_discover_returns_no_models_on_empty_list(monkeypatch):
     _reset_fake_openai()
     monkeypatch.setattr("smart_ziw_llm.OpenAI", _FakeOpenAI)
+    monkeypatch.setattr(sll, "_stored_lightllm_api_key", lambda: "")
     _FakeOpenAI.next_models = []
     result = sll.discover_lightllm_models("openai_compatible", "http://localhost:8000/v1")
     assert result == {"status": "no_models", "models": []}
