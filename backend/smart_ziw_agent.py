@@ -39,7 +39,20 @@ def build_folder_name(project: dict) -> str:
     return "-".join(parts)
 
 
-def render_tender_markdown(project: dict) -> str:
+def _escape_table_cell(value) -> str:
+    text = str(value or "")
+    text = text.replace("|", "\\|")
+    text = text.replace("\n", " ")
+    text = text.replace("\r", " ")
+    return text
+
+
+def render_tender_markdown(project: dict, enrichment: dict | None = None) -> str:
+    enrichment = enrichment or {}
+    summary = enrichment.get("tender_summary", "")
+    if summary:
+        title = project.get("project_name") or "Tender"
+        return f"# Tender Intelligence: {title}\n\n{summary}"
     lines = [
         f"# Tender Intelligence: {project.get('project_name') or 'Untitled'}",
         "",
@@ -61,7 +74,12 @@ def render_tender_markdown(project: dict) -> str:
     return "\n".join(lines)
 
 
-def render_email_markdown(project: dict) -> str:
+def render_email_markdown(project: dict, enrichment: dict | None = None) -> str:
+    enrichment = enrichment or {}
+    draft = enrichment.get("email_draft", "")
+    if draft:
+        title = project.get("project_name") or "Tender"
+        return f"# Draft Clarification Email: {title}\n\n{draft}"
     buyer = project.get("project_sponsor") or project.get("primary_country_name_en") or "the buyer"
     title = project.get("project_name") or "the tender"
     lines = [
@@ -107,14 +125,15 @@ def _safe_json_loads(content: str) -> dict:
         parsed = json.loads(text)
         return parsed if isinstance(parsed, dict) else {}
     except Exception:
-        match = re.search(r"\{[\s\S]*\}", text)
-        if not match:
-            return {}
-        try:
-            parsed = json.loads(match.group(0))
-            return parsed if isinstance(parsed, dict) else {}
-        except Exception:
-            return {}
+        pass
+    match = re.search(r"\{[\s\S]*?\}", text)
+    if not match:
+        return {}
+    try:
+        parsed = json.loads(match.group(0))
+        return parsed if isinstance(parsed, dict) else {}
+    except Exception:
+        return {}
 
 
 def _call_llm(system_prompt: str, user_prompt: str) -> dict:
@@ -136,16 +155,35 @@ def _call_llm(system_prompt: str, user_prompt: str) -> dict:
 
 ENRICH_PROMPT = """You are a tender intelligence assistant.
 Given tender metadata, return JSON with these keys:
+- "tender_summary": string with a concise structured tender overview (title, buyer, country, deadline, source verification, scope, eligibility, practical conclusion) in markdown.
+- "email_draft": string with a draft clarification email body to the buyer.
 - "compliance_matrix": list of objects with keys requirement, status, evidence_needed, owner, notes.
 - "next_actions": list of objects with keys action, priority, owner, deadline, notes.
 - "risks": list of objects with keys risk, likelihood, impact, mitigation (only if uncertainty exists; otherwise empty list).
 - "eligibility_notes": string with eligibility summary.
 - "source_notes": string summarizing source reliability.
 - "pricing_notes": string with budget/value assessment.
+- "drafting_notes": string with drafting guidance for the proposal.
+- "recap": one-page executive recap string.
 Keep each list concise (max 8 items). Mark uncertain items clearly."""
 
 
-def _enrich(project: dict) -> dict:
+def _default_enrichment() -> dict:
+    return {
+        "tender_summary": "",
+        "email_draft": "",
+        "compliance_matrix": [],
+        "next_actions": [],
+        "risks": [],
+        "eligibility_notes": "",
+        "source_notes": "",
+        "pricing_notes": "",
+        "drafting_notes": "",
+        "recap": "",
+    }
+
+
+def _enrich(project: dict) -> tuple[dict, str]:
     user_prompt = "\n".join([
         f"Tender name: {project.get('project_name') or ''}",
         f"Buyer: {project.get('project_sponsor') or ''}",
@@ -155,15 +193,23 @@ def _enrich(project: dict) -> dict:
         f"Source URL: {project.get('project_url') or ''}",
         f"Description: {project.get('project_description') or ''}",
     ])
-    result = _call_llm(ENRICH_PROMPT, user_prompt)
-    return {
-        "compliance_matrix": result.get("compliance_matrix") or [],
-        "next_actions": result.get("next_actions") or [],
-        "risks": result.get("risks") or [],
-        "eligibility_notes": str(result.get("eligibility_notes") or "").strip(),
-        "source_notes": str(result.get("source_notes") or "").strip(),
-        "pricing_notes": str(result.get("pricing_notes") or "").strip(),
-    }
+    try:
+        result = _call_llm(ENRICH_PROMPT, user_prompt)
+    except Exception as exc:
+        enrichment = _default_enrichment()
+        return enrichment, f"DeepSeek enrichment failed: {exc}"
+    enrichment = _default_enrichment()
+    enrichment["tender_summary"] = str(result.get("tender_summary") or "").strip()
+    enrichment["email_draft"] = str(result.get("email_draft") or "").strip()
+    enrichment["compliance_matrix"] = result.get("compliance_matrix") or []
+    enrichment["next_actions"] = result.get("next_actions") or []
+    enrichment["risks"] = result.get("risks") or []
+    enrichment["eligibility_notes"] = str(result.get("eligibility_notes") or "").strip()
+    enrichment["source_notes"] = str(result.get("source_notes") or "").strip()
+    enrichment["pricing_notes"] = str(result.get("pricing_notes") or "").strip()
+    enrichment["drafting_notes"] = str(result.get("drafting_notes") or "").strip()
+    enrichment["recap"] = str(result.get("recap") or "").strip()
+    return enrichment, ""
 
 
 def render_compliance_matrix_markdown(project: dict, enrichment: dict) -> str:
@@ -175,7 +221,13 @@ def render_compliance_matrix_markdown(project: dict, enrichment: dict) -> str:
         return "\n".join(lines)
     lines.extend(["| Requirement | Status | Evidence Needed | Owner | Notes |", "|-------------|--------|-----------------|-------|-------|"])
     for row in rows:
-        lines.append(f"| {row.get('requirement', '-')} | {row.get('status', '-')} | {row.get('evidence_needed', row.get('evidence', '-'))} | {row.get('owner', '-')} | {row.get('notes', '-')} |")
+        lines.append(
+            f"| {_escape_table_cell(row.get('requirement', '-'))} | "
+            f"{_escape_table_cell(row.get('status', '-'))} | "
+            f"{_escape_table_cell(row.get('evidence_needed', row.get('evidence', '-')))} | "
+            f"{_escape_table_cell(row.get('owner', '-'))} | "
+            f"{_escape_table_cell(row.get('notes', '-'))} |"
+        )
     return "\n".join(lines)
 
 
@@ -188,7 +240,13 @@ def render_next_actions_markdown(project: dict, enrichment: dict) -> str:
         return "\n".join(lines)
     lines.extend(["| Action | Priority | Owner | Deadline | Notes |", "|--------|----------|-------|----------|-------|"])
     for row in rows:
-        lines.append(f"| {row.get('action', '-')} | {row.get('priority', '-')} | {row.get('owner', '-')} | {row.get('deadline', '-')} | {row.get('notes', '-')} |")
+        lines.append(
+            f"| {_escape_table_cell(row.get('action', '-'))} | "
+            f"{_escape_table_cell(row.get('priority', '-'))} | "
+            f"{_escape_table_cell(row.get('owner', '-'))} | "
+            f"{_escape_table_cell(row.get('deadline', '-'))} | "
+            f"{_escape_table_cell(row.get('notes', '-'))} |"
+        )
     return "\n".join(lines)
 
 
@@ -199,7 +257,12 @@ def render_risks_markdown(project: dict, enrichment: dict) -> str:
         return ""
     lines = [f"# Risks: {title}", "", "| Risk | Likelihood | Impact | Mitigation |", "|------|------------|--------|------------|"]
     for row in rows:
-        lines.append(f"| {row.get('risk', '-')} | {row.get('likelihood', '-')} | {row.get('impact', '-')} | {row.get('mitigation', '-')} |")
+        lines.append(
+            f"| {_escape_table_cell(row.get('risk', '-'))} | "
+            f"{_escape_table_cell(row.get('likelihood', '-'))} | "
+            f"{_escape_table_cell(row.get('impact', '-'))} | "
+            f"{_escape_table_cell(row.get('mitigation', '-'))} |"
+        )
     return "\n".join(lines)
 
 
@@ -227,6 +290,22 @@ def render_pricing_markdown(project: dict, enrichment: dict) -> str:
     return f"# Pricing Notes: {title}\n\n{notes}"
 
 
+def render_drafting_notes_markdown(project: dict, enrichment: dict) -> str:
+    notes = enrichment.get("drafting_notes", "")
+    if not notes:
+        return ""
+    title = project.get("project_name") or "Tender"
+    return f"# Drafting Notes: {title}\n\n{notes}"
+
+
+def render_recap_markdown(project: dict, enrichment: dict) -> str:
+    notes = enrichment.get("recap", "")
+    if not notes:
+        return ""
+    title = project.get("project_name") or "Tender"
+    return f"# Recap: {title}\n\n{notes}"
+
+
 def render_optional_files(project: dict, enrichment: dict) -> dict[str, str]:
     files = {}
     risks = render_risks_markdown(project, enrichment)
@@ -241,16 +320,22 @@ def render_optional_files(project: dict, enrichment: dict) -> dict[str, str]:
     pricing = render_pricing_markdown(project, enrichment)
     if pricing:
         files["pricing.md"] = pricing
+    drafting_notes = render_drafting_notes_markdown(project, enrichment)
+    if drafting_notes:
+        files["drafting-notes.md"] = drafting_notes
+    recap = render_recap_markdown(project, enrichment)
+    if recap:
+        files["recap.md"] = recap
     return files
 
 
 def run(project: dict, config: dict | None = None) -> dict:
     config = config or {}
     folder = build_folder_name(project)
-    enrichment = _enrich(project)
+    enrichment, error = _enrich(project)
     files = {
-        "tender.md": render_tender_markdown(project),
-        "email.md": render_email_markdown(project),
+        "tender.md": render_tender_markdown(project, enrichment),
+        "email.md": render_email_markdown(project, enrichment),
         "compliance-matrix.md": render_compliance_matrix_markdown(project, enrichment),
         "next-actions.md": render_next_actions_markdown(project, enrichment),
     }
@@ -260,9 +345,12 @@ def run(project: dict, config: dict | None = None) -> dict:
     folder_path.mkdir(parents=True, exist_ok=True)
     for name, content in files.items():
         (folder_path / name).write_text(content, encoding="utf-8")
-    return {
+    result = {
         "folder": folder,
         "files": list(files.keys()),
         "repo_path": str(repo_path),
         "gitlab_pushed": False,
     }
+    if error:
+        result["error"] = error
+    return result

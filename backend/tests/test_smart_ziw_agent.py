@@ -8,6 +8,9 @@ from smart_ziw_agent import (
     render_email_markdown,
     render_compliance_matrix_markdown,
     render_next_actions_markdown,
+    _enrich,
+    _call_llm,
+    run,
 )
 
 
@@ -42,6 +45,22 @@ def test_render_tender_markdown_contains_title():
     assert "https://example.com/tender" in md
 
 
+def test_render_tender_markdown_uses_enrichment():
+    project = {
+        "project_name": "IS Security Audit",
+        "project_sponsor": "CDC Benin",
+        "primary_country_name_en": "Benin",
+        "project_end_date": "2026-07-13",
+        "project_url": "https://example.com/tender",
+        "source": "Global Tenders",
+        "project_description": "Audit and pentesting.",
+    }
+    enrichment = {"tender_summary": "## Overview\n\nConcise LLM summary."}
+    md = render_tender_markdown(project, enrichment)
+    assert "Concise LLM summary" in md
+    assert "## Overview" in md
+
+
 def test_render_email_markdown_contains_draft_email():
     project = {
         "project_name": "IS Security Audit",
@@ -55,6 +74,18 @@ def test_render_email_markdown_contains_draft_email():
     md = render_email_markdown(project)
     assert "CDC Benin" in md
     assert "IS Security Audit" in md
+
+
+def test_render_email_markdown_uses_enrichment():
+    project = {
+        "project_name": "IS Security Audit",
+        "project_sponsor": "CDC Benin",
+        "primary_country_name_en": "Benin",
+        "project_end_date": "2026-07-13",
+    }
+    enrichment = {"email_draft": "Dear buyer, please clarify the deadline."}
+    md = render_email_markdown(project, enrichment)
+    assert "Dear buyer, please clarify the deadline" in md
 
 
 def test_render_compliance_matrix_has_table():
@@ -77,6 +108,19 @@ def test_render_compliance_matrix_has_table():
     assert "Assumed required" in md
 
 
+def test_render_compliance_matrix_escapes_pipes_and_newlines():
+    project = {"project_name": "Test"}
+    enrichment = {
+        "compliance_matrix": [
+            {"requirement": "A | B", "status": "X\nY", "evidence_needed": "E", "owner": "O", "notes": "N"},
+        ]
+    }
+    md = render_compliance_matrix_markdown(project, enrichment)
+    assert "A \\| B" in md
+    assert "X Y" in md
+    assert "X\nY" not in md
+
+
 def test_render_next_actions_has_actions():
     project = {
         "project_name": "IS Security Audit",
@@ -92,3 +136,43 @@ def test_render_next_actions_has_actions():
     md = render_next_actions_markdown(project, enrichment)
     assert "Obtain DCE" in md
     assert "CRITICAL" in md
+
+
+def test_enrich_fallback_on_llm_error(monkeypatch):
+    project = {
+        "project_name": "IS Security Audit",
+        "project_sponsor": "CDC Benin",
+        "primary_country_name_en": "Benin",
+        "project_end_date": "2026-07-13",
+    }
+
+    def _raise(*args, **kwargs):
+        raise RuntimeError("API down")
+
+    monkeypatch.setattr("smart_ziw_agent._call_llm", _raise)
+    enrichment, error = _enrich(project)
+    assert enrichment["compliance_matrix"] == []
+    assert enrichment["next_actions"] == []
+    assert "API down" in error
+
+
+def test_run_gracefully_handles_missing_api_key(monkeypatch, tmp_path):
+    project = {
+        "project_name": "IS Security Audit",
+        "project_sponsor": "CDC Benin",
+        "primary_country_name_en": "Benin",
+        "project_end_date": "2026-07-13",
+        "project_url": "https://example.com/tender",
+        "source": "Global Tenders",
+        "project_description": "Audit and pentesting.",
+    }
+    monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
+    result = run(project, config={"smart_ziw_repo_path": str(tmp_path)})
+    assert "error" in result
+    assert "DEEPSEEK_API_KEY" in result["error"]
+    assert "tender.md" in result["files"]
+    assert "email.md" in result["files"]
+    assert (tmp_path / result["folder"] / "tender.md").exists()
+    assert (tmp_path / result["folder"] / "email.md").exists()
+    assert (tmp_path / result["folder"] / "compliance-matrix.md").exists()
+    assert (tmp_path / result["folder"] / "next-actions.md").exists()
