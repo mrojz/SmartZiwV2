@@ -105,3 +105,103 @@ def test_search_without_key_returns_config_error():
     rows = client.search("q")
     assert rows == [{"_error": "firecrawl_api_key is not configured"}]
     client._session.post.assert_not_called()
+
+
+from smart_ziw_research import DocumentStore, is_document_url
+
+
+def test_is_document_url_table():
+    assert is_document_url("https://x.com/dce.PDF") is True
+    assert is_document_url("https://x.com/dce.pdf?download=1") is True
+    assert is_document_url("https://x.com/plan.xlsx") is True
+    assert is_document_url("https://x.com/notice.html") is False
+    assert is_document_url("https://x.com/notice") is False
+
+
+def _fake_get(content=b"%PDF-1.4 fake", status=200, content_type="application/pdf"):
+    mock = MagicMock()
+    mock.raise_for_status.return_value = None
+    mock.headers = {"content-type": content_type}
+    mock.iter_content = lambda chunk_size: iter([content])
+    return mock
+
+
+def test_download_saves_slugged_file(monkeypatch, tmp_path):
+    monkeypatch.setattr("smart_ziw_research.socket.getaddrinfo", _public_dns)
+    monkeypatch.setattr("smart_ziw_research.requests.get", lambda *a, **k: _fake_get())
+    store = DocumentStore(tmp_path)
+    path, error = store.download("https://example.com/docs/IS Security Audit.PDF")
+    assert error is None
+    assert path is not None
+    assert path.name == "IS-Security-Audit.pdf"
+    assert path.parent == tmp_path / "documents"
+
+
+def test_download_skips_existing_file(monkeypatch, tmp_path):
+    monkeypatch.setattr("smart_ziw_research.socket.getaddrinfo", _public_dns)
+    store = DocumentStore(tmp_path)
+    target = store.documents_dir / "doc.pdf"
+    target.write_bytes(b"already here")
+
+    def _explode(*args, **kwargs):
+        raise AssertionError("network should not be used")
+
+    monkeypatch.setattr("smart_ziw_research.requests.get", _explode)
+    path, error = store.download("https://example.com/doc.pdf", title="doc")
+    assert error is None
+    assert path == target
+    assert target.read_bytes() == b"already here"
+
+
+def test_download_rejects_unsafe_url(monkeypatch, tmp_path):
+    monkeypatch.setattr("smart_ziw_research.socket.getaddrinfo", _private_dns)
+    store = DocumentStore(tmp_path)
+    path, error = store.download("http://10.0.0.5/dce.pdf")
+    assert path is None
+    assert error == "blocked (unsafe URL)"
+
+
+def test_download_caps_file_size(monkeypatch, tmp_path):
+    monkeypatch.setattr("smart_ziw_research.socket.getaddrinfo", _public_dns)
+    monkeypatch.setattr("smart_ziw_research.requests.get", lambda *a, **k: _fake_get(content=b"x" * 100))
+    store = DocumentStore(tmp_path, max_bytes=10)
+    path, error = store.download("https://example.com/big.pdf")
+    assert path is None
+    assert error == "file exceeds size cap"
+    assert not (store.documents_dir / "big.pdf").exists()
+
+
+def test_extract_uses_pdfplumber_fallback(monkeypatch, tmp_path):
+    # markitdown unavailable -> pdfplumber fallback
+    monkeypatch.setitem(sys.modules, "markitdown", None)
+    fake_pdf = MagicMock()
+    fake_pdf.pages = [MagicMock(extract_text=lambda: "PDF page text")]
+    import pdfplumber
+    monkeypatch.setattr(pdfplumber, "open", lambda path: fake_pdf)
+    store = DocumentStore(tmp_path)
+    doc = tmp_path / "dce.pdf"
+    doc.write_bytes(b"fake pdf bytes")
+    text = store.extract(doc)
+    assert "PDF page text" in text
+
+
+def test_save_extraction_writes_failure_note(monkeypatch, tmp_path):
+    store = DocumentStore(tmp_path)
+    monkeypatch.setattr(DocumentStore, "extract", lambda self, path: "")
+    doc = store.documents_dir / "locked.pdf"
+    doc.write_bytes(b"x")
+    name, ok = store.save_extraction(doc)
+    assert ok is False
+    assert name == "locked.md"
+    content = (store.artifacts_dir / name).read_text(encoding="utf-8")
+    assert "Extraction failed" in content
+
+
+def test_save_extraction_writes_text(monkeypatch, tmp_path):
+    store = DocumentStore(tmp_path)
+    monkeypatch.setattr(DocumentStore, "extract", lambda self, path: "extracted text")
+    doc = store.documents_dir / "dce.pdf"
+    doc.write_bytes(b"x")
+    name, ok = store.save_extraction(doc)
+    assert ok is True
+    assert (store.artifacts_dir / name).read_text(encoding="utf-8") == "extracted text"
