@@ -30,3 +30,6 @@ projects.xlsx
 .docx_render_check_2
 .playwright-mcp.worktrees/
 .worktrees/
+
+# Superpowers SDD scratchpad
+.superpowers/
