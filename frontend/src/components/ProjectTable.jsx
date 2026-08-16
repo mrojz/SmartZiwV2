@@ -133,9 +133,12 @@ export default function ProjectTable({
   onProjectSelect,
   activeProjectId,
   onClearActiveProject,
+  autoFilterActive,
+  onClearAutoFilter,
+  onDismissAutoFilterToast,
 }) {
-  const [sortCol, setSortCol] = useState(null);
-  const [sortDir, setSortDir] = useState('asc');
+  const [sortCol, setSortCol] = useState('scraped_at');
+  const [sortDir, setSortDir] = useState('desc');
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(25);
   const [selectedRowIds, setSelectedRowIds] = useState(new Set());
@@ -456,6 +459,9 @@ export default function ProjectTable({
           resultCount={projects.length}
           onClearAll={onClearFilters}
           allProjects={allProjects}
+          autoFilterActive={autoFilterActive}
+          onClearAutoFilter={onClearAutoFilter}
+          onDismissAutoFilterToast={onDismissAutoFilterToast}
         />
       </div>
 

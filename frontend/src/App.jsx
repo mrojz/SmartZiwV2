@@ -2802,6 +2802,8 @@ export default function App() {
     const [endDateTo, setEndDateTo] = useState('');
     const [scrapedFrom, setScrapedFrom] = useState('');
     const [scrapedTo, setScrapedTo] = useState('');
+    const [autoFilterApplied, setAutoFilterApplied] = useState(false);
+    const [showAutoFilterToast, setShowAutoFilterToast] = useState(false);
 
     const [authUser, setAuthUser] = useState(null);
     const [availableUsers, setAvailableUsers] = useState([]);
@@ -3041,6 +3043,18 @@ export default function App() {
         const data = await res.json();
         setProjects(attachProjectRowIds(Array.isArray(data) ? data : []));
     }, [apiFetch]);
+
+    useEffect(() => {
+        if (projects.length === 0 || autoFilterApplied) return;
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const weekAgo = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
+        const fmt = (d) => d.toISOString().split('T')[0];
+        setScrapedFrom(fmt(weekAgo));
+        setScrapedTo(fmt(today));
+        setAutoFilterApplied(true);
+        setShowAutoFilterToast(true);
+    }, [projects, autoFilterApplied]);
 
     useEffect(() => {
         if (!authUser || authUser.mustChangePassword) return;
@@ -3310,6 +3324,13 @@ export default function App() {
         setScrapedTo('');
         setExpiringSoonOnly(false);
         setExpiringSoonDays(5);
+        setShowAutoFilterToast(false);
+    };
+
+    const clearAutoFilter = () => {
+        setScrapedFrom('');
+        setScrapedTo('');
+        setShowAutoFilterToast(false);
     };
 
     const buildCurrentFilterState = useCallback(() => ({
@@ -3998,6 +4019,9 @@ export default function App() {
                                         canManageDecision={canManageDecision}
                                         activeProjectId={selectedEntityId}
                                         onClearActiveProject={clearActiveProject}
+                                        autoFilterActive={showAutoFilterToast}
+                                        onClearAutoFilter={clearAutoFilter}
+                                        onDismissAutoFilterToast={() => setShowAutoFilterToast(false)}
                                         onProjectSelect={(project, projectIndex) => {
                                             setSelectedProject(project);
                                             setSelectedProjectIndex(projectIndex);

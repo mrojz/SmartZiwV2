@@ -346,6 +346,10 @@ export default function UnifiedSearchBar({
     onClearAll,
     // data for autocomplete
     allProjects,
+    // auto-filter
+    autoFilterActive,
+    onClearAutoFilter,
+    onDismissAutoFilterToast,
 }) {
     const [input, setInput] = useState('');
     const [showDrop, setShowDrop] = useState(false);
@@ -521,8 +525,59 @@ export default function UnifiedSearchBar({
 
     const inputId = 'usb-main-input';
 
+    const formatShortDate = (v) => {
+        if (!v) return null;
+        const d = new Date(v);
+        if (Number.isNaN(d.getTime())) return v;
+        return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+    };
+
+    const activeFilterChips = [];
+    if (source) activeFilterChips.push({ id: 'source', label: `Source: ${source}`, onRemove: () => onSourceChange('') });
+    if (region) activeFilterChips.push({ id: 'region', label: `Region: ${region}`, onRemove: () => onRegionChange('') });
+    if (continent) activeFilterChips.push({ id: 'continent', label: `Continent: ${continent}`, onRemove: () => onContinentChange('') });
+    if (decision) activeFilterChips.push({ id: 'decision', label: `Decision: ${decision}`, onRemove: () => onDecisionChange('') });
+    if (verified) activeFilterChips.push({ id: 'verified', label: `AI: ${verified === 'Yes' ? 'Verified' : 'Not Verified'}`, onRemove: () => onVerifiedChange('') });
+    if (deadlineFrom || deadlineTo) {
+        activeFilterChips.push({
+            id: 'deadline',
+            label: `Deadline: ${formatShortDate(deadlineFrom) || 'Any'} → ${formatShortDate(deadlineTo) || 'Any'}`,
+            onRemove: () => { onDeadlineFromChange(''); onDeadlineToChange(''); },
+        });
+    }
+    if (scrapedFrom || scrapedTo) {
+        const label = autoFilterActive
+            ? 'Last 7 days'
+            : `Scraped: ${formatShortDate(scrapedFrom) || 'Any'} → ${formatShortDate(scrapedTo) || 'Any'}`;
+        activeFilterChips.push({
+            id: 'scraped',
+            label,
+            isAuto: autoFilterActive,
+            onRemove: () => { if (autoFilterActive) onClearAutoFilter(); else { onScrapedFromChange(''); onScrapedToChange(''); } },
+        });
+    }
+    if (expiringSoonOnly) {
+        activeFilterChips.push({
+            id: 'expiring',
+            label: `Expiring in ${expiringSoonDays} day${expiringSoonDays === 1 ? '' : 's'}`,
+            onRemove: () => onToggleExpiringSoon(),
+        });
+    }
+
     return (
         <div className="usb-root">
+            {/* ── Auto-filter notice ─────────────────────────────── */}
+            {autoFilterActive && (
+                <div className="usb-auto-filter-toast" role="status" aria-live="polite">
+                    <span className="usb-auto-filter-toast-content">
+                        <span className="usb-auto-filter-icon" aria-hidden="true">⏱</span>
+                        Showing tenders scraped in the last 7 days.
+                    </span>
+                    <button type="button" className="usb-auto-filter-clear" onClick={onClearAutoFilter}>Show all</button>
+                    <button type="button" className="usb-auto-filter-dismiss" onClick={onDismissAutoFilterToast} aria-label="Dismiss notice">×</button>
+                </div>
+            )}
+
             {/* ── Primary row ─────────────────────────────────────── */}
             <div className="usb-primary-row">
                 {/* Search input */}
@@ -643,6 +698,23 @@ export default function UnifiedSearchBar({
                     </button>
                 )}
             </div>
+
+            {/* ── Active filter chips ─────────────────────────────── */}
+            {activeFilterChips.length > 0 && (
+                <div className="usb-active-filters">
+                    {activeFilterChips.map((chip) => (
+                        <span key={chip.id} className={`usb-active-filter-chip${chip.isAuto ? ' is-auto' : ''}`}>
+                            <span>{chip.label}</span>
+                            <button
+                                type="button"
+                                className="usb-active-filter-remove"
+                                onClick={chip.onRemove}
+                                aria-label={`Remove ${chip.label} filter`}
+                            >×</button>
+                        </span>
+                    ))}
+                </div>
+            )}
 
             {/* ── Autocomplete dropdown ──────────────────────────── */}
             {showDrop && suggestions.length > 0 && (
