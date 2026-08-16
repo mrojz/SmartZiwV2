@@ -4,7 +4,7 @@ import ProjectTable from './components/ProjectTable';
 import SyncPanel from './components/SyncPanel';
 import ConfigPanel from './components/ConfigPanel';
 import SchedulePanel from './components/SchedulePanel';
-import { HomeLine, Shield01, User01, LogOut01, Menu02, X, Mail01, Lock01, Edit01, Key01, UserX01, UserCheck01, SearchLg, Settings01, Clock, RefreshCw01 } from '@untitledui/icons';
+import { X, Mail01, Lock01, Edit01, Key01, UserX01, UserCheck01, SearchLg, Settings01, Clock, RefreshCw01 } from '@untitledui/icons';
 import { Button } from '@/components/base/buttons/button';
 import { Input } from '@/components/base/input/input';
 import { InputBase } from '@/components/base/input/input';
@@ -14,6 +14,8 @@ import { TextArea } from '@/components/base/textarea/textarea';
 import { ModalOverlay, Modal, Dialog } from '@/components/application/modals/modal';
 import { Table } from '@/components/application/table/table';
 import { Dropdown } from '@/components/base/dropdown/dropdown';
+import Sidebar from './components/Sidebar';
+import AnalyticsPage from './components/AnalyticsPage';
 
 const API = '/api';
 const APP_RELEASE_VERSION = '1.6';
@@ -113,6 +115,8 @@ function buildNotificationStreamUrl() {
     const query = params.toString();
     return query ? `${API}/notifications/stream?${query}` : `${API}/notifications/stream`;
 }
+
+const ADMIN_ROUTES = ['admin', 'users', 'smart-ziw', 'llm-config'];
 
 function normalizeRoute(rawRoute = '') {
     const route = String(rawRoute || '').replace(/^#/, '').replace(/^\//, '');
@@ -428,27 +432,6 @@ function setModalScrollLock(locked) {
     html.classList.toggle('modal-scroll-locked', shouldLock);
 }
 
-
-function Avatar({ user, size = 34 }) {
-    if (user?.avatarUrl) {
-        return (
-            <img
-                className="layout-avatar-image"
-                src={user.avatarUrl}
-                alt={user.name || 'user'}
-                style={{ width: size, height: size }}
-            />
-        );
-    }
-    return (
-        <div
-            className="layout-avatar-fallback"
-            style={{ width: size, height: size, background: colorFromSeed(user?.id || user?.email || '') }}
-        >
-            {initials(user?.name || '', user?.email || '')}
-        </div>
-    );
-}
 
 function LoginPage({ onLogin, error, bootstrap }) {
     const [email, setEmail] = useState('');
@@ -777,86 +760,6 @@ function PageHeader({ title, subtitle, action, className = '' }) {
     );
 }
 
-function SidebarIcon({ type }) {
-    const Icon = type === 'dashboard'
-        ? HomeLine
-        : type === 'admin'
-            ? Shield01
-            : type === 'profile'
-                ? User01
-                : type === 'release-notes'
-                    ? Edit01
-                : type === 'logout'
-                    ? LogOut01
-                    : null;
-
-    return Icon ? <Icon className="layout-nav-svg" /> : null;
-}
-function Sidebar({ user, route, onNavigate, collapsed, mobileOpen, onToggleCollapse, onCloseMobile }) {
-    const navItems = [
-        { key: 'dashboard', label: 'Dashboard', icon: 'dashboard' },
-        ...(user?.role === 'admin' ? [{ key: 'admin', label: 'Admin', icon: 'admin' }] : []),
-        { key: 'profile', label: 'Profile', icon: 'profile' },
-        { key: 'release-notes', label: 'Release Notes', icon: 'release-notes' },
-        { key: 'logout', label: 'Logout', icon: 'logout' },
-    ];
-
-    return (
-        <aside className={`layout-sidebar ${collapsed ? 'collapsed' : ''} ${mobileOpen ? 'open' : ''}`}>
-            <div className="layout-sidebar-top">
-                <div className="layout-brand-card">
-                    <div className="layout-logo-row">
-                        <div className="layout-logo-mark">
-                            <img className="logo-img" src="/forvis-mazars-logo.svg" alt="Forvis Mazars" />
-                        </div>
-                        {!collapsed ? (
-                            <div className="layout-brand-copy">
-                                <span className="layout-brand-kicker">Forvis Mazars</span>
-                                <span className="layout-brand-name">Procurement Watch</span>
-                            </div>
-                        ) : null}
-                    </div>
-                    <button
-                        className="header-icon-btn layout-sidebar-toggle"
-                        onClick={onToggleCollapse}
-                        aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-                    >
-                        <Menu02 className="layout-topbar-icon" />
-                    </button>
-                </div>
-            </div>
-
-            <nav className="layout-sidebar-nav">
-                {navItems.map((item) => (
-                    <button
-                        key={item.key}
-                        className={`layout-nav-item ${route === item.key ? 'active' : ''}`}
-                        title={collapsed ? item.label : ""}
-                        onClick={() => {
-                            onNavigate(item.key);
-                            onCloseMobile();
-                        }}
-                    >
-                        <span className="layout-nav-icon" aria-hidden="true"><SidebarIcon type={item.icon} /></span>
-                        <span className="layout-nav-label">{item.label}</span>
-                    </button>
-                ))}
-            </nav>
-
-            <div className="layout-sidebar-footer">
-                <div className="layout-sidebar-account">
-                    <Avatar user={user} size={40} />
-                    {!collapsed ? (
-                        <div className="layout-sidebar-account-copy">
-                            <strong>{user?.name}</strong>
-                            <p>{user?.role}</p>
-                        </div>
-                    ) : null}
-                </div>
-            </div>
-        </aside>
-    );
-}
 function CommentsPanel({
     open,
     entity,
@@ -1962,8 +1865,8 @@ function ResetPasswordModal({ open, user, onClose, onReset, saving, result }) {
     );
 }
 
-function AdminPage({ apiFetch }) {
-    const [adminTab, setAdminTab] = useState('users');
+function AdminPage({ apiFetch, initialTab = 'users' }) {
+    const [adminTab, setAdminTab] = useState(initialTab);
     const [users, setUsers] = useState([]);
     const [q, setQ] = useState('');
     const [roleFilter, setRoleFilter] = useState('all');
@@ -3925,7 +3828,7 @@ export default function App() {
             <div className="layout-main">
                 <div className="layout-page-scroll">
                     <div className="layout-shell-container layout-page-container">
-                        {route === 'dashboard' ? (
+                        {route === 'dashboard' || route === 'tenders' || (ADMIN_ROUTES.includes(route) && authUser.role !== 'admin') ? (
                             <div className="layout-dashboard layout-content-row">
                                 <div className="layout-dashboard-main">
                                     <PageHeader
@@ -4036,7 +3939,14 @@ export default function App() {
                             </div>
                         ) : null}
 
-                        {route === 'admin' && authUser.role === 'admin' ? <AdminPage apiFetch={apiFetch} /> : null}
+                        {ADMIN_ROUTES.includes(route) && authUser.role === 'admin' ? (
+                            <AdminPage
+                                key={route}
+                                apiFetch={apiFetch}
+                                initialTab={route === 'llm-config' ? 'llm' : route === 'smart-ziw' ? 'smart-ziw' : 'users'}
+                            />
+                        ) : null}
+                        {route === 'analytics' ? <AnalyticsPage /> : null}
                         {route === 'profile' ? <ProfilePage user={authUser} apiFetch={apiFetch} onUserUpdate={setAuthUser} /> : null}
                         {route === 'release-notes' ? <ReleaseNotesPage releases={releaseNotes} onBack={() => navigate('dashboard')} /> : null}
                     </div>

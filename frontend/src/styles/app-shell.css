@@ -4895,3 +4895,112 @@ body {
 .llm-env-info { color: var(--text-muted); font-size: 0.9rem; margin: 0; }
 .llm-env-info code { color: var(--text-primary); }
 .llm-models-status { color: var(--text-muted); font-size: 0.85rem; margin: 6px 0; }
+
+/* ── Grouped collapsible sidebar nav ── */
+.layout-nav-group + .layout-nav-group {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.layout-nav-group-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background 180ms ease, color 180ms ease;
+}
+
+.layout-nav-group-header:hover {
+  background: #f8fafc;
+  color: var(--text-secondary);
+}
+
+.layout-nav-group-label {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.layout-nav-group-chevron {
+  width: 13px;
+  height: 13px;
+  flex-shrink: 0;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transition: transform 180ms ease;
+  transform: rotate(-90deg);
+}
+
+.layout-nav-group-chevron.open {
+  transform: rotate(0deg);
+}
+
+.layout-nav-group-items {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.layout-nav-group.collapsed .layout-nav-group-items {
+  display: none;
+}
+
+/* Amber active rail (overrides the earlier accent rail) */
+.layout-nav-item.active::before {
+  width: 3px;
+  background: #d97706;
+}
+
+/* Collapsed rail mode: hide group headers, keep every item icon-only */
+.layout-sidebar.collapsed .layout-nav-group-header {
+  display: none;
+}
+
+.layout-sidebar.collapsed .layout-nav-group-items,
+.layout-sidebar.collapsed .layout-nav-group.collapsed .layout-nav-group-items {
+  display: flex;
+  margin-top: 0;
+}
+
+.layout-sidebar.collapsed .layout-nav-group + .layout-nav-group {
+  margin-top: 6px;
+  padding-top: 6px;
+}
+
+/* ── Analytics placeholder page ── */
+.analytics-page {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 28px;
+}
+
+.analytics-page-title {
+  margin: 0;
+  font-size: 1.3rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--text-primary);
+}
+
+.analytics-page-subtitle {
+  margin: 6px 0 0;
+  font-size: 0.92rem;
+  color: var(--text-muted);
+}
