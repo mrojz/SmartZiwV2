@@ -3940,6 +3940,14 @@ export default function App() {
             doLogout();
             return;
         }
+        if (key === 'schedule') {
+            setScheduleOpen(true);
+            return;
+        }
+        if (key === 'settings') {
+            setConfigOpen(true);
+            return;
+        }
         setRoute(key);
         window.location.hash = `#${key}`;
     };
@@ -3997,9 +4005,9 @@ export default function App() {
                                                         </TooltipTrigger>
                                                     </Tooltip>
                                                     <Dropdown.Root>
-                                                        <button type="button" className="header-avatar-btn" aria-label="Account menu">
+                                                        <Dropdown.Button className="header-avatar-btn" aria-label="Account menu">
                                                             <Avatar user={authUser} size={32} />
-                                                        </button>
+                                                        </Dropdown.Button>
                                                         <Dropdown.Popover className="header-dropdown-menu">
                                                             <Dropdown.Menu className="header-dropdown-menu-items" onAction={handleHeaderMenuAction}>
                                                                 <Dropdown.Item id="profile" icon={User01}>Profile</Dropdown.Item>

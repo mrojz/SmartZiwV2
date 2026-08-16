@@ -151,6 +151,7 @@ const DropdownDotsButton = (props: AriaButtonProps & RefAttributes<HTMLButtonEle
 
 export const Dropdown = {
     Root: AriaMenuTrigger,
+    Button: AriaButton,
     Popover: DropdownPopover,
     Menu: DropdownMenu,
     Section: AriaMenuSection,

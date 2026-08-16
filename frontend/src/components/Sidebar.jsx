@@ -5,6 +5,8 @@ import {
     BarChart01,
     Shield01,
     User01,
+    Settings01,
+    Clock,
     LogOut01,
     Menu02,
     ChevronDown,
@@ -29,6 +31,8 @@ const NAV_GROUPS = [
         adminOnly: true,
         items: [
             { key: 'admin', label: 'Admin', icon: Shield01 },
+            { key: 'schedule', label: 'Schedule', icon: Clock },
+            { key: 'settings', label: 'Settings', icon: Settings01 },
         ],
     },
     {
