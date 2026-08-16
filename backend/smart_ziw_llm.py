@@ -25,6 +25,29 @@ LIGHTLLM = "lightllm"
 ANTHROPIC_COMPATIBLE = "anthropic_compatible"
 _PROVIDERS = (AUTO, DEEPSEEK, LIGHTLLM)
 _LIGHTLLM_PLACEHOLDER_KEY = "EMPTY"  # vLLM/LightLLM convention for keyless local endpoints
+_DEFAULT_LLM_TEMPERATURE = 0.1
+_DEFAULT_LLM_MAX_TOKENS = 4000
+
+
+def _coerce_llm_params(config: dict) -> tuple:
+    """Read llm_temperature/llm_max_tokens from config with safe clamping.
+
+    Returns (temperature, max_tokens): temperature clamped to [0, 2] and
+    max_tokens to [1, 128000]. Missing or invalid values fall back to the
+    defaults (0.1, 4000).
+    """
+    try:
+        temperature = float(config.get("llm_temperature", _DEFAULT_LLM_TEMPERATURE))
+    except (TypeError, ValueError):
+        temperature = _DEFAULT_LLM_TEMPERATURE
+    try:
+        max_tokens = int(config.get("llm_max_tokens", _DEFAULT_LLM_MAX_TOKENS))
+    except (TypeError, ValueError):
+        max_tokens = _DEFAULT_LLM_MAX_TOKENS
+    return (
+        min(max(temperature, 0.0), 2.0),
+        min(max(max_tokens, 1), 128000),
+    )
 
 
 def _call_llm_text(system_prompt: str, user_prompt: str) -> str:
@@ -43,7 +66,14 @@ def _call_llm_text(system_prompt: str, user_prompt: str) -> str:
     return response.choices[0].message.content or ""
 
 
-def _lightllm_call(base_url: str, api_key: str, model: str, json_mode: bool) -> Callable[[str, str], dict | str]:
+def _lightllm_call(
+    base_url: str,
+    api_key: str,
+    model: str,
+    json_mode: bool,
+    temperature: float = _DEFAULT_LLM_TEMPERATURE,
+    max_tokens: int = _DEFAULT_LLM_MAX_TOKENS,
+) -> Callable[[str, str], dict | str]:
     client = OpenAI(api_key=api_key or _LIGHTLLM_PLACEHOLDER_KEY, base_url=base_url)
 
     def call(system_prompt: str, user_prompt: str):
@@ -53,8 +83,8 @@ def _lightllm_call(base_url: str, api_key: str, model: str, json_mode: bool) -> 
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
             ],
-            temperature=0.1,
-            max_tokens=4000,
+            temperature=temperature,
+            max_tokens=max_tokens,
         )
         content = response.choices[0].message.content or ("{}" if json_mode else "")
         if not json_mode:
@@ -65,7 +95,14 @@ def _lightllm_call(base_url: str, api_key: str, model: str, json_mode: bool) -> 
     return call
 
 
-def _anthropic_call(base_url: str, api_key: str, model: str, json_mode: bool) -> Callable[[str, str], dict | str]:
+def _anthropic_call(
+    base_url: str,
+    api_key: str,
+    model: str,
+    json_mode: bool,
+    temperature: float = _DEFAULT_LLM_TEMPERATURE,
+    max_tokens: int = _DEFAULT_LLM_MAX_TOKENS,
+) -> Callable[[str, str], dict | str]:
     """Anthropic-compatible Messages API call path (not wire-compatible with OpenAI)."""
 
     def call(system_prompt: str, user_prompt: str):
@@ -79,8 +116,8 @@ def _anthropic_call(base_url: str, api_key: str, model: str, json_mode: bool) ->
             headers=headers,
             json={
                 "model": model,
-                "max_tokens": 4000,
-                "temperature": 0.1,
+                "max_tokens": max_tokens,
+                "temperature": temperature,
                 "system": system_prompt,
                 "messages": [{"role": "user", "content": user_prompt}],
             },
@@ -98,6 +135,50 @@ def _anthropic_call(base_url: str, api_key: str, model: str, json_mode: bool) ->
     return call
 
 
+def _env_json_call(temperature: float, max_tokens: int) -> Callable[[str, str], dict]:
+    """Environment (DeepSeek) JSON-mode call with non-default LLM params."""
+
+    def call(system_prompt: str, user_prompt: str) -> dict:
+        from smart_ziw_agent import _deepseek_client, _safe_json_loads
+        client = _deepseek_client()
+        model = os.environ.get("DEEPSEEK_MODEL", os.environ.get("DEEPSEEK_WEB_MODEL", "deepseek-chat"))
+        response = client.chat.completions.create(
+            model=model,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            temperature=temperature,
+            max_tokens=max_tokens,
+            response_format={"type": "json_object"},
+        )
+        content = response.choices[0].message.content or "{}"
+        return _safe_json_loads(content)
+
+    return call
+
+
+def _env_text_call(temperature: float, max_tokens: int) -> Callable[[str, str], str]:
+    """Environment (DeepSeek) text-mode call with non-default LLM params."""
+
+    def call(system_prompt: str, user_prompt: str) -> str:
+        from smart_ziw_agent import _deepseek_client
+        client = _deepseek_client()
+        model = os.environ.get("DEEPSEEK_MODEL", os.environ.get("DEEPSEEK_WEB_MODEL", "deepseek-chat"))
+        response = client.chat.completions.create(
+            model=model,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            temperature=temperature,
+            max_tokens=max_tokens,
+        )
+        return response.choices[0].message.content or ""
+
+    return call
+
+
 def get_llm_call(config: dict | None = None, json_mode: bool = True) -> Callable[[str, str], dict | str]:
     """Return callable(system_prompt, user_prompt) -> dict (json_mode=True) or str (False).
 
@@ -111,15 +192,22 @@ def get_llm_call(config: dict | None = None, json_mode: bool = True) -> Callable
     provider = str(config.get("smart_ziw_llm_provider") or AUTO)
     if provider not in _PROVIDERS:
         provider = AUTO
+    temperature, max_tokens = _coerce_llm_params(config)
     base_url = str(config.get("lightllm_base_url") or "").strip()
     if provider == LIGHTLLM and not base_url:
         raise RuntimeError("LightLLM base URL is not configured")
     use_lightllm = provider == LIGHTLLM or (provider == AUTO and bool(base_url))
     if not use_lightllm:
+        # Default params keep the original callables (identity preserved for
+        # callers and tests); custom params get equivalent closures.
+        if temperature == _DEFAULT_LLM_TEMPERATURE and max_tokens == _DEFAULT_LLM_MAX_TOKENS:
+            if json_mode:
+                from smart_ziw_agent import _call_llm
+                return _call_llm
+            return _call_llm_text
         if json_mode:
-            from smart_ziw_agent import _call_llm
-            return _call_llm
-        return _call_llm_text
+            return _env_json_call(temperature, max_tokens)
+        return _env_text_call(temperature, max_tokens)
     provider_format = str(config.get("lightllm_provider") or "openai_compatible")
     if provider_format == ANTHROPIC_COMPATIBLE:
         return _anthropic_call(
@@ -127,12 +215,16 @@ def get_llm_call(config: dict | None = None, json_mode: bool = True) -> Callable
             api_key=str(config.get("lightllm_api_key") or ""),
             model=str(config.get("lightllm_model") or "default"),
             json_mode=json_mode,
+            temperature=temperature,
+            max_tokens=max_tokens,
         )
     return _lightllm_call(
         base_url=base_url,
         api_key=str(config.get("lightllm_api_key") or ""),
         model=str(config.get("lightllm_model") or "default"),
         json_mode=json_mode,
+        temperature=temperature,
+        max_tokens=max_tokens,
     )
 
 _LIGHTLLM_DISCOVERY_TIMEOUT = 8.0

@@ -1088,6 +1088,8 @@ class SmartZiwConfigUpdate(BaseModel):
     lightllm_api_key: str = ""
     lightllm_model: str = "default"
     lightllm_provider: str = "openai_compatible"
+    llm_temperature: float = 0.1
+    llm_max_tokens: int = 4000
 
 
 class LlmModelsRequest(BaseModel):

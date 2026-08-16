@@ -371,3 +371,85 @@ def test_discover_anthropic_connection_error_sanitized(monkeypatch):
     assert result["models"] == []
     assert result["detail"] == "Connection to the LightLLM server failed"
     assert "secret-key" not in str(result)
+
+
+# --- configurable llm_temperature / llm_max_tokens ---
+
+
+def test_lightllm_uses_configured_temperature_and_max_tokens(monkeypatch):
+    _reset_fake_openai()
+    monkeypatch.setattr("smart_ziw_llm.OpenAI", _FakeOpenAI)
+    config = {"lightllm_base_url": "http://localhost:8000/v1", "llm_temperature": 1.0, "llm_max_tokens": 1234}
+    getattr(sll, "get_llm_call")(config)("s", "u")
+    create_kwargs = _FakeOpenAI.instances[0].chat.completions.create.call_args.kwargs
+    assert create_kwargs["temperature"] == 1.0
+    assert create_kwargs["max_tokens"] == 1234
+
+
+def test_anthropic_uses_configured_temperature_and_max_tokens(monkeypatch):
+    captured = {}
+
+    def fake_post(url, **kwargs):
+        captured["body"] = kwargs["json"]
+        return _http_response(200, {"content": [{"text": "ok"}]})
+
+    monkeypatch.setattr("smart_ziw_llm.requests.post", fake_post)
+    call = getattr(sll, "get_llm_call")(_anthropic_config(llm_temperature=1.0, llm_max_tokens=999), json_mode=False)
+    assert call("s", "u") == "ok"
+    assert captured["body"]["temperature"] == 1.0
+    assert captured["body"]["max_tokens"] == 999
+
+
+def test_env_path_custom_params_returns_parameterized_call(monkeypatch):
+    created = {}
+
+    def fake_create(**kwargs):
+        created.update(kwargs)
+        return _response('{"ok": true}')
+
+    client = MagicMock()
+    client.chat.completions.create.side_effect = fake_create
+    monkeypatch.setattr(agent, "_deepseek_client", lambda: client)
+    call = getattr(sll, "get_llm_call")({"llm_temperature": 1.0, "llm_max_tokens": 100})
+    assert call is not agent._call_llm
+    assert call("s", "u") == {"ok": True}
+    assert created["temperature"] == 1.0
+    assert created["max_tokens"] == 100
+    assert created.get("response_format") == {"type": "json_object"}
+
+
+def test_env_text_path_custom_params(monkeypatch):
+    created = {}
+
+    def fake_create(**kwargs):
+        created.update(kwargs)
+        return _response("plain")
+
+    client = MagicMock()
+    client.chat.completions.create.side_effect = fake_create
+    monkeypatch.setattr(agent, "_deepseek_client", lambda: client)
+    call = getattr(sll, "get_llm_call")({"llm_temperature": 1.0}, json_mode=False)
+    assert call is not sll._call_llm_text
+    assert call("s", "u") == "plain"
+    assert created["temperature"] == 1.0
+    assert created["max_tokens"] == 4000
+
+
+def test_invalid_llm_params_fall_back_to_defaults(monkeypatch):
+    _reset_fake_openai()
+    monkeypatch.setattr("smart_ziw_llm.OpenAI", _FakeOpenAI)
+    config = {"lightllm_base_url": "http://localhost:8000/v1", "llm_temperature": "abc", "llm_max_tokens": None}
+    getattr(sll, "get_llm_call")(config)("s", "u")
+    create_kwargs = _FakeOpenAI.instances[0].chat.completions.create.call_args.kwargs
+    assert create_kwargs["temperature"] == 0.1
+    assert create_kwargs["max_tokens"] == 4000
+
+
+def test_llm_params_are_clamped(monkeypatch):
+    _reset_fake_openai()
+    monkeypatch.setattr("smart_ziw_llm.OpenAI", _FakeOpenAI)
+    config = {"lightllm_base_url": "http://localhost:8000/v1", "llm_temperature": 5, "llm_max_tokens": 0}
+    getattr(sll, "get_llm_call")(config)("s", "u")
+    create_kwargs = _FakeOpenAI.instances[0].chat.completions.create.call_args.kwargs
+    assert create_kwargs["temperature"] == 2.0
+    assert create_kwargs["max_tokens"] == 1

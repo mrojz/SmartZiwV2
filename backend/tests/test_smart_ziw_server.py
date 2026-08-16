@@ -273,6 +273,23 @@ def test_admin_update_stores_lightllm_provider(monkeypatch):
     assert saved["lightllm_provider"] == "custom"
 
 
+def test_admin_update_stores_llm_params(monkeypatch):
+    saved = {}
+    monkeypatch.setattr(server, "_get_request_user", lambda req: _mk_admin())
+    monkeypatch.setattr(server, "get_smart_ziw_config", _config_with_secrets)
+
+    def fake_save(config):
+        saved.update(config)
+        return config
+
+    monkeypatch.setattr(server, "save_smart_ziw_config", fake_save)
+    client = TestClient(server.app)
+    r = client.put("/api/admin/smart-ziw-config", json={"llm_temperature": 1.0, "llm_max_tokens": 8000})
+    assert r.status_code == 200
+    assert saved["llm_temperature"] == 1.0
+    assert saved["llm_max_tokens"] == 8000
+
+
 def _mk_user_no_admin():
     return {
         "id": "u1",

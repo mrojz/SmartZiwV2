@@ -449,6 +449,8 @@ DEFAULT_SMART_ZIW_CONFIG = {
     'lightllm_api_key': '',
     'lightllm_model': 'default',
     'lightllm_provider': 'openai_compatible',
+    'llm_temperature': 0.1,
+    'llm_max_tokens': 4000,
 }
 
 

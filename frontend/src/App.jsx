@@ -1965,6 +1965,8 @@ function AdminPage({ apiFetch, initialTab = 'users' }) {
         lightllm_api_key: '',
         lightllm_model: 'default',
         lightllm_provider: 'openai_compatible',
+        llm_temperature: 0.1,
+        llm_max_tokens: 4000,
     });
     const [savingSmartZiwConfig, setSavingSmartZiwConfig] = useState(false);
     const [testingLlm, setTestingLlm] = useState(false);
@@ -2781,6 +2783,21 @@ function AdminPage({ apiFetch, initialTab = 'users' }) {
                             </>
                         )}
                     </div>
+                    <details className="llm-advanced">
+                        <summary className="llm-advanced-summary">Advanced settings</summary>
+                        <div className="profile-settings-grid">
+                            <div className="auth-field">
+                                <label className="auth-label">Temperature</label>
+                                <input className="auth-input" type="number" min="0" max="2" step="0.1" value={smartZiwConfig.llm_temperature ?? 0.1} onChange={(e) => { const value = parseFloat(e.target.value); setSmartZiwConfig({ ...smartZiwConfig, llm_temperature: Number.isFinite(value) ? value : 0.1 }); }} />
+                                <p className="llm-models-status">Controls response randomness. Default 0.1. Some models (e.g. reasoning models) only accept 1.</p>
+                            </div>
+                            <div className="auth-field">
+                                <label className="auth-label">Max tokens</label>
+                                <input className="auth-input" type="number" min="1" step="1" value={smartZiwConfig.llm_max_tokens ?? 4000} onChange={(e) => { const value = parseInt(e.target.value, 10); setSmartZiwConfig({ ...smartZiwConfig, llm_max_tokens: Number.isFinite(value) ? value : 4000 }); }} />
+                                <p className="llm-models-status">Maximum tokens per response. Default 4000.</p>
+                            </div>
+                        </div>
+                    </details>
                     <div className="profile-card-footer profile-card-footer-end">
                         <button type="button" className="profile-btn profile-btn-primary" onClick={testAndSaveLlmConfig} disabled={savingSmartZiwConfig}>
                             {testingLlm ? 'Testing…' : savingSmartZiwConfig ? 'Saving...' : 'Save config'}
