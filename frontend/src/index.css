@@ -1,19 +1,7 @@
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap');
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
-@import './styles/demo-walkthrough.css';
-@import "./styles/untitledui/globals.css";
-/* ── Style Modules ── */
-@import './styles/base.css';
-@import './styles/header.css';
-@import './styles/toolbar.css';
-@import './styles/filters.css';
-@import './styles/table.css';
-@import './styles/table-cells.css';
-@import './styles/actions.css';
-@import './styles/badges-pagination.css';
-@import './styles/panels.css';
-@import './styles/app-shell.css';
 
 @theme inline {
     --font-heading: var(--font-sans);
@@ -137,4 +125,10 @@
   html {
     @apply font-sans;
     }
+}
+
+/* Scroll lock for legacy modal-style panels (toggled by setModalScrollLock in App.jsx). */
+html.modal-scroll-locked,
+body.modal-scroll-locked {
+  overflow: hidden;
 }

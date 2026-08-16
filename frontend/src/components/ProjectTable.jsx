@@ -48,7 +48,7 @@ function initials(name = '', email = '') {
 
 function CommentSignalIcon() {
   return (
-    <svg viewBox="0 0 20 20" aria-hidden="true" className="project-row-signal-icon">
+    <svg viewBox="0 0 20 20" aria-hidden="true" className="h-3.5 w-3.5 flex-none">
       <path d="M5.5 5.5h9a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2H9.7l-3.2 2.4c-.5.4-1.2 0-.9-.7l.6-1.7H5.5a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2Z" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
@@ -56,7 +56,7 @@ function CommentSignalIcon() {
 
 function AttachmentSignalIcon() {
   return (
-    <svg viewBox="0 0 20 20" aria-hidden="true" className="project-row-signal-icon">
+    <svg viewBox="0 0 20 20" aria-hidden="true" className="h-3.5 w-3.5 flex-none">
       <path d="M7.4 10.8 11.9 6.3a2.6 2.6 0 1 1 3.7 3.7l-5.8 5.8a4 4 0 1 1-5.6-5.6l6.3-6.3" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
@@ -64,13 +64,13 @@ function AttachmentSignalIcon() {
 
 function sourceClass(source) {
   const s = (source || '').toLowerCase();
-  if (s.includes('iadb')) return 'iadb';
-  if (s.includes('world bank')) return 'wb';
-  if (s.includes('global')) return 'gt';
-  if (s.includes('giz')) return 'giz';
-  if (s.includes('development')) return 'devaid';
-  if (s.includes('dgmarket')) return 'dgm';
-  if (s.includes('africa')) return 'ag';
+  if (s.includes('iadb')) return 'border-[#a7c9ff] bg-[#eaf2ff] text-[#1f5dcf]';
+  if (s.includes('world bank')) return 'border-[#bcc1ff] bg-[#eef0ff] text-[#3c3ea8]';
+  if (s.includes('global')) return 'border-[#9fe9db] bg-[#e9faf7] text-[#116a60]';
+  if (s.includes('giz')) return 'border-[#f7cfa6] bg-[#fff5ec] text-[#9b4d17]';
+  if (s.includes('development')) return 'border-[#d7b9f6] bg-[#f6efff] text-[#7333a5]';
+  if (s.includes('dgmarket')) return 'border-[#f8bfd0] bg-[#fff0f4] text-[#a0264e]';
+  if (s.includes('africa')) return 'border-[#f2dea7] bg-[#fff9ea] text-[#966018]';
   return '';
 }
 
@@ -484,18 +484,18 @@ export default function ProjectTable({
 
       <div className="overflow-hidden rounded-lg border bg-card shadow-sm">
 
-        <Table aria-label="Projects table" className="app-table projects-table">
+        <Table aria-label="Projects table" className="app-table table-fixed">
           <TableHeader>
             <TableRow className="hover:bg-transparent">
               {columns.map((col) => (
                 <TableHead
                   key={col.key}
-                  className={`${col.key === '_select' ? 'th-checkbox' : ''} ${col.key === '_actions' ? 'th-actions' : ''} ${col.key === '_deadline' ? 'th-has-date-filter' : ''} ${col.key === 'scraped_at' ? 'th-has-date-filter th-scraped-filter' : ''} ${col.type !== 'none' ? 'cursor-pointer select-none' : ''}`}
+                  className={`sticky top-0 z-[2] whitespace-nowrap border-b bg-[#eef3fa] px-3.5 py-3 text-xs font-bold uppercase tracking-wider text-[#6b7f9f] ${col.key === '_select' ? 'w-10 text-center' : ''} ${col.key === '_actions' ? 'w-12 text-center' : ''} ${col.key === 'scraped_at' ? 'w-[10%] min-w-[140px]' : ''} ${col.type !== 'none' ? 'cursor-pointer select-none' : ''}`}
                   aria-sort={sortCol === col.key ? (sortDir === 'asc' ? 'ascending' : 'descending') : undefined}
                   onClick={col.type !== 'none' ? () => handleSortClick(col.key) : undefined}
                 >
                   {col.key === '_select' ? (
-                    <input ref={headerCheckboxRef} type="checkbox" name="selectVisibleRows" aria-label="Select all visible rows" checked={allOnPageSelected} aria-checked={someOnPageSelected ? 'mixed' : allOnPageSelected} className={someOnPageSelected ? 'is-indeterminate' : ''} onClick={(e) => e.stopPropagation()} onChange={toggleSelectAll} title="Select all visible rows" />
+                    <input ref={headerCheckboxRef} type="checkbox" name="selectVisibleRows" aria-label="Select all visible rows" checked={allOnPageSelected} aria-checked={someOnPageSelected ? 'mixed' : allOnPageSelected} className="h-4 w-4 cursor-pointer accent-[#4f8df7]" onClick={(e) => e.stopPropagation()} onChange={toggleSelectAll} title="Select all visible rows" />
                   ) : (
                     <span className="inline-flex items-center gap-1.5">
                       {col.label}
@@ -527,7 +527,7 @@ export default function ProjectTable({
                 <TableRow
                   key={rowId}
                   onClick={(event) => handleRowClick(event, p, realIndex)}
-                  className={`clickable-row ${p.decision === 'No Go' ? 'row-nogo' : ''} ${isSelected ? 'row-selected' : ''} ${rowEntityId && activeProjectId === rowEntityId ? 'row-active-view' : ''} ${focusedRowIndex === realIndex ? 'row-focused' : ''}`}
+                  className={`group cursor-pointer transition-colors ${p.decision === 'No Go' ? 'opacity-50' : ''} ${isSelected ? 'bg-blue-500/10 shadow-[inset_3px_0_0_#1f7bf6] hover:bg-blue-500/10' : ''} ${rowEntityId && activeProjectId === rowEntityId ? 'bg-blue-500/[0.06] shadow-[inset_3px_0_0_#1f7bf6] hover:bg-blue-500/[0.06]' : ''} ${!isSelected && !(rowEntityId && activeProjectId === rowEntityId) ? `even:bg-[#f8fbff] ${focusedRowIndex === realIndex ? 'shadow-[inset_0_1px_0_rgba(31,123,246,0.14),inset_0_-1px_0_rgba(31,123,246,0.14)]' : ''}` : ''}`}
                 >
                   {columns.map((columnKey) => {
                     const key = typeof columnKey === 'string' ? columnKey : (columnKey?.key || columnKey?.id || '');
@@ -536,7 +536,7 @@ export default function ProjectTable({
                       return (
                         <TableCell
                           key={key}
-                          className="td-checkbox"
+                          className="td-checkbox w-10 text-center"
                           onClick={(e) => {
                             e.stopPropagation();
                             if (e.target instanceof Element && e.target.closest('input')) return;
@@ -549,7 +549,7 @@ export default function ProjectTable({
                             aria-label={`Select ${displayName}`}
                             checked={isSelected}
                             aria-checked={isSelected}
-                            className={isSelected ? 'is-checked' : ''}
+                            className="h-4 w-4 cursor-pointer accent-[#4f8df7]"
                             onClick={(e) => e.stopPropagation()}
                             onChange={(e) => toggleSelectRow(p, realIndex, e.nativeEvent.shiftKey)}
                           />
@@ -560,35 +560,35 @@ export default function ProjectTable({
                     if (key === '_project') {
                       const assignedUsers = p.assigned_users || [];
                       return (
-                        <TableCell key={key} className="td-project">
-                          <div className="project-cell">
-                            <span className="project-cell-name" title={displayName}>{displayName}</span>
-                            <span className="project-cell-meta">
-                              <Badge variant="outline" className={`badge badge-source badge-source-sm ${sourceClass(p.source)}`}>{p.source}</Badge>
+                        <TableCell key={key} className="overflow-hidden">
+                          <div className="flex min-w-0 flex-col gap-1">
+                            <span className="line-clamp-2 text-[0.9rem] leading-[1.35] font-semibold text-[#0d1b32] group-hover:text-[#1f7bf6]" title={displayName}>{displayName}</span>
+                            <span className="mt-0.5 flex flex-wrap items-center gap-1.5">
+                              <Badge variant="outline" className={`px-2 py-0.5 text-[0.64rem] ${sourceClass(p.source) || 'border-[#e4edf9] bg-white text-[#334762]'}`}>{p.source}</Badge>
                             </span>
-                            <div className="project-row-signals">
+                            <div className="mt-1.5 flex flex-wrap items-center gap-2">
                               {(p.comment_count || 0) > 0 ? (
-                                <span className="project-row-signal" title="Comments">
+                                <span className="inline-flex items-center gap-1.5 rounded-full border border-[#dbe3f0] bg-[#f8fbff] px-2 py-1 text-[11px] font-bold leading-none text-[#5f6f8d]" title="Comments">
                                   <CommentSignalIcon />
                                   <span>{p.comment_count || 0}</span>
                                 </span>
                               ) : null}
                               {(p.comment_document_count || 0) > 0 ? (
-                                <span className="project-row-signal" title="Comment attachments">
+                                <span className="inline-flex items-center gap-1.5 rounded-full border border-[#dbe3f0] bg-[#f8fbff] px-2 py-1 text-[11px] font-bold leading-none text-[#5f6f8d]" title="Comment attachments">
                                   <AttachmentSignalIcon />
                                   <span>{p.comment_document_count || 0}</span>
                                 </span>
                               ) : null}
                               {assignedUsers.length ? (
-                                <span className="project-row-assignees" title={assignedUsers.map((user) => user.name || user.email).join(', ')}>
-                                  <span className="project-row-assignees-label">Working on</span>
-                                  <span className="project-row-assignee-stack">
+                                <span className="inline-flex items-center gap-2 rounded-full border border-[#dbe3f0] bg-[#f8fbff] py-1 pr-2 pl-1.5" title={assignedUsers.map((user) => user.name || user.email).join(', ')}>
+                                  <span className="text-[11px] font-bold text-[#5f6f8d]">Working on</span>
+                                  <span className="inline-flex items-center">
                                     {assignedUsers.slice(0, 3).map((user) => (
-                                      <span key={user.id} className="project-row-assignee" aria-label={user.name || user.email}>
+                                      <span key={user.id} className="-ml-1.5 inline-flex h-[22px] w-[22px] items-center justify-center rounded-full border-2 border-white bg-[#e8eef8] text-[11px] font-bold text-[#22314d] first:ml-0" aria-label={user.name || user.email}>
                                         {initials(user.name || '', user.email || '')}
                                       </span>
                                     ))}
-                                    {assignedUsers.length > 3 ? <span className="project-row-assignee project-row-assignee-more">+{assignedUsers.length - 3}</span> : null}
+                                    {assignedUsers.length > 3 ? <span className="-ml-1.5 inline-flex h-[22px] min-w-[22px] items-center justify-center rounded-full border-2 border-white bg-[#e8eef8] px-1.5 text-[11px] font-bold text-[#22314d] first:ml-0">+{assignedUsers.length - 3}</span> : null}
                                   </span>
                                 </span>
                               ) : null}
@@ -600,34 +600,34 @@ export default function ProjectTable({
 
                     if (key === '_project_id') {
                       return (
-                        <TableCell key={key} className="td-project-id">
-                          <span className="project-id-value" title={p.project_id || ''}>{p.project_id || '-'}</span>
+                        <TableCell key={key} className="overflow-hidden">
+                          <span className="inline-block max-w-full truncate font-mono text-[0.76rem] font-bold text-[#334762]" title={p.project_id || ''}>{p.project_id || '-'}</span>
                         </TableCell>
                       );
                     }
 
                     if (key === '_region') {
                       return (
-                        <TableCell key={key} className="td-country td-region">
-                          <div className="country-cell">
-                            <span className="country-cell-name">{sponsorLabel}</span>
-                            {regionLabel !== '-' ? <span className="country-cell-region">{regionLabel}</span> : null}
+                        <TableCell key={key} className="overflow-hidden">
+                          <div className="flex min-w-0 flex-col gap-0.5">
+                            <span className="truncate text-[0.84rem] text-[#334762]">{sponsorLabel}</span>
+                            {regionLabel !== '-' ? <span className="text-[0.72rem] font-semibold text-[#2a70ce]">{regionLabel}</span> : null}
                           </div>
                         </TableCell>
                       );
                     }
 
                     if (key === '_published') {
-                      return <TableCell key={key} className="td-timeline">{formatDisplayDate(p.project_start_date)}</TableCell>;
+                      return <TableCell key={key} className="whitespace-nowrap">{formatDisplayDate(p.project_start_date)}</TableCell>;
                     }
 
                     if (key === '_deadline') {
-                      return <TableCell key={key} className="td-timeline">{formatDisplayDate(p.effective_deadline || p.manual_deadline || p.scraped_deadline || p.project_end_date)}</TableCell>;
+                      return <TableCell key={key} className="whitespace-nowrap">{formatDisplayDate(p.effective_deadline || p.manual_deadline || p.scraped_deadline || p.project_end_date)}</TableCell>;
                     }
 
                     if (key === 'matched_keywords') {
                       return (
-                        <TableCell key={key} className="td-keywords">
+                        <TableCell key={key} className="overflow-hidden">
                           {p.matched_keywords ? (() => {
                             const kws = p.matched_keywords.split(',').map((k) => k.trim()).filter(Boolean);
                             const shown = kws.slice(0, 2);
@@ -645,7 +645,7 @@ export default function ProjectTable({
 
                     if (key === '_decision') {
                       return (
-                        <TableCell key={key} className="td-status">
+                        <TableCell key={key} className="whitespace-nowrap">
                           <div className="flex items-center gap-2">
                             <span
                               className={`h-1.5 w-1.5 shrink-0 rounded-full ${p.decision === 'Go' ? 'bg-green-600' : p.decision === 'No Go' ? 'bg-red-600' : isVerified ? 'bg-amber-600' : 'bg-muted-foreground/40'}`}
@@ -663,7 +663,7 @@ export default function ProjectTable({
 
                     if (key === '_verification') {
                       return (
-                        <TableCell key={key} className="td-verification">
+                        <TableCell key={key} className="whitespace-nowrap">
                           {isVerified ? (
                             <Badge className="bg-green-700 text-white">Verified</Badge>
                           ) : (
@@ -674,14 +674,14 @@ export default function ProjectTable({
                     }
 
                     if (key === 'scraped_at') {
-                      return <TableCell key={key} className="td-scraped" title={p.scraped_at ? new Date(p.scraped_at).toLocaleString() : ''}>{formatDisplayDate(p.scraped_at)}</TableCell>;
+                      return <TableCell key={key} className="text-[0.82rem] whitespace-nowrap text-[#6b7f9f]" title={p.scraped_at ? new Date(p.scraped_at).toLocaleString() : ''}>{formatDisplayDate(p.scraped_at)}</TableCell>;
                     }
 
                     return (
-                      <TableCell key={key} className="td-actions" onClick={(e) => e.stopPropagation()}>
+                      <TableCell key={key} className="td-actions w-12 text-right" onClick={(e) => e.stopPropagation()}>
                         {p.project_url ? (
                           <button
-                            className="context-trigger context-trigger-open"
+                            className="context-trigger mr-1.5 inline-flex h-[30px] w-[30px] items-center justify-center rounded-md border border-transparent font-bold text-[#6b7f9f] transition-all hover:border-[#e4edf9] hover:bg-[#e9f1fb] hover:text-[#0d1b32]"
                             onClick={(e) => {
                               e.stopPropagation();
                               window.open(p.project_url, '_blank');
@@ -692,7 +692,7 @@ export default function ProjectTable({
                           </button>
                         ) : null}
                         <button
-                          className="context-trigger"
+                          className="context-trigger inline-flex h-[30px] w-[30px] items-center justify-center rounded-md border border-transparent font-bold text-[#6b7f9f] transition-all hover:border-[#e4edf9] hover:bg-[#e9f1fb] hover:text-[#0d1b32]"
                           onClick={(e) => {
                             e.stopPropagation();
                             const rect = e.currentTarget.getBoundingClientRect();

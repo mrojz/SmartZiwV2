@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
+import { Card, CardContent } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
 
 const CARD_GAP = 12;
 const CARD_EDGE = 8;
@@ -124,54 +126,60 @@ export default function DemoWalkthrough({ open, onClose, steps = [] }) {
 
     const cardContent = (
         <>
-            <p className="demo-walkthrough-counter">Step {safeStep + 1} of {total}</p>
-            <h3 className="demo-walkthrough-title">{current.title}</h3>
-            <p className="demo-walkthrough-body">{current.body}</p>
-            <div className="demo-walkthrough-actions">
-                <button type="button" className="demo-walkthrough-btn demo-walkthrough-btn-skip" onClick={onClose}>
+            <p className="mb-1.5 text-xs font-bold tracking-widest text-amber-600 uppercase">Step {safeStep + 1} of {total}</p>
+            <h3 className="mb-1.5 text-lg leading-snug font-bold text-foreground">{current.title}</h3>
+            <p className="mb-4 text-sm leading-relaxed text-muted-foreground">{current.body}</p>
+            <div className="flex items-center justify-end gap-2">
+                <Button type="button" variant="ghost" size="sm" className="mr-auto text-muted-foreground" onClick={onClose}>
                     Skip
-                </button>
-                <button
+                </Button>
+                <Button
                     type="button"
-                    className="demo-walkthrough-btn"
+                    variant="outline"
+                    size="sm"
                     disabled={safeStep === 0}
                     onClick={() => setStep((s) => Math.max(0, s - 1))}
                 >
                     Back
-                </button>
-                <button
+                </Button>
+                <Button
                     type="button"
-                    className="demo-walkthrough-btn demo-walkthrough-btn-next"
+                    size="sm"
+                    className="bg-amber-600 text-white hover:bg-amber-700"
                     onClick={() => (isLast ? onClose() : setStep((s) => Math.min(total - 1, s + 1)))}
                 >
                     {isLast ? 'Finish' : 'Next'}
-                </button>
+                </Button>
             </div>
         </>
     );
 
     return (
-        <div className="demo-walkthrough-overlay" onClick={onClose}>
+        <div className="fixed inset-0 z-[9999]" onClick={onClose}>
             {rect ? (
                 <>
                     <div
-                        className="demo-walkthrough-hole"
+                        className="fixed rounded-xl shadow-[0_0_0_3px_#d97706,0_0_0_9999px_rgba(2,6,23,0.55)]"
                         style={{ top: rect.top, left: rect.left, width: rect.width, height: rect.height }}
                         onClick={(e) => e.stopPropagation()}
                     />
-                    <div
+                    <Card
                         ref={cardRef}
-                        className="demo-walkthrough-card"
+                        className="fixed z-[1] w-[340px] max-w-[calc(100vw-24px)] border-slate-200 bg-white p-4 shadow-2xl"
                         style={cardPos ? { top: cardPos.top, left: cardPos.left } : { visibility: 'hidden' }}
                         onClick={(e) => e.stopPropagation()}
                     >
-                        {cardContent}
-                    </div>
+                        <CardContent className="p-0">{cardContent}</CardContent>
+                    </Card>
                 </>
             ) : (
-                <div className="demo-walkthrough-card demo-walkthrough-card-centered" onClick={(e) => e.stopPropagation()}>
-                    {cardContent}
-                </div>
+                <Card
+                    className="fixed z-[1] w-[340px] max-w-[calc(100vw-24px)] border-slate-200 bg-white p-4 shadow-2xl"
+                    style={{ left: '50%', top: '50%', transform: 'translate(-50%, -50%)' }}
+                    onClick={(e) => e.stopPropagation()}
+                >
+                    <CardContent className="p-0">{cardContent}</CardContent>
+                </Card>
             )}
         </div>
     );

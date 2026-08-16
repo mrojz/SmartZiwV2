@@ -5,10 +5,9 @@ import DemoWalkthrough from './components/DemoWalkthrough';
 import SyncPanel from './components/SyncPanel';
 import ConfigPanel from './components/ConfigPanel';
 import SchedulePanel from './components/SchedulePanel';
-import { X } from '@untitledui/icons';
 import Sidebar, { Avatar, NAV_GROUPS } from './components/Sidebar';
 import AnalyticsPage from './components/AnalyticsPage';
-import { Search, Bell, RefreshCw, User, Shield, Settings, CalendarClock, LogOut, Mail, Lock, XIcon, Paperclip, Send, ArrowUp, ArrowDown, ArrowUpDown, MoreVertical, PenLine, KeyRound, UserCheck, UserX, ChevronDown } from 'lucide-react';
+import { Search, Bell, RefreshCw, User, Shield, Settings, CalendarClock, LogOut, Mail, Lock, X, Paperclip, Send, ArrowUp, ArrowDown, ArrowUpDown, MoreVertical, PenLine, KeyRound, UserCheck, UserX, ChevronDown } from 'lucide-react';
 import { SidebarProvider } from '@/components/ui/sidebar';
 import { CommandDialog, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { toast } from 'sonner';
@@ -704,19 +703,14 @@ function ReleaseNotesModal({ open, releases, onClose, onOpenFull }) {
     const latest = releases[0] || DEFAULT_RELEASE_NOTES[0];
 
     return (
-        <div className="modal-overlay release-notes-overlay" onClick={onClose}>
-            <div className="release-notes-modal" onClick={(event) => event.stopPropagation()}>
-                <div className="release-notes-modal-header">
-                    <div className="release-notes-modal-copy">
-                        <span className="release-notes-eyebrow">App updated</span>
-                        <h2>What&apos;s new in v{latest.version}</h2>
-                        <p>{latest.summary}</p>
-                    </div>
-                    <button type="button" className="modal-close-btn" onClick={onClose} aria-label="Close release notes">
-                        <X />
-                    </button>
-                </div>
-                <div className="release-notes-modal-body">
+        <Dialog open={open} onOpenChange={(next) => { if (!next) onClose(); }}>
+            <DialogContent className="max-h-[calc(100dvh-40px)] max-w-2xl gap-0 overflow-y-auto p-0 sm:max-w-2xl">
+                <DialogHeader className="items-start border-b px-6 pt-6 pb-4 text-left">
+                    <span className="mb-2 text-xs font-bold tracking-widest text-primary uppercase">App updated</span>
+                    <DialogTitle>What&apos;s new in v{latest.version}</DialogTitle>
+                    <DialogDescription>{latest.summary}</DialogDescription>
+                </DialogHeader>
+                <div className="flex flex-col gap-3.5 bg-muted/30 px-6 py-5">
                     {releases.map((note) => (
                         <ReleaseChangelogCard
                             key={note.version}
@@ -726,16 +720,16 @@ function ReleaseNotesModal({ open, releases, onClose, onOpenFull }) {
                         />
                     ))}
                 </div>
-                <div className="release-notes-modal-footer">
-                    <button type="button" className="release-link-btn" onClick={onOpenFull}>
+                <DialogFooter className="border-t px-6 py-4 sm:justify-between">
+                    <ShadcnButton type="button" variant="ghost" onClick={onOpenFull}>
                         View full release notes
-                    </button>
-                    <button type="button" className="sync-btn release-primary-btn" onClick={onClose}>
+                    </ShadcnButton>
+                    <ShadcnButton type="button" onClick={onClose}>
                         Continue
-                    </button>
-                </div>
-            </div>
-        </div>
+                    </ShadcnButton>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
     );
 }
 
@@ -764,7 +758,7 @@ function ReleaseNotesPage({ releases, onBack }) {
 
 function VoteUpIcon() {
     return (
-        <svg viewBox="0 0 20 20" aria-hidden="true" className="vote-action-icon">
+        <svg viewBox="0 0 20 20" aria-hidden="true" className="h-4 w-4 flex-none">
             <path d="M10 15.5V5.5M10 5.5l-4 4M10 5.5l4 4" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
     );
@@ -772,7 +766,7 @@ function VoteUpIcon() {
 
 function VoteDownIcon() {
     return (
-        <svg viewBox="0 0 20 20" aria-hidden="true" className="vote-action-icon">
+        <svg viewBox="0 0 20 20" aria-hidden="true" className="h-4 w-4 flex-none">
             <path d="M10 4.5v10M10 14.5l-4-4M10 14.5l4-4" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
     );
@@ -788,36 +782,33 @@ function NotificationsPanel({ open, notifications, unreadCount, onClose, onOpenN
     if (!open) return null;
 
     return (
-        <div className="modal-overlay" onClick={onClose}>
-            <div className="modal-card modal-card-sm notifications-panel" onClick={(event) => event.stopPropagation()}>
-                <div className="modal-header">
-                    <div>
-                        <h2 className="modal-title">Notifications</h2>
-                        <p className="panel-subtext">{unreadCount} unread</p>
-                    </div>
-                    <button type="button" className="modal-close-btn" onClick={onClose} aria-label="Close notifications"><X /></button>
-                </div>
-                <div className="modal-body notifications-panel-body">
+        <Dialog open={open} onOpenChange={(next) => { if (!next) onClose(); }}>
+            <DialogContent className="max-w-md gap-0 p-0 sm:max-w-md">
+                <DialogHeader className="border-b p-5 text-left">
+                    <DialogTitle>Notifications</DialogTitle>
+                    <DialogDescription>{unreadCount} unread</DialogDescription>
+                </DialogHeader>
+                <div className="max-h-[60vh] overflow-y-auto px-5 py-4">
                     {notifications.length ? notifications.map((item) => (
                         <button
                             key={item.id}
                             type="button"
-                            className={`notification-row ${item.read ? '' : 'is-unread'} ${item.viewed ? '' : 'is-unviewed'}`}
+                            className={`mb-2.5 w-full rounded-lg border p-3 text-left transition-colors ${item.read ? 'border-slate-200 bg-slate-50 opacity-80 hover:opacity-100' : 'border-blue-200 bg-gradient-to-b from-blue-50 to-blue-100 shadow-[0_6px_16px_rgba(31,111,235,0.08)]'} ${item.viewed ? '' : 'shadow-[inset_3px_0_0_#1f6feb]'}`}
                             onClick={() => onOpenNotification(item)}
                         >
-                            <div className="notification-row-copy">
-                                <strong>{item.message}</strong>
-                                <span>{formatDisplayDate(item.createdAt)}</span>
+                            <div className="flex flex-col gap-1">
+                                <strong className={`text-[13px] ${item.read ? 'font-medium text-slate-500' : 'font-semibold text-slate-800'}`}>{item.message}</strong>
+                                <span className="text-xs text-slate-500">{formatDisplayDate(item.createdAt)}</span>
                             </div>
                         </button>
-                    )) : <p className="auth-muted">No notifications yet.</p>}
+                    )) : <p className="text-sm text-muted-foreground">No notifications yet.</p>}
                 </div>
-                <div className="modal-footer">
-                    <button type="button" className="profile-btn profile-btn-secondary" onClick={onClose}>Close</button>
-                    <button type="button" className="profile-btn profile-btn-primary" onClick={onMarkAllRead} disabled={!unreadCount}>Mark all read</button>
-                </div>
-            </div>
-        </div>
+                <DialogFooter className="border-t px-5 py-4">
+                    <ShadcnButton type="button" variant="outline" onClick={onClose}>Close</ShadcnButton>
+                    <ShadcnButton type="button" onClick={onMarkAllRead} disabled={!unreadCount}>Mark all read</ShadcnButton>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
     );
 }
 
@@ -1182,7 +1173,7 @@ function CommentsPanel({
                         </ShadcnButton>
                         <SheetClose asChild>
                             <ShadcnButton variant="ghost" size="icon-sm" aria-label="Close project inspector">
-                                <XIcon />
+                                <X />
                             </ShadcnButton>
                         </SheetClose>
                     </div>
@@ -1365,7 +1356,7 @@ function CommentsPanel({
                                     <CardTitle className="text-sm font-semibold">Smart-Ziw Agent</CardTitle>
                                 </CardHeader>
                                 <CardContent className="flex flex-col items-start gap-2.5 px-4 pb-4">
-                                    <div className="project-inspector-actions">
+                                    <div className="project-inspector-actions mt-3 flex flex-col items-start gap-2.5">
                                         <ShadcnButton
                                             type="button"
                                             onClick={handleSmartZiwSearch}
@@ -1683,84 +1674,50 @@ function ProfilePage({ user, apiFetch, onUserUpdate }) {
     };
 
     return (
-        <div className="layout-stack profile-page-v2">
+        <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-4 py-8">
             <PageHeader title="Profile settings" subtitle="Manage your personal information and account security." />
 
-            <div className="profile-page-grid">
-                <section className="panel-card profile-page-card">
-                    <div className="profile-page-identity">
-                        <div className="profile-page-avatar">
-                            <Avatar user={user} size={76} />
-                        </div>
-                        <div className="profile-page-identity-copy">
-                            <h2 className="profile-page-name">{name}</h2>
-                            <div className="profile-page-secondary">
-                                <span className={`profile-page-role-badge ${user?.role === 'admin' ? 'badge-admin' : user?.role === 'manager' ? 'badge-manager' : 'badge-user'}`}>
-                                    {user?.role === 'admin' ? 'Admin' : user?.role === 'manager' ? 'Manager' : 'User'}
-                                </span>
-                                <span className={`profile-page-status ${user?.isActive !== false ? 'is-active' : 'is-inactive'}`}>
-                                    <span className="profile-page-status-dot" />
-                                    {user?.isActive !== false ? 'Active' : 'Inactive'}
-                                </span>
+            <div className="flex flex-col gap-6">
+                <Card>
+                    <CardContent className="flex flex-col gap-6 p-7">
+                        <div className="flex items-center gap-4 max-sm:flex-col max-sm:items-start">
+                            <div className="shrink-0">
+                                <Avatar user={user} size={76} />
                             </div>
-                            <p className="profile-page-email">{email || 'No email address'}</p>
-                        </div>
-                    </div>
-
-                    <dl className="profile-page-meta">
-                        <div className="profile-page-meta-item">
-                            <dt className="profile-page-meta-label">Joined</dt>
-                            <dd className="profile-page-meta-value">{formatDate(user?.createdAt)}</dd>
-                        </div>
-                        <div className="profile-page-meta-item">
-                            <dt className="profile-page-meta-label">Last updated</dt>
-                            <dd className="profile-page-meta-value">{formatDate(user?.updatedAt)}</dd>
-                        </div>
-                        <div className="profile-page-meta-item">
-                            <dt className="profile-page-meta-label">Email domain</dt>
-                            <dd className="profile-page-meta-value">{emailDomain}</dd>
-                        </div>
-                    </dl>
-
-                    <div className="profile-card-head">
-                        <div>
-                            <h3>Personal information</h3>
-                            <p className="profile-card-description">Update your account details.</p>
-                        </div>
-                    </div>
-
-                    <form
-                        onSubmit={(event) => {
-                            event.preventDefault();
-                            saveProfile();
-                        }}
-                    >
-                        <div className="profile-settings-grid">
-                            <div className="auth-field">
-                                <label className="auth-label" htmlFor="prof-firstname">First name</label>
-                                <input id="prof-firstname" name="firstName" className="auth-input" placeholder="First name" value={firstName} onChange={(e) => setFirstName(e.target.value)} />
-                            </div>
-                            <div className="auth-field">
-                                <label className="auth-label" htmlFor="prof-lastname">Last name</label>
-                                <input id="prof-lastname" name="lastName" className="auth-input" placeholder="Last name" value={lastName} onChange={(e) => setLastName(e.target.value)} />
-                            </div>
-                            <div className="auth-field profile-field-span-2">
-                                <label className="auth-label" htmlFor="prof-email">Email</label>
-                                <input id="prof-email" name="email" className="auth-input" type="email" placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} />
+                            <div className="flex min-w-0 flex-col items-start gap-1.5">
+                                <h2 className="text-2xl leading-tight font-bold tracking-tight text-foreground">{name}</h2>
+                                <div className="flex flex-wrap items-center gap-2.5">
+                                    <span className={`inline-flex min-h-7 items-center gap-1 rounded-full px-2.5 text-xs font-bold ${user?.role === 'admin' ? 'border border-blue-100 bg-blue-50 text-blue-700' : user?.role === 'manager' ? 'border border-blue-200 bg-blue-100/70 text-blue-700' : 'border border-slate-200 bg-slate-100 text-slate-600'}`}>
+                                        {user?.role === 'admin' ? 'Admin' : user?.role === 'manager' ? 'Manager' : 'User'}
+                                    </span>
+                                    <span className={`inline-flex items-center gap-1.5 text-[13px] font-semibold ${user?.isActive !== false ? 'text-green-700' : 'text-muted-foreground'}`}>
+                                        <span className="size-2 rounded-full bg-current opacity-90" />
+                                        {user?.isActive !== false ? 'Active' : 'Inactive'}
+                                    </span>
+                                </div>
+                                <p className="max-w-full break-words text-sm text-slate-600">{email || 'No email address'}</p>
                             </div>
                         </div>
 
-                        <div className="profile-card-footer profile-card-footer-end">
-                            <button type="submit" className="profile-btn profile-btn-primary" disabled={savingProfile}>{savingProfile ? 'Saving...' : 'Save changes'}</button>
-                        </div>
-                    </form>
-                </section>
+                        <dl className="m-0 grid grid-cols-3 gap-4 border-t border-slate-200 pt-5 max-sm:grid-cols-1">
+                            <div className="flex min-w-0 flex-col gap-1">
+                                <dt className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">Joined</dt>
+                                <dd className="m-0 text-sm font-bold text-foreground">{formatDate(user?.createdAt)}</dd>
+                            </div>
+                            <div className="flex min-w-0 flex-col gap-1">
+                                <dt className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">Last updated</dt>
+                                <dd className="m-0 text-sm font-bold text-foreground">{formatDate(user?.updatedAt)}</dd>
+                            </div>
+                            <div className="flex min-w-0 flex-col gap-1">
+                                <dt className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">Email domain</dt>
+                                <dd className="m-0 text-sm font-bold text-foreground">{emailDomain}</dd>
+                            </div>
+                        </dl>
 
-                    <section className="panel-card profile-page-card">
-                        <div className="profile-card-head">
+                        <div className="flex items-start justify-between gap-4 border-b border-slate-200 pb-4">
                             <div>
-                                <h3>Preferences</h3>
-                                <p className="profile-card-description">Choose how your public profile appears to others.</p>
+                                <h3 className="text-lg font-bold">Personal information</h3>
+                                <p className="mt-1.5 text-sm text-muted-foreground">Update your account details.</p>
                             </div>
                         </div>
 
@@ -1770,26 +1727,65 @@ function ProfilePage({ user, apiFetch, onUserUpdate }) {
                                 saveProfile();
                             }}
                         >
-                            <div className="profile-settings-grid">
-                                <div className="auth-field profile-field-span-2">
-                                    <label className="auth-label" htmlFor="prof-avatar">Profile photo URL</label>
-                                    <input id="prof-avatar" name="avatarUrl" className="auth-input" placeholder="https://..." value={avatarUrl} onChange={(e) => setAvatarUrl(e.target.value)} />
-                                    <span className="profile-field-hint">Use a direct image link to update the profile photo preview.</span>
+                            <div className="grid grid-cols-2 gap-4 max-sm:grid-cols-1">
+                                <div className="flex flex-col gap-1.5">
+                                    <label className="text-[13px] font-semibold text-slate-600" htmlFor="prof-firstname">First name</label>
+                                    <ShadcnInput id="prof-firstname" name="firstName" className="h-10" placeholder="First name" value={firstName} onChange={(e) => setFirstName(e.target.value)} />
+                                </div>
+                                <div className="flex flex-col gap-1.5">
+                                    <label className="text-[13px] font-semibold text-slate-600" htmlFor="prof-lastname">Last name</label>
+                                    <ShadcnInput id="prof-lastname" name="lastName" className="h-10" placeholder="Last name" value={lastName} onChange={(e) => setLastName(e.target.value)} />
+                                </div>
+                                <div className="col-span-2 flex flex-col gap-1.5 max-sm:col-span-1">
+                                    <label className="text-[13px] font-semibold text-slate-600" htmlFor="prof-email">Email</label>
+                                    <ShadcnInput id="prof-email" name="email" className="h-10" type="email" placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} />
                                 </div>
                             </div>
 
-                            <div className="profile-card-footer">
-                                <button type="button" className="profile-btn profile-btn-secondary" onClick={() => setAvatarUrl('')}>Remove avatar</button>
-                                <button type="submit" className="profile-btn profile-btn-primary" disabled={savingProfile}>{savingProfile ? 'Saving...' : 'Save changes'}</button>
+                            <div className="flex items-center justify-end gap-3 border-t border-slate-200 pt-4">
+                                <ShadcnButton type="submit" disabled={savingProfile}>{savingProfile ? 'Saving...' : 'Save changes'}</ShadcnButton>
                             </div>
                         </form>
-                    </section>
+                    </CardContent>
+                </Card>
 
-                    <section className="panel-card profile-page-card">
-                        <div className="profile-card-head">
+                <Card>
+                    <CardContent className="flex flex-col gap-6 p-7">
+                        <div className="flex items-start justify-between gap-4 border-b border-slate-200 pb-4">
                             <div>
-                                <h3>Security</h3>
-                                <p className="profile-card-description">Change your password and keep your account secure.</p>
+                                <h3 className="text-lg font-bold">Preferences</h3>
+                                <p className="mt-1.5 text-sm text-muted-foreground">Choose how your public profile appears to others.</p>
+                            </div>
+                        </div>
+
+                        <form
+                            onSubmit={(event) => {
+                                event.preventDefault();
+                                saveProfile();
+                            }}
+                        >
+                            <div className="grid grid-cols-2 gap-4 max-sm:grid-cols-1">
+                                <div className="col-span-2 flex flex-col gap-1.5 max-sm:col-span-1">
+                                    <label className="text-[13px] font-semibold text-slate-600" htmlFor="prof-avatar">Profile photo URL</label>
+                                    <ShadcnInput id="prof-avatar" name="avatarUrl" className="h-10" placeholder="https://..." value={avatarUrl} onChange={(e) => setAvatarUrl(e.target.value)} />
+                                    <span className="text-[13px] text-muted-foreground">Use a direct image link to update the profile photo preview.</span>
+                                </div>
+                            </div>
+
+                            <div className="flex items-center justify-between gap-3 border-t border-slate-200 pt-4">
+                                <ShadcnButton type="button" variant="outline" onClick={() => setAvatarUrl('')}>Remove avatar</ShadcnButton>
+                                <ShadcnButton type="submit" disabled={savingProfile}>{savingProfile ? 'Saving...' : 'Save changes'}</ShadcnButton>
+                            </div>
+                        </form>
+                    </CardContent>
+                </Card>
+
+                <Card>
+                    <CardContent className="flex flex-col gap-6 p-7">
+                        <div className="flex items-start justify-between gap-4 border-b border-slate-200 pb-4">
+                            <div>
+                                <h3 className="text-lg font-bold">Security</h3>
+                                <p className="mt-1.5 text-sm text-muted-foreground">Change your password and keep your account secure.</p>
                             </div>
                         </div>
 
@@ -1800,39 +1796,39 @@ function ProfilePage({ user, apiFetch, onUserUpdate }) {
                                 savePassword();
                             }}
                         >
-                            <div className="profile-password-stack">
-                                <div className="auth-field">
-                                    <label className="auth-label" htmlFor="prof-curpwd">Current password</label>
-                                    <input id="prof-curpwd" name="currentPassword" className="auth-input" type="password" placeholder="Current password" autoComplete="current-password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} />
+                            <div className="flex flex-col gap-4">
+                                <div className="flex flex-col gap-1.5">
+                                    <label className="text-[13px] font-semibold text-slate-600" htmlFor="prof-curpwd">Current password</label>
+                                    <ShadcnInput id="prof-curpwd" name="currentPassword" className="h-10" type="password" placeholder="Current password" autoComplete="current-password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} />
                                 </div>
-                                <div className="profile-password-grid">
-                                    <div className="auth-field">
-                                        <label className="auth-label" htmlFor="prof-newpwd">New password</label>
-                                        <input id="prof-newpwd" name="newPassword" className="auth-input" type="password" placeholder="New password" autoComplete="new-password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} />
-                                        <span className="profile-field-hint">Minimum 8 characters.</span>
+                                <div className="grid grid-cols-2 gap-4 max-sm:grid-cols-1">
+                                    <div className="flex flex-col gap-1.5">
+                                        <label className="text-[13px] font-semibold text-slate-600" htmlFor="prof-newpwd">New password</label>
+                                        <ShadcnInput id="prof-newpwd" name="newPassword" className="h-10" type="password" placeholder="New password" autoComplete="new-password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} />
+                                        <span className="text-[13px] text-muted-foreground">Minimum 8 characters.</span>
                                     </div>
-                                    <div className="auth-field">
-                                        <label className="auth-label" htmlFor="prof-confirmpwd">Confirm new password</label>
-                                        <input id="prof-confirmpwd" name="confirmPassword" className="auth-input" type="password" placeholder="Confirm new password" autoComplete="new-password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} />
-                                        {passwordMismatch ? <span className="profile-pwd-mismatch">Passwords do not match.</span> : <span className="profile-field-hint">Re-enter the new password to confirm it.</span>}
+                                    <div className="flex flex-col gap-1.5">
+                                        <label className="text-[13px] font-semibold text-slate-600" htmlFor="prof-confirmpwd">Confirm new password</label>
+                                        <ShadcnInput id="prof-confirmpwd" name="confirmPassword" className="h-10" type="password" placeholder="Confirm new password" autoComplete="new-password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} />
+                                        {passwordMismatch ? <span className="text-[13px] text-red-600">Passwords do not match.</span> : <span className="text-[13px] text-muted-foreground">Re-enter the new password to confirm it.</span>}
                                     </div>
                                 </div>
                             </div>
 
-                            <div className="profile-card-footer profile-card-footer-end">
-                                <button
+                            <div className="flex items-center justify-end gap-3 border-t border-slate-200 pt-4">
+                                <ShadcnButton
                                     type="submit"
-                                    className="profile-btn profile-btn-primary"
                                     disabled={savingPassword || !currentPassword || !newPassword || passwordMismatch}
                                 >
                                     {savingPassword ? 'Saving...' : 'Update password'}
-                                </button>
+                                </ShadcnButton>
                             </div>
                         </form>
-                    </section>
+                    </CardContent>
+                </Card>
             </div>
 
-            {msg ? <p className="profile-success-msg">{msg}</p> : null}
+            {msg ? <p className="m-0 rounded-xl border border-green-200 bg-green-50 p-3 text-sm font-bold text-green-700">{msg}</p> : null}
         </div>
     );
 }
@@ -2392,7 +2388,7 @@ function AdminPage({ apiFetch, initialTab = 'users' }) {
     };
 
     return (
-        <div className="layout-stack admin-users-page">
+        <div className="flex flex-col gap-5">
             <PageHeader
                 title="Admin"
                 subtitle={adminTab === 'users' ? 'Create, edit, deactivate users, and reset passwords.' : adminTab === 'release-notes' ? 'Create new release notes or update existing versions.' : adminTab === 'llm' ? 'Configure the LLM backend used by the Smart-Ziw agent.' : 'Configure the Smart-Ziw agent and optional GitLab push.'}
@@ -2503,13 +2499,13 @@ function AdminPage({ apiFetch, initialTab = 'users' }) {
 
                 {message ? <div className="border-y border-border bg-primary/5 px-5 py-3 text-sm text-foreground/80">{message}</div> : null}
 
-                <Table aria-label="Users table" className="app-table admin-users-table">
+                <Table aria-label="Users table">
                     <TableHeader>
                         <TableRow className="hover:bg-transparent">
                             {columns.map((col) => (
                                 <TableHead
                                     key={col.key}
-                                    className={`${col.key === '_actions' ? 'th-actions' : ''} ${col.type !== 'none' ? 'cursor-pointer select-none' : ''}`}
+                                    className={`${col.key === '_actions' ? 'w-12' : ''} ${col.type !== 'none' ? 'cursor-pointer select-none' : ''}`}
                                     aria-sort={sortCol === col.key ? (sortDir === 'asc' ? 'ascending' : 'descending') : undefined}
                                     onClick={col.type !== 'none' ? () => handleSortChange({ column: col.key, direction: sortCol === col.key && sortDir === 'asc' ? 'descending' : 'ascending' }) : undefined}
                                 >
@@ -2528,7 +2524,7 @@ function AdminPage({ apiFetch, initialTab = 'users' }) {
 
                     <TableBody>
                         {pageData.map((u) => (
-                            <TableRow key={u.id} className={u.isActive ? 'admin-users-row' : 'admin-users-row admin-users-row-inactive'}>
+                            <TableRow key={u.id} className={u.isActive ? '' : 'bg-muted/80 text-muted-foreground'}>
                                 <TableCell>
                                     <div className="flex items-center gap-3">
                                         <Avatar user={u} size={40} />
@@ -2548,7 +2544,7 @@ function AdminPage({ apiFetch, initialTab = 'users' }) {
                                     </Badge>
                                 </TableCell>
                                 <TableCell><span className="text-muted-foreground">{formatAdminDateTime(u.lastSeenAt)}</span></TableCell>
-                                <TableCell className="th-actions">
+                                <TableCell className="w-12 text-center">
                                     <DropdownMenu>
                                         <DropdownMenuTrigger asChild>
                                             <ShadcnButton variant="ghost" size="icon-sm" className="h-8 w-8" aria-label={`Actions for ${u.name}`}>
@@ -4039,12 +4035,12 @@ export default function App() {
         else if (key === 'logout') doLogout();
     };
 
-    if (loading) return <div className="app"><div className="loading"><div className="spinner" /><p>Loading...</p></div></div>;
+    if (loading) return <div className="flex min-h-screen flex-col items-center justify-center gap-4 bg-background"><div className="size-8 animate-spin rounded-full border-2 border-primary border-t-transparent" /><p className="text-sm text-muted-foreground">Loading...</p></div>;
     if (!authUser) return <LoginPage onLogin={doLogin} error={authError} bootstrap={bootstrapStatus} />;
     if (authUser.mustChangePassword) return <ForcePasswordPage onSubmit={doChangePassword} error={mustChangeError} />;
 
     return (
-        <div className="layout-root">
+        <div className="flex min-h-screen">
             <Toaster />
             <SidebarProvider open={!sidebarCollapsed} onOpenChange={(open) => setSidebarCollapsed(!open)}>
                 <Sidebar
@@ -4054,19 +4050,18 @@ export default function App() {
                     onCloseMobile={() => setMobileNavOpen(false)}
                     onOpenCommand={() => setCommandOpen(true)}
                 />
-                <div className="layout-main">
-                <div className="layout-page-scroll">
-                    <div className="layout-shell-container layout-page-container">
+                <div className="flex min-w-0 flex-1 flex-col">
+                <div className="min-h-0 flex-1 overflow-auto">
+                    <div className="w-full px-5">
                         {route === 'dashboard' || route === 'tenders' || (ADMIN_ROUTES.includes(route) && authUser.role !== 'admin') ? (
-                            <div className="layout-dashboard layout-content-row">
-                                <div className="layout-dashboard-main">
+                            <div className="flex flex-col gap-6">
+                                <div className="flex min-w-0 flex-1 flex-col gap-6">
                                     <PageHeader
                                         title="Procurement Watch"
                                         subtitle="Track tenders, review sources, and manage decisions."
-                                        className="layout-page-header-compact"
                                         action={(
-                                            <div className="header-actions dashboard-header-actions">
-                                                <div className="header-buttons dashboard-header-buttons">
+                                            <div className="flex items-center gap-4">
+                                                <div className="flex flex-wrap items-center justify-end gap-3">
                                                     <TooltipProvider>
                                                         <Tooltip>
                                                             <TooltipTrigger asChild>
