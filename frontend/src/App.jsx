@@ -5,7 +5,7 @@ import DemoWalkthrough from './components/DemoWalkthrough';
 import SyncPanel from './components/SyncPanel';
 import ConfigPanel from './components/ConfigPanel';
 import SchedulePanel from './components/SchedulePanel';
-import { X, Mail01, Lock01, Edit01, Key01, UserX01, UserCheck01, SearchLg } from '@untitledui/icons';
+import { X, Edit01, Key01, UserX01, UserCheck01, SearchLg } from '@untitledui/icons';
 import { Button } from '@/components/base/buttons/button';
 import { Input } from '@/components/base/input/input';
 import { InputBase } from '@/components/base/input/input';
@@ -17,7 +17,7 @@ import { Table } from '@/components/application/table/table';
 import { Dropdown } from '@/components/base/dropdown/dropdown';
 import Sidebar, { Avatar, NAV_GROUPS } from './components/Sidebar';
 import AnalyticsPage from './components/AnalyticsPage';
-import { Search, Bell, RefreshCw, User, Shield, Settings, CalendarClock, LogOut } from 'lucide-react';
+import { Search, Bell, RefreshCw, User, Shield, Settings, CalendarClock, LogOut, Mail, Lock } from 'lucide-react';
 import { SidebarProvider } from '@/components/ui/sidebar';
 import { CommandDialog, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { toast } from 'sonner';
@@ -26,6 +26,9 @@ import { Button as ShadcnButton } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Toaster } from '@/components/ui/sonner';
+import { Card, CardContent } from '@/components/ui/card';
+import { Label } from '@/components/ui/label';
+import { Input as ShadcnInput } from '@/components/ui/input';
 
 const API = '/api';
 const APP_RELEASE_VERSION = '1.6';
@@ -454,61 +457,65 @@ function LoginPage({ onLogin, error, bootstrap }) {
     const [password, setPassword] = useState('');
 
     return (
-        <div className="auth-wrap">
-            <form
-                className="auth-card"
-                onSubmit={(e) => {
-                    e.preventDefault();
-                    onLogin(email, password);
-                }}
-            >
-                <div className="auth-logo-row">
-                    <img src="/forvis-mazars-logo.svg" alt="Forvis Mazars" className="auth-logo" />
-                </div>
-                <div className="auth-header">
-                    <h1 className="auth-title">Welcome back</h1>
-                    <p className="auth-subtitle">Sign in to Procurement Watch</p>
-                </div>
-                {!bootstrap?.hasAdmin ? (
-                    <p className="auth-error">No admin user exists. Set ADMIN_EMAIL and ADMIN_PASSWORD, then restart backend.</p>
-                ) : null}
-                <div className="auth-field">
-                    <label className="auth-label" htmlFor="login-email">Email</label>
-                    <div className="auth-input-wrap">
-                        <Mail01 className="auth-input-icon" />
-                        <input
-                            id="login-email"
-                            name="email"
-                            className="auth-input"
-                            type="email"
-                            placeholder="your@email.com"
-                            value={email}
-                            onChange={(e) => setEmail(e.target.value)}
-                            required
-                            autoComplete="email"
-                        />
+        <div className="flex min-h-screen items-center justify-center p-6">
+            <Card className="w-full max-w-md">
+                <CardContent className="flex flex-col gap-6 p-8">
+                    <div className="flex justify-center">
+                        <img src="/forvis-mazars-logo.svg" alt="Forvis Mazars" className="h-10" />
                     </div>
-                </div>
-                <div className="auth-field">
-                    <label className="auth-label" htmlFor="login-password">Password</label>
-                    <div className="auth-input-wrap">
-                        <Lock01 className="auth-input-icon" />
-                        <input
-                            id="login-password"
-                            name="password"
-                            className="auth-input"
-                            type="password"
-                            placeholder="••••••••"
-                            value={password}
-                            onChange={(e) => setPassword(e.target.value)}
-                            required
-                            autoComplete="current-password"
-                        />
+                    <div className="text-center">
+                        <h1 className="text-2xl font-semibold tracking-tight">Welcome back</h1>
+                        <p className="mt-1 text-sm text-muted-foreground">Sign in to Procurement Watch</p>
                     </div>
-                </div>
-                {error ? <p className="auth-error">{error}</p> : null}
-                <button type="submit" className="auth-submit-btn">Sign In</button>
-            </form>
+                    <form
+                        className="flex flex-col gap-4"
+                        onSubmit={(e) => {
+                            e.preventDefault();
+                            onLogin(email, password);
+                        }}
+                    >
+                        {!bootstrap?.hasAdmin ? (
+                            <p className="text-sm text-destructive">No admin user exists. Set ADMIN_EMAIL and ADMIN_PASSWORD, then restart backend.</p>
+                        ) : null}
+                        <div className="flex flex-col gap-2">
+                            <Label htmlFor="login-email">Email</Label>
+                            <div className="relative">
+                                <Mail className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                                <ShadcnInput
+                                    id="login-email"
+                                    name="email"
+                                    type="email"
+                                    placeholder="your@email.com"
+                                    value={email}
+                                    onChange={(e) => setEmail(e.target.value)}
+                                    required
+                                    autoComplete="email"
+                                    className="pl-10"
+                                />
+                            </div>
+                        </div>
+                        <div className="flex flex-col gap-2">
+                            <Label htmlFor="login-password">Password</Label>
+                            <div className="relative">
+                                <Lock className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                                <ShadcnInput
+                                    id="login-password"
+                                    name="password"
+                                    type="password"
+                                    placeholder="••••••••"
+                                    value={password}
+                                    onChange={(e) => setPassword(e.target.value)}
+                                    required
+                                    autoComplete="current-password"
+                                    className="pl-10"
+                                />
+                            </div>
+                        </div>
+                        {error ? <p className="text-sm text-destructive">{error}</p> : null}
+                        <ShadcnButton type="submit" className="w-full">Sign In</ShadcnButton>
+                    </form>
+                </CardContent>
+            </Card>
         </div>
     );
 }
@@ -532,83 +539,91 @@ function ForcePasswordPage({ onSubmit, error }) {
     }, [newPassword]);
     const canSubmit = newPassword.length >= 8 && newPassword === confirm;
 
+    const strengthClasses = {
+        muted: 'text-muted-foreground',
+        weak: 'text-destructive',
+        medium: 'text-foreground',
+        strong: 'text-green-700',
+    };
+
     return (
-        <div className="auth-wrap force-password-shell">
-            <form
-                className="auth-card force-password-card"
-                onSubmit={(e) => {
-                    e.preventDefault();
-                    if (canSubmit) onSubmit(newPassword);
-                }}
-            >
-                <div className="force-password-header">
-                    <span className="force-password-eyebrow">Account security</span>
-                    <h2 className="force-password-title">Change your password</h2>
-                    <p className="force-password-copy">For security reasons, you must set a new password before continuing.</p>
-                </div>
-
-                <div className="force-password-fields">
-                    <div className="force-password-field">
-                        <label className="force-password-label" htmlFor="force-password-new">New password</label>
-                        <div className="force-password-input-wrap">
-                            <input
-                                id="force-password-new"
-                                name="newPassword"
-                                className="force-password-input"
-                                type={showNewPassword ? 'text' : 'password'}
-                                minLength={8}
-                                placeholder="Enter a new password"
-                                value={newPassword}
-                                onChange={(e) => setNewPassword(e.target.value)}
-                                autoComplete="new-password"
-                                required
-                            />
-                            <button
-                                type="button"
-                                className="force-password-toggle"
-                                onClick={() => setShowNewPassword((value) => !value)}
-                                aria-label={showNewPassword ? 'Hide new password' : 'Show new password'}
-                            >
-                                {showNewPassword ? 'Hide' : 'Show'}
-                            </button>
-                        </div>
-                        <span className={`force-password-hint is-${passwordStrength.tone}`}>{passwordStrength.label}</span>
+        <div className="flex min-h-screen items-center justify-center p-6">
+            <Card className="w-full max-w-md">
+                <CardContent className="flex flex-col gap-6 p-8">
+                    <div>
+                        <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Account security</span>
+                        <h2 className="mt-1 text-2xl font-semibold tracking-tight">Change your password</h2>
+                        <p className="mt-1 text-sm text-muted-foreground">For security reasons, you must set a new password before continuing.</p>
                     </div>
-
-                    <div className="force-password-field">
-                        <label className="force-password-label" htmlFor="force-password-confirm">Confirm password</label>
-                        <div className="force-password-input-wrap">
-                            <input
-                                id="force-password-confirm"
-                                name="confirmPassword"
-                                className="force-password-input"
-                                type={showConfirmPassword ? 'text' : 'password'}
-                                minLength={8}
-                                placeholder="Re-enter the new password"
-                                value={confirm}
-                                onChange={(e) => setConfirm(e.target.value)}
-                                autoComplete="new-password"
-                                required
-                            />
-                            <button
-                                type="button"
-                                className="force-password-toggle"
-                                onClick={() => setShowConfirmPassword((value) => !value)}
-                                aria-label={showConfirmPassword ? 'Hide confirm password' : 'Show confirm password'}
-                            >
-                                {showConfirmPassword ? 'Hide' : 'Show'}
-                            </button>
+                    <form
+                        className="flex flex-col gap-4"
+                        onSubmit={(e) => {
+                            e.preventDefault();
+                            if (canSubmit) onSubmit(newPassword);
+                        }}
+                    >
+                        <div className="flex flex-col gap-2">
+                            <Label htmlFor="force-password-new">New password</Label>
+                            <div className="relative">
+                                <ShadcnInput
+                                    id="force-password-new"
+                                    name="newPassword"
+                                    type={showNewPassword ? 'text' : 'password'}
+                                    minLength={8}
+                                    placeholder="Enter a new password"
+                                    value={newPassword}
+                                    onChange={(e) => setNewPassword(e.target.value)}
+                                    autoComplete="new-password"
+                                    required
+                                    className="pr-16"
+                                />
+                                <button
+                                    type="button"
+                                    className="absolute right-3 top-1/2 -translate-y-1/2 text-sm font-medium text-muted-foreground hover:text-foreground"
+                                    onClick={() => setShowNewPassword((value) => !value)}
+                                    aria-label={showNewPassword ? 'Hide new password' : 'Show new password'}
+                                >
+                                    {showNewPassword ? 'Hide' : 'Show'}
+                                </button>
+                            </div>
+                            <span className={`text-xs ${strengthClasses[passwordStrength.tone]}`}>{passwordStrength.label}</span>
                         </div>
-                        {passwordMismatch ? <p className="force-password-error">Passwords do not match.</p> : <span className="force-password-hint">Use the same password in both fields.</span>}
-                    </div>
-                </div>
 
-                {error ? <p className="force-password-error">{error}</p> : null}
+                        <div className="flex flex-col gap-2">
+                            <Label htmlFor="force-password-confirm">Confirm password</Label>
+                            <div className="relative">
+                                <ShadcnInput
+                                    id="force-password-confirm"
+                                    name="confirmPassword"
+                                    type={showConfirmPassword ? 'text' : 'password'}
+                                    minLength={8}
+                                    placeholder="Re-enter the new password"
+                                    value={confirm}
+                                    onChange={(e) => setConfirm(e.target.value)}
+                                    autoComplete="new-password"
+                                    required
+                                    className="pr-16"
+                                />
+                                <button
+                                    type="button"
+                                    className="absolute right-3 top-1/2 -translate-y-1/2 text-sm font-medium text-muted-foreground hover:text-foreground"
+                                    onClick={() => setShowConfirmPassword((value) => !value)}
+                                    aria-label={showConfirmPassword ? 'Hide confirm password' : 'Show confirm password'}
+                                >
+                                    {showConfirmPassword ? 'Hide' : 'Show'}
+                                </button>
+                            </div>
+                            {passwordMismatch ? <p className="text-sm text-destructive">Passwords do not match.</p> : <span className="text-xs text-muted-foreground">Use the same password in both fields.</span>}
+                        </div>
 
-                <button type="submit" className="force-password-submit" disabled={!canSubmit}>
-                    Update password
-                </button>
-            </form>
+                        {error ? <p className="text-sm text-destructive">{error}</p> : null}
+
+                        <ShadcnButton type="submit" className="w-full" disabled={!canSubmit}>
+                            Update password
+                        </ShadcnButton>
+                    </form>
+                </CardContent>
+            </Card>
         </div>
     );
 }
