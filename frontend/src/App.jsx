@@ -4130,27 +4130,35 @@ export default function App() {
                                             </div>
                                         )}
                                     />
-                                    <div className="stats-row">
-                                        <div className="stat-card">
-                                            <span className="stat-card-label">Total Tenders</span>
-                                            <span className="stat-card-value">{dashboardStats.total}</span>
-                                            <span className="stat-card-sub">Across {dashboardStats.sourcesCount} sources</span>
-                                        </div>
-                                        <div className="stat-card">
-                                            <span className="stat-card-label">New This Week</span>
-                                            <span className="stat-card-value">{dashboardStats.newThisWeek}</span>
-                                            <span className="stat-card-sub">Scraped in last 7 days</span>
-                                        </div>
-                                        <div className="stat-card">
-                                            <span className="stat-card-label">Pending Review</span>
-                                            <span className="stat-card-value">{dashboardStats.pendingReview}</span>
-                                            <span className="stat-card-sub">Awaiting decision</span>
-                                        </div>
-                                        <div className="stat-card">
-                                            <span className="stat-card-label">Expiring Soon</span>
-                                            <span className="stat-card-value">{dashboardStats.expiringSoon}</span>
-                                            <span className="stat-card-sub"><strong>30</strong> day window</span>
-                                        </div>
+                                    <div className="mb-5 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                                        <Card>
+                                            <CardContent className="flex flex-col gap-1.5">
+                                                <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Total Tenders</span>
+                                                <span className="text-3xl font-bold tracking-tight text-foreground">{dashboardStats.total}</span>
+                                                <span className="text-sm text-muted-foreground">Across {dashboardStats.sourcesCount} sources</span>
+                                            </CardContent>
+                                        </Card>
+                                        <Card>
+                                            <CardContent className="flex flex-col gap-1.5">
+                                                <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">New This Week</span>
+                                                <span className="text-3xl font-bold tracking-tight text-foreground">{dashboardStats.newThisWeek}</span>
+                                                <span className="text-sm text-muted-foreground">Scraped in last 7 days</span>
+                                            </CardContent>
+                                        </Card>
+                                        <Card>
+                                            <CardContent className="flex flex-col gap-1.5">
+                                                <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Pending Review</span>
+                                                <span className="text-3xl font-bold tracking-tight text-foreground">{dashboardStats.pendingReview}</span>
+                                                <span className="text-sm text-muted-foreground">Awaiting decision</span>
+                                            </CardContent>
+                                        </Card>
+                                        <Card>
+                                            <CardContent className="flex flex-col gap-1.5">
+                                                <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Expiring Soon</span>
+                                                <span className="text-3xl font-bold tracking-tight text-foreground">{dashboardStats.expiringSoon}</span>
+                                                <span className="text-sm text-muted-foreground"><strong className="font-semibold text-primary">30</strong> day window</span>
+                                            </CardContent>
+                                        </Card>
                                     </div>
                                     <ProjectTable
                                         projects={filtered}
