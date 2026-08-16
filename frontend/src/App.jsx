@@ -7,7 +7,7 @@ import ConfigPanel from './components/ConfigPanel';
 import SchedulePanel from './components/SchedulePanel';
 import Sidebar, { Avatar, NAV_GROUPS } from './components/Sidebar';
 import AnalyticsPage from './components/AnalyticsPage';
-import { Search, Bell, RefreshCw, User, Shield, Settings, CalendarClock, LogOut, Mail, Lock, X, Paperclip, Send, ArrowUp, ArrowDown, ArrowUpDown, MoreVertical, PenLine, KeyRound, UserCheck, UserX, ChevronDown } from 'lucide-react';
+import { Search, Bell, RefreshCw, User, Shield, Settings, CalendarClock, LogOut, Mail, Lock, X, Paperclip, Send, ArrowUp, ArrowDown, ArrowUpDown, MoreVertical, PenLine, KeyRound, UserCheck, UserX, ChevronDown, CircleHelp } from 'lucide-react';
 import { SidebarProvider } from '@/components/ui/sidebar';
 import { Command, CommandDialog, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { toast } from 'sonner';
@@ -4080,6 +4080,14 @@ export default function App() {
                                                             </TooltipTrigger>
                                                             <TooltipContent>Sync now</TooltipContent>
                                                         </Tooltip>
+                                                        <Tooltip>
+                                                            <TooltipTrigger asChild>
+                                                                <ShadcnButton variant="ghost" size="icon" aria-label="Show me around" onClick={() => setDemoOpen(true)}>
+                                                                    <CircleHelp className="h-5 w-5" />
+                                                                </ShadcnButton>
+                                                            </TooltipTrigger>
+                                                            <TooltipContent>Show me around</TooltipContent>
+                                                        </Tooltip>
                                                     </TooltipProvider>
                                                     <DropdownMenu>
                                                         <DropdownMenuTrigger asChild>
@@ -4294,6 +4302,16 @@ export default function App() {
                             >
                                 <Search />
                                 <span>Search tenders</span>
+                            </CommandItem>
+                            <CommandItem
+                                onSelect={() => {
+                                    setCommandOpen(false);
+                                    navigate('tenders');
+                                    setDemoOpen(true);
+                                }}
+                            >
+                                <CircleHelp />
+                                <span>Show me around</span>
                             </CommandItem>
                         </CommandGroup>
                     </CommandList>
