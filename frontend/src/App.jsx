@@ -604,6 +604,51 @@ function ForcePasswordPage({ onSubmit, error }) {
     );
 }
 
+const RELEASE_ITEM_GROUPS = [
+    { key: 'new', label: 'New' },
+    { key: 'improved', label: 'Improved' },
+    { key: 'fixed', label: 'Fixed' },
+];
+
+function releaseItemCategory(item) {
+    const text = String(item || '').trim();
+    if (/^added\b/i.test(text)) return 'new';
+    if (/\bfix(es|ed)?\b/i.test(text)) return 'fixed';
+    return 'improved';
+}
+
+function groupReleaseItems(items) {
+    const buckets = { new: [], improved: [], fixed: [] };
+    (items || []).forEach((item) => buckets[releaseItemCategory(item)].push(item));
+    return RELEASE_ITEM_GROUPS
+        .filter((group) => buckets[group.key].length)
+        .map((group) => ({ ...group, items: buckets[group.key] }));
+}
+
+function ReleaseChangelogCard({ note, isLatest = false, compact = false }) {
+    const groups = groupReleaseItems(note.items);
+    return (
+        <article className={`release-card${isLatest ? ' is-latest' : ''}${compact ? ' is-compact' : ''}`}>
+            <div className="release-card-badge-row">
+                <span className="release-card-badge">v{note.version}</span>
+                {isLatest ? <span className="release-card-tag">Latest</span> : null}
+            </div>
+            <h3 className="release-card-title">{note.title}</h3>
+            <p className="release-card-summary">{note.summary}</p>
+            <div className="release-card-groups">
+                {groups.map((group) => (
+                    <div key={group.key} className="release-card-group">
+                        <h4 className="release-card-group-title">{group.label}</h4>
+                        <ul className="release-card-list">
+                            {group.items.map((item) => <li key={item} className="release-card-item">{item}</li>)}
+                        </ul>
+                    </div>
+                ))}
+            </div>
+        </article>
+    );
+}
+
 function ReleaseNotesModal({ open, releases, onClose, onOpenFull }) {
     useEffect(() => {
         if (!open) return undefined;
@@ -637,17 +682,12 @@ function ReleaseNotesModal({ open, releases, onClose, onOpenFull }) {
                 </div>
                 <div className="release-notes-modal-body">
                     {releases.map((note) => (
-                        <section key={note.version} className="release-note-card">
-                            <div className="release-note-card-header">
-                                <div>
-                                    <span className="release-note-version">v{note.version}</span>
-                                    <h3>{note.title}</h3>
-                                </div>
-                            </div>
-                            <ul className="release-note-list">
-                                {note.items.map((item) => <li key={item}>{item}</li>)}
-                            </ul>
-                        </section>
+                        <ReleaseChangelogCard
+                            key={note.version}
+                            note={note}
+                            isLatest={note.version === APP_RELEASE_VERSION}
+                            compact
+                        />
                     ))}
                 </div>
                 <div className="release-notes-modal-footer">
@@ -675,19 +715,11 @@ function ReleaseNotesPage({ releases, onBack }) {
             </div>
             <div className="release-notes-timeline">
                 {releases.map((note) => (
-                    <article key={note.version} className="release-note-card page">
-                        <div className="release-note-card-header">
-                            <div>
-                                <span className="release-note-version">v{note.version}</span>
-                                <h3>{note.title}</h3>
-                            </div>
-                            {note.version === APP_RELEASE_VERSION ? <span className="release-note-current">Current</span> : null}
-                        </div>
-                        <p className="release-note-summary">{note.summary}</p>
-                        <ul className="release-note-list">
-                            {note.items.map((item) => <li key={item}>{item}</li>)}
-                        </ul>
-                    </article>
+                    <ReleaseChangelogCard
+                        key={note.version}
+                        note={note}
+                        isLatest={note.version === APP_RELEASE_VERSION}
+                    />
                 ))}
             </div>
         </div>
