@@ -16,8 +16,11 @@ import { ModalOverlay, Modal, Dialog } from '@/components/application/modals/mod
 import { Table } from '@/components/application/table/table';
 import { Dropdown } from '@/components/base/dropdown/dropdown';
 import { Tooltip, TooltipTrigger } from '@/components/base/tooltip/tooltip';
-import Sidebar, { Avatar } from './components/Sidebar';
+import Sidebar, { Avatar, NAV_GROUPS } from './components/Sidebar';
 import AnalyticsPage from './components/AnalyticsPage';
+import { Search } from 'lucide-react';
+import { SidebarProvider } from '@/components/ui/sidebar';
+import { CommandDialog, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 
 const API = '/api';
 const APP_RELEASE_VERSION = '1.6';
@@ -2859,6 +2862,7 @@ export default function App() {
     const [route, setRoute] = useState(normalizeRoute(window.location.hash.replace('#', '')));
     const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
     const [mobileNavOpen, setMobileNavOpen] = useState(false);
+    const [commandOpen, setCommandOpen] = useState(false);
     const [commentsOpen, setCommentsOpen] = useState(false);
     const [selectedProject, setSelectedProject] = useState(null);
     const [selectedProjectIndex, setSelectedProjectIndex] = useState(null);
@@ -2878,6 +2882,23 @@ export default function App() {
     const notificationStreamRef = useRef(null);
     const notificationAudioUnlockedRef = useRef(false);
 
+    // ⌘K / Ctrl+K opens the command palette (sidebar search + navigation)
+    useEffect(() => {
+        const handleKeyDown = (event) => {
+            if ((event.metaKey || event.ctrlKey) && event.key === 'k') {
+                event.preventDefault();
+                setCommandOpen(true);
+            }
+        };
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, []);
+
+    const focusTenderSearch = () => {
+        setTimeout(() => {
+            document.querySelector('input[name="projectSearch"]')?.focus();
+        }, 50);
+    };
 
     const apiFetch = useCallback(async (url, opts = {}, _isRetry = false) => {
         const headers = { ...(opts.headers || {}) };
@@ -3971,16 +3992,15 @@ export default function App() {
 
     return (
         <div className="layout-root">
-            <Sidebar
-                user={authUser}
-                route={route}
-                onNavigate={navigate}
-                collapsed={sidebarCollapsed}
-                mobileOpen={mobileNavOpen}
-                onToggleCollapse={() => setSidebarCollapsed((v) => !v)}
-                onCloseMobile={() => setMobileNavOpen(false)}
-            />
-            <div className="layout-main">
+            <SidebarProvider open={!sidebarCollapsed} onOpenChange={(open) => setSidebarCollapsed(!open)}>
+                <Sidebar
+                    user={authUser}
+                    route={route}
+                    onNavigate={navigate}
+                    onCloseMobile={() => setMobileNavOpen(false)}
+                    onOpenCommand={() => setCommandOpen(true)}
+                />
+                <div className="layout-main">
                 <div className="layout-page-scroll">
                     <div className="layout-shell-container layout-page-container">
                         {route === 'dashboard' || route === 'tenders' || (ADMIN_ROUTES.includes(route) && authUser.role !== 'admin') ? (
@@ -4118,6 +4138,7 @@ export default function App() {
                     </div>
                 </div>
             </div>
+            </SidebarProvider>
 
             <CommentsPanel
                 open={commentsOpen}
@@ -4168,6 +4189,38 @@ export default function App() {
                 onOpenNotification={openProjectFromNotification}
                 onMarkAllRead={markAllNotificationsAsRead}
             />
+            <CommandDialog open={commandOpen} onOpenChange={setCommandOpen}>
+                <CommandInput placeholder="Type a command or search…" />
+                <CommandList>
+                    <CommandEmpty>No results found.</CommandEmpty>
+                    <CommandGroup heading="Navigation">
+                        {NAV_GROUPS.filter((group) => !group.adminOnly || authUser?.role === 'admin').flatMap((group) => group.items).map((item) => (
+                            <CommandItem
+                                key={item.key}
+                                onSelect={() => {
+                                    setCommandOpen(false);
+                                    navigate(item.key);
+                                }}
+                            >
+                                <item.icon />
+                                <span>{item.label}</span>
+                            </CommandItem>
+                        ))}
+                    </CommandGroup>
+                    <CommandGroup heading="Search">
+                        <CommandItem
+                            onSelect={() => {
+                                setCommandOpen(false);
+                                navigate('tenders');
+                                focusTenderSearch();
+                            }}
+                        >
+                            <Search />
+                            <span>Search tenders</span>
+                        </CommandItem>
+                    </CommandGroup>
+                </CommandList>
+            </CommandDialog>
         </div>
     );
 }
