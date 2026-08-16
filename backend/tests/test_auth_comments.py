@@ -31,14 +31,14 @@ def test_admin_bootstrap_creation(monkeypatch):
 
 
 def test_cannot_access_admin_without_admin_role(monkeypatch):
-    monkeypatch.setattr(server, "_get_request_user", lambda req: (_mk_user(role="user"), {"csrfToken": "t"}))
+    monkeypatch.setattr(server, "_get_request_user", lambda req: _mk_user(role="user"))
     client = TestClient(server.app)
     r = client.get("/api/admin/users")
     assert r.status_code == 403
 
 
 def test_must_change_password_enforced(monkeypatch):
-    monkeypatch.setattr(server, "_get_request_user", lambda req: (_mk_user(must_change=True), {"csrfToken": "t"}))
+    monkeypatch.setattr(server, "_get_request_user", lambda req: _mk_user(must_change=True))
     client = TestClient(server.app)
     r = client.get("/api/projects")
     assert r.status_code == 403
@@ -55,7 +55,7 @@ def test_create_and_list_comments_for_entity(monkeypatch):
     def fake_list(entity_type, entity_id):
         return [c for c in store if c["entityType"] == entity_type and c["entityId"] == entity_id]
 
-    monkeypatch.setattr(server, "_get_request_user", lambda req: (_mk_user(role="user"), {"csrfToken": "t"}))
+    monkeypatch.setattr(server, "_get_request_user", lambda req: _mk_user(role="user"))
     monkeypatch.setattr(server, "create_comment", fake_create)
     monkeypatch.setattr(server, "list_comments", fake_list)
     monkeypatch.setattr(server, "list_users", lambda q="": [_mk_user(role="user")])
