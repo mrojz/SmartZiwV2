@@ -2,13 +2,9 @@ import { useState } from 'react';
 import {
     HomeLine,
     Briefcase01,
-    CpuChip01,
     BarChart01,
     Shield01,
-    Users01,
     User01,
-    Settings01,
-    Edit01,
     LogOut01,
     Menu02,
     ChevronDown,
@@ -25,7 +21,6 @@ const NAV_GROUPS = [
     {
         label: 'Intelligence',
         items: [
-            { key: 'smart-ziw', label: 'Smart-Ziw', icon: CpuChip01 },
             { key: 'analytics', label: 'Analytics', icon: BarChart01 },
         ],
     },
@@ -34,15 +29,12 @@ const NAV_GROUPS = [
         adminOnly: true,
         items: [
             { key: 'admin', label: 'Admin', icon: Shield01 },
-            { key: 'users', label: 'Users', icon: Users01 },
         ],
     },
     {
         label: 'Settings',
         items: [
             { key: 'profile', label: 'Profile', icon: User01 },
-            { key: 'llm-config', label: 'LLM Config', icon: Settings01 },
-            { key: 'release-notes', label: 'Release Notes', icon: Edit01 },
         ],
     },
 ];

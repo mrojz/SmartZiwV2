@@ -2372,7 +2372,7 @@ function AdminPage({ apiFetch, initialTab = 'users' }) {
             <div className="admin-page-tabs">
                 <button type="button" className={`admin-page-tab ${adminTab === 'users' ? 'active' : ''}`} onClick={() => setAdminTab('users')}>User Management</button>
                 <button type="button" className={`admin-page-tab ${adminTab === 'release-notes' ? 'active' : ''}`} onClick={() => setAdminTab('release-notes')}>Release Notes</button>
-                <button type="button" className={`admin-page-tab ${adminTab === 'smart-ziw' ? 'active' : ''}`} onClick={() => setAdminTab('smart-ziw')}>Smart-Ziw</button>
+                <button type="button" className={`admin-page-tab ${adminTab === 'smart-ziw' ? 'active' : ''}`} onClick={() => setAdminTab('smart-ziw')}>Smart-Ziw Settings</button>
                 <button type="button" className={`admin-page-tab ${adminTab === 'llm' ? 'active' : ''}`} onClick={() => setAdminTab('llm')}>LLM Provider</button>
             </div>
 

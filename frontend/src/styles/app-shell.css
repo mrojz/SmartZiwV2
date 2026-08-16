@@ -3961,20 +3961,13 @@ body {
 }
 
 .admin-users-page .layout-page-header {
-  align-items: flex-end;
-  gap: 24px;
-}
-
-.admin-users-page .layout-page-header > div:first-child {
-  display: flex;
   flex-direction: column;
+  align-items: stretch;
   gap: 8px;
 }
 
-.admin-users-page .layout-page-title {
-  font-size: 28px;
-  line-height: 1.1;
-  letter-spacing: -0.02em;
+.admin-users-page .layout-page-title-row {
+  align-items: center;
 }
 
 .admin-users-page .layout-page-subtitle {
