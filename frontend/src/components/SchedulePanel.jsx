@@ -1,8 +1,13 @@
 import { useState, useEffect, useRef } from 'react';
 import ClockTimePicker from './ClockTimePicker';
-import { X, RefreshCw01 } from '@untitledui/icons';
-import { Button } from '@/components/base/buttons/button';
-import { Toggle } from '@/components/base/toggle/toggle';
+import { X, RefreshCw, LoaderCircle, Info } from 'lucide-react';
+import { Sheet, SheetClose, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { Button } from '@/components/ui/button';
+import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
+import { Badge } from '@/components/ui/badge';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 function buildSyncStreamUrl() {
     const token = localStorage.getItem('pw_access_token');
@@ -68,18 +73,6 @@ const TIMEZONES = [
     { value: 13, label: 'UTC+13' },
     { value: 14, label: 'UTC+14' },
 ];
-
-function setModalScrollLock(locked) {
-    if (typeof document === 'undefined') return;
-    const body = document.body;
-    const html = document.documentElement;
-    const current = Number(body.dataset.modalLockCount || '0');
-    const next = locked ? current + 1 : Math.max(0, current - 1);
-    body.dataset.modalLockCount = String(next);
-    const shouldLock = next > 0;
-    body.classList.toggle('modal-scroll-locked', shouldLock);
-    html.classList.toggle('modal-scroll-locked', shouldLock);
-}
 
 function computeTimeUntil(hour, minute, frequency, dayOfWeek) {
     const now = new Date();
@@ -378,12 +371,6 @@ export default function SchedulePanel({ open, onClose, apiFetch }) {
     }, [open]);
 
     useEffect(() => {
-        if (!open) return undefined;
-        setModalScrollLock(true);
-        return () => setModalScrollLock(false);
-    }, [open]);
-
-    useEffect(() => {
         if (!open || !apiFetch) return undefined;
 
         const poll = async () => {
@@ -498,329 +485,323 @@ export default function SchedulePanel({ open, onClose, apiFetch }) {
     const selectedSourceCount = SOURCE_LIST.filter((src) => schedule.sources?.[src.key] ?? true).length;
 
     return (
-        <div className="sync-overlay" onClick={onClose}>
-            <div className="sync-panel schedule-panel-wide schedule-dialog" onClick={(e) => e.stopPropagation()}>
-                <div className="sync-header sync-dialog-header">
-                    <div className="sync-dialog-copy">
-                        <h2>Sync Schedule</h2>
-                        <p>Configure the automated sync cadence, sources, and processing options.</p>
+        <Sheet open={open} onOpenChange={(nextOpen) => { if (!nextOpen) onClose(); }}>
+            <SheetContent side="right" showCloseButton={false} className="flex w-full flex-col gap-0 p-0 sm:max-w-[680px]">
+                <SheetHeader className="flex flex-row items-start justify-between gap-4 border-b p-5">
+                    <div className="min-w-0">
+                        <SheetDescription className="text-xs font-medium uppercase tracking-wide">Automated sync</SheetDescription>
+                        <SheetTitle className="mt-1 text-lg leading-snug">Sync Schedule</SheetTitle>
+                        <p className="mt-1 text-sm text-muted-foreground">Configure the automated sync cadence, sources, and processing options.</p>
                     </div>
-                    <Button color="tertiary" size="sm" iconLeading={X} onPress={onClose} aria-label="Close schedule dialog" />
-                </div>
+                    <SheetClose asChild>
+                        <Button variant="ghost" size="icon-sm" aria-label="Close schedule dialog">
+                            <X />
+                        </Button>
+                    </SheetClose>
+                </SheetHeader>
 
-                <div className="sync-body sync-dialog-body">
-                    {loading ? (
-                        <div className="schedule-loading">
-                            <div className="spinner" />
-                            <p>Loading schedule...</p>
-                        </div>
-                    ) : loadError ? (
-                        <div className="config-state config-state-error schedule-error-state">
-                            <p>{loadError}</p>
-                            <Button color="secondary" size="sm" iconLeading={RefreshCw01} onPress={loadScheduleData}>Retry</Button>
-                        </div>
-                    ) : (
-                        <>
-                            {(syncRunning || liveLogs.length > 0) && (
-                                <div className="schedule-ongoing sync-card">
-                                    <div className="schedule-ongoing-header">
-                                        <span className="btn-spinner" />
-                                        {syncRunning ? 'Sync in progress...' : 'Recent sync output'}
-                                    </div>
-                                    <pre ref={liveLogContainerRef} className="schedule-ongoing-output">
-                                        {liveLogs.length > 0
-                                            ? liveLogs.slice(-30).join('\n')
-                                            : 'Waiting for output...'}
-                                    </pre>
-                                </div>
-                            )}
-
-                            <div className="sync-card schedule-overview-card">
-                                <div className="sync-card-header">
-                                    <div>
-                                        <h3>Overview</h3>
-                                        <p>Monitor server time, next run, and scheduler status.</p>
-                                    </div>
-                                </div>
-                                <div className="schedule-overview-grid">
-                                    <div className="schedule-overview-item">
-                                        <span className="schedule-overview-label">Server time</span>
-                                        <strong>{currentServerTimeStr}</strong>
-                                    </div>
-                                    <div className="schedule-overview-item">
-                                        <span className="schedule-overview-label">Status</span>
-                                        <strong>{schedule.enabled ? 'Enabled' : 'Disabled'}</strong>
-                                    </div>
-                                    <div className="schedule-overview-item">
-                                        <span className="schedule-overview-label">Next run</span>
-                                        <strong>{schedule.enabled && nextRun ? formatDateTime(nextRun) : 'Not scheduled'}</strong>
-                                    </div>
-                                </div>
-                                <div className="schedule-overview-toggle">
-                                    <Toggle
-                                        isSelected={schedule.enabled}
-                                        onChange={(val) => update('enabled', val)}
-                                        label={schedule.enabled ? 'Scheduled sync enabled' : 'Scheduled sync disabled'}
-                                        size="md"
-                                    />
-                                </div>
-                                {schedule.enabled && countdown !== null && (
-                                    <div className="schedule-next-run">
-                                        <span className="meta-icon" aria-hidden="true">i</span>
-                                        Next run in <strong>{formatCountdown(countdown)}</strong>
+                <ScrollArea className="min-h-0 flex-1">
+                    <div className="flex flex-col gap-4 p-5">
+                        {loading ? (
+                            <div className="flex flex-col items-center justify-center gap-3 py-16">
+                                <LoaderCircle className="size-6 animate-spin text-muted-foreground" />
+                                <p className="text-sm text-muted-foreground">Loading schedule...</p>
+                            </div>
+                        ) : loadError ? (
+                            <div className="flex flex-col items-center gap-3 rounded-lg border border-destructive/30 bg-destructive/5 p-4 text-center">
+                                <p className="text-sm text-destructive">{loadError}</p>
+                                <Button type="button" variant="outline" size="sm" onClick={loadScheduleData}>
+                                    <RefreshCw />
+                                    Retry
+                                </Button>
+                            </div>
+                        ) : (
+                            <>
+                                {(syncRunning || liveLogs.length > 0) && (
+                                    <div className="flex flex-col gap-3 rounded-lg border bg-card p-4">
+                                        <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                                            {syncRunning && <LoaderCircle className="size-4 animate-spin text-primary" />}
+                                            {syncRunning ? 'Sync in progress...' : 'Recent sync output'}
+                                        </div>
+                                        <pre ref={liveLogContainerRef} className="max-h-48 overflow-y-auto rounded-lg border bg-muted/40 p-4 font-mono text-xs leading-5 text-foreground">
+                                            {liveLogs.length > 0
+                                                ? liveLogs.slice(-30).join('\n')
+                                                : 'Waiting for output...'}
+                                        </pre>
                                     </div>
                                 )}
-                            </div>
 
-                            <div className="sync-card">
-                                <div className="sync-card-header">
-                                    <div>
-                                        <h3>Timing</h3>
-                                        <p>Set the frequency, day, time, and timezone for scheduled syncs.</p>
+                                <div className="flex flex-col gap-4 rounded-lg border bg-card p-4">
+                                    <div className="flex flex-col gap-1">
+                                        <h3 className="text-base font-semibold text-foreground">Overview</h3>
+                                        <p className="text-sm text-muted-foreground">Monitor server time, next run, and scheduler status.</p>
                                     </div>
+                                    <div className="grid gap-4 sm:grid-cols-3">
+                                        <div className="flex flex-col gap-0.5">
+                                            <span className="text-xs text-muted-foreground">Server time</span>
+                                            <strong className="text-sm font-semibold text-foreground">{currentServerTimeStr}</strong>
+                                        </div>
+                                        <div className="flex flex-col gap-0.5">
+                                            <span className="text-xs text-muted-foreground">Status</span>
+                                            <strong className="text-sm font-semibold text-foreground">{schedule.enabled ? 'Enabled' : 'Disabled'}</strong>
+                                        </div>
+                                        <div className="flex flex-col gap-0.5">
+                                            <span className="text-xs text-muted-foreground">Next run</span>
+                                            <strong className="text-sm font-semibold text-foreground">{schedule.enabled && nextRun ? formatDateTime(nextRun) : 'Not scheduled'}</strong>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center justify-between gap-3 rounded-lg border px-4 py-3">
+                                        <Label htmlFor="schedule-enabled" className="text-sm font-semibold">
+                                            {schedule.enabled ? 'Scheduled sync enabled' : 'Scheduled sync disabled'}
+                                        </Label>
+                                        <Switch
+                                            id="schedule-enabled"
+                                            checked={schedule.enabled}
+                                            onCheckedChange={(val) => update('enabled', val)}
+                                        />
+                                    </div>
+                                    {schedule.enabled && countdown !== null && (
+                                        <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                                            <Info className="size-4 shrink-0" />
+                                            Next run in <strong className="font-semibold text-foreground">{formatCountdown(countdown)}</strong>
+                                        </p>
+                                    )}
                                 </div>
-                                <div className="schedule-frequency-grid">
-                                    <label className="schedule-field">
-                                        <span>Frequency</span>
-                                        <select
-                                            name="scheduleFrequency"
-                                            aria-label="Schedule frequency"
-                                            value={schedule.frequency}
-                                            onChange={(e) => update('frequency', e.target.value)}
-                                            className="schedule-select"
-                                        >
-                                            <option value="daily">Daily</option>
-                                            <option value="weekly">Weekly</option>
-                                        </select>
-                                    </label>
 
-                                    {schedule.frequency === 'weekly' && (
-                                        <label className="schedule-field">
-                                            <span>Day</span>
-                                            <select
-                                                name="scheduleDay"
-                                                aria-label="Schedule day"
-                                                value={schedule.day_of_week}
-                                                onChange={(e) => update('day_of_week', e.target.value)}
-                                                className="schedule-select"
+                                <div className="flex flex-col gap-4 rounded-lg border bg-card p-4">
+                                    <div className="flex flex-col gap-1">
+                                        <h3 className="text-base font-semibold text-foreground">Timing</h3>
+                                        <p className="text-sm text-muted-foreground">Set the frequency, day, time, and timezone for scheduled syncs.</p>
+                                    </div>
+                                    <div className="grid gap-4 sm:grid-cols-2">
+                                        <div className="flex flex-col gap-1.5">
+                                            <Label htmlFor="schedule-frequency" className="text-sm font-medium">Frequency</Label>
+                                            <Select value={schedule.frequency} onValueChange={(value) => update('frequency', value)}>
+                                                <SelectTrigger id="schedule-frequency" className="w-full" aria-label="Schedule frequency">
+                                                    <SelectValue placeholder="Frequency" />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="daily">Daily</SelectItem>
+                                                    <SelectItem value="weekly">Weekly</SelectItem>
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
+
+                                        {schedule.frequency === 'weekly' && (
+                                            <div className="flex flex-col gap-1.5">
+                                                <Label htmlFor="schedule-day" className="text-sm font-medium">Day</Label>
+                                                <Select value={schedule.day_of_week} onValueChange={(value) => update('day_of_week', value)}>
+                                                    <SelectTrigger id="schedule-day" className="w-full" aria-label="Schedule day">
+                                                        <SelectValue placeholder="Day" />
+                                                    </SelectTrigger>
+                                                    <SelectContent>
+                                                        {DAYS.map((d) => (
+                                                            <SelectItem key={d.value} value={d.value}>{d.label}</SelectItem>
+                                                        ))}
+                                                    </SelectContent>
+                                                </Select>
+                                            </div>
+                                        )}
+
+                                        <div className="flex flex-col gap-1.5">
+                                            <Label htmlFor="schedule-time" className="text-sm font-medium">Time</Label>
+                                            <Button
+                                                type="button"
+                                                variant="outline"
+                                                className="justify-start font-normal"
+                                                id="schedule-time"
+                                                aria-label="Choose schedule time"
+                                                onClick={() => setShowClock(true)}
                                             >
-                                                {DAYS.map((d) => (
-                                                    <option key={d.value} value={d.value}>{d.label}</option>
-                                                ))}
-                                            </select>
-                                        </label>
+                                                {String(schedule.hour).padStart(2, '0')}:{String(schedule.minute).padStart(2, '0')}
+                                            </Button>
+                                        </div>
+
+                                        <div className="flex flex-col gap-1.5 sm:col-span-2">
+                                            <Label htmlFor="schedule-timezone" className="text-sm font-medium">Timezone</Label>
+                                            <Select value={String(schedule.timezone)} onValueChange={(value) => update('timezone', Number(value))}>
+                                                <SelectTrigger id="schedule-timezone" className="w-full" aria-label="Schedule timezone">
+                                                    <SelectValue placeholder="Timezone" />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    {TIMEZONES.map((tz) => (
+                                                        <SelectItem key={tz.value} value={String(tz.value)}>{tz.label}</SelectItem>
+                                                    ))}
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
+                                    </div>
+
+                                    {showClock && (
+                                        <ClockTimePicker
+                                            hour={schedule.hour}
+                                            minute={schedule.minute}
+                                            onConfirm={(h, m) => {
+                                                update('hour', h);
+                                                update('minute', m);
+                                                setShowClock(false);
+                                            }}
+                                            onCancel={() => setShowClock(false)}
+                                        />
                                     )}
 
-                                    <div className="schedule-field">
-                                        <span>Time</span>
-                                        <Button
-                                            color="secondary"
-                                            size="sm"
-                                            className="schedule-time-btn"
-                                            aria-label="Choose schedule time"
-                                            onPress={() => setShowClock(true)}
-                                        >
-                                            {String(schedule.hour).padStart(2, '0')}:{String(schedule.minute).padStart(2, '0')}
-                                        </Button>
-                                    </div>
-
-                                    <label className="schedule-field schedule-field-wide">
-                                        <span>Timezone</span>
-                                        <select
-                                            name="scheduleTimezone"
-                                            aria-label="Schedule timezone"
-                                            value={schedule.timezone}
-                                            onChange={(e) => update('timezone', Number(e.target.value))}
-                                            className="schedule-select schedule-tz-select"
-                                        >
-                                            {TIMEZONES.map((tz) => (
-                                                <option key={tz.value} value={tz.value}>{tz.label}</option>
-                                            ))}
-                                        </select>
-                                    </label>
+                                    <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                                        <Info className="size-4 shrink-0" /> Runs in <strong className="font-semibold text-foreground">{timeUntilStr}</strong> <span className="text-xs text-muted-foreground">({tzLabel})</span>
+                                    </p>
+                                    <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                                        <Info className="size-4 shrink-0" /> Executes on the server at <strong className="font-semibold text-foreground">{serverExecutionLabel}</strong> <span className="text-xs text-muted-foreground">({formatUtcOffsetLabel(serverTimezoneOffset)} server time)</span>
+                                    </p>
                                 </div>
 
-                                {showClock && (
-                                    <ClockTimePicker
-                                        hour={schedule.hour}
-                                        minute={schedule.minute}
-                                        onConfirm={(h, m) => {
-                                            update('hour', h);
-                                            update('minute', m);
-                                            setShowClock(false);
-                                        }}
-                                        onCancel={() => setShowClock(false)}
-                                    />
-                                )}
-
-                                <div className="schedule-time-preview">
-                                    <span className="meta-icon" aria-hidden="true">i</span> Runs in <strong>{timeUntilStr}</strong> <span className="schedule-tz-note">({tzLabel})</span>
-                                </div>
-                                <div className="schedule-time-preview">
-                                    <span className="meta-icon" aria-hidden="true">i</span> Executes on the server at <strong>{serverExecutionLabel}</strong> <span className="schedule-tz-note">({formatUtcOffsetLabel(serverTimezoneOffset)} server time)</span>
-                                </div>
-                            </div>
-
-                            <div className="sync-card">
-                                <div className="sync-card-header">
-                                    <div>
-                                        <h3>Sources</h3>
-                                        <p>Choose which feeds the scheduler should include.</p>
-                                    </div>
-                                    <span className="sync-card-meta sync-card-meta-neutral">{selectedSourceCount} selected</span>
-                                </div>
-                                <div className="sync-source-grid">
-                                    {SOURCE_LIST.map((src) => (
-                                        <div key={src.key} className="sync-source-item">
-                                            <Toggle
-                                                isSelected={schedule.sources?.[src.key] ?? true}
-                                                onChange={(val) => updateSource(src.key, val)}
-                                                label={src.label}
-                                            />
+                                <div className="flex flex-col gap-4 rounded-lg border bg-card p-4">
+                                    <div className="flex flex-wrap items-start justify-between gap-2">
+                                        <div className="flex flex-col gap-1">
+                                            <h3 className="text-base font-semibold text-foreground">Sources</h3>
+                                            <p className="text-sm text-muted-foreground">Choose which feeds the scheduler should include.</p>
                                         </div>
-                                    ))}
-                                </div>
-                            </div>
-
-                            <div className="sync-card">
-                                <div className="sync-card-header">
-                                    <div>
-                                        <h3>Options</h3>
-                                        <p>Set additional rules applied during scheduled runs.</p>
+                                        <Badge variant="outline">{selectedSourceCount} selected</Badge>
                                     </div>
-                                </div>
-                                <div className="sync-options-grid">
-                                    <div className="sync-option-item">
-                                        <Toggle
-                                            isSelected={schedule.no_ai}
-                                            onChange={(val) => update('no_ai', val)}
-                                            label="Skip AI Filter"
-                                        />
-                                    </div>
-                                    <div className="sync-option-item">
-                                        <Toggle
-                                            isSelected={schedule.include_expired}
-                                            onChange={(val) => update('include_expired', val)}
-                                            label="Include Expired"
-                                        />
-                                    </div>
-                                </div>
-                            </div>
-
-                            {saveResult && (
-                                <div className={`sync-result ${saveResult.success ? 'success' : 'error'}`}>
-                                    <div className="sync-result-header">
-                                        <span>{saveResult.success ? 'Saved:' : 'Warning:'} {saveResult.message}</span>
-                                    </div>
-                                </div>
-                            )}
-
-                            <div className="sync-card schedule-history">
-                                <div className="sync-card-header">
-                                    <div>
-                                        <h3>Run History</h3>
-                                        <p>Review previous runs, durations, and scraper output.</p>
-                                    </div>
-                                </div>
-                                {logs.length === 0 ? (
-                                    <p className="schedule-no-logs">No scheduled runs yet.</p>
-                                ) : (
-                                    <div className="schedule-log-list">
-                                        {logs.map((log, i) => (
-                                            <div key={i} className={`schedule-log-entry ${log.success ? '' : 'failed'}`}>
-                                                <div
-                                                    className="schedule-log-header"
-                                                    onClick={() => {
-                                                        if (expandedLog === i) {
-                                                            setExpandedLog(null);
-                                                        } else {
-                                                            setExpandedLog(i);
-                                                            setScraperLogTab('summary');
-                                                            if (!scraperLogData[i] && apiFetch) {
-                                                                apiFetch(`/api/schedule/logs/${i}/scrapers`)
-                                                                    .then(async (r) => {
-                                                                        if (!r.ok) throw new Error('Failed to load scraper logs');
-                                                                        return r.json();
-                                                                    })
-                                                                    .then((data) => setScraperLogData((prev) => ({ ...prev, [i]: data })))
-                                                                    .catch(() => { });
-                                                            }
-                                                        }
-                                                    }}
-                                                >
-                                                    <span className={`schedule-status-pill ${log.success ? 'success' : 'failed'}`}>
-                                                        {log.success ? 'OK' : 'Failed'}
-                                                    </span>
-                                                    <span className="schedule-trigger-pill">
-                                                        {log.trigger === 'scheduled' ? 'Auto' : 'Manual'}
-                                                    </span>
-                                                    <span className="schedule-log-date">{formatDateTime(log.started_at)}</span>
-                                                    <span className="schedule-log-duration">{formatDuration(log.started_at, log.finished_at)}</span>
-                                                    <span className="schedule-log-projects">{log.new_project_count ?? log.summary?.new_projects ?? 0} new</span>
-                                                    <span className="schedule-log-expand">{expandedLog === i ? '-' : '+'}</span>
-                                                </div>
-                                                {expandedLog === i && (
-                                                    <div>
-                                                        <div className="schedule-log-tabs">
-                                                            <Button
-                                                                color={scraperLogTab === 'summary' ? 'primary' : 'secondary'}
-                                                                size="sm"
-                                                                onPress={() => setScraperLogTab('summary')}
-                                                            >
-                                                                Summary
-                                                            </Button>
-                                                            {scraperLogData[i] && Object.entries(scraperLogData[i]).map(([key, s]) => (
-                                                                <Button
-                                                                    key={key}
-                                                                    color={scraperLogTab === key ? 'primary' : 'secondary'}
-                                                                    size="sm"
-                                                                    onPress={() => setScraperLogTab(key)}
-                                                                >
-                                                                    {s.label || key}
-                                                                </Button>
-                                                            ))}
-                                                        </div>
-                                                        <pre className="schedule-log-output">
-                                                            {scraperLogTab === 'summary'
-                                                                ? (log.log_lines || []).join('\n') || '(no output)'
-                                                                : (scraperLogData[i]?.[scraperLogTab]?.output || []).join('\n') || '(no output)'}
-                                                        </pre>
-                                                    </div>
-                                                )}
+                                    <div className="grid gap-3 sm:grid-cols-2">
+                                        {SOURCE_LIST.map((src) => (
+                                            <div key={src.key} className="flex items-center justify-between gap-3 rounded-lg border px-3 py-2.5">
+                                                <Label htmlFor={`schedule-source-${src.key}`} className="text-sm font-medium">{src.label}</Label>
+                                                <Switch
+                                                    id={`schedule-source-${src.key}`}
+                                                    checked={schedule.sources?.[src.key] ?? true}
+                                                    onCheckedChange={(val) => updateSource(src.key, val)}
+                                                />
                                             </div>
                                         ))}
                                     </div>
-                                )}
-                            </div>
-                        </>
-                    )}
-                </div>
+                                </div>
 
-                <div className="sync-footer">
-                    <div className="sync-footer-meta">
-                        <div className="sync-footer-copy">
-                            <strong>{schedule.enabled ? 'Schedule enabled' : 'Schedule disabled'}</strong>
-                            <span>
+                                <div className="flex flex-col gap-4 rounded-lg border bg-card p-4">
+                                    <div className="flex flex-col gap-1">
+                                        <h3 className="text-base font-semibold text-foreground">Options</h3>
+                                        <p className="text-sm text-muted-foreground">Set additional rules applied during scheduled runs.</p>
+                                    </div>
+                                    <div className="grid gap-3 sm:grid-cols-2">
+                                        <div className="flex items-center justify-between gap-3 rounded-lg border px-3 py-2.5">
+                                            <Label htmlFor="schedule-no-ai" className="text-sm font-medium">Skip AI Filter</Label>
+                                            <Switch id="schedule-no-ai" checked={schedule.no_ai} onCheckedChange={(val) => update('no_ai', val)} />
+                                        </div>
+                                        <div className="flex items-center justify-between gap-3 rounded-lg border px-3 py-2.5">
+                                            <Label htmlFor="schedule-include-expired" className="text-sm font-medium">Include Expired</Label>
+                                            <Switch id="schedule-include-expired" checked={schedule.include_expired} onCheckedChange={(val) => update('include_expired', val)} />
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {saveResult && (
+                                    <div className={`rounded-lg border p-4 text-sm ${saveResult.success ? 'border-green-700/30 bg-green-50' : 'border-destructive/30 bg-destructive/5'}`}>
+                                        <span className={`font-semibold ${saveResult.success ? 'text-green-700' : 'text-destructive'}`}>
+                                            {saveResult.success ? 'Saved:' : 'Warning:'} {saveResult.message}
+                                        </span>
+                                    </div>
+                                )}
+
+                                <div className="flex flex-col gap-4 rounded-lg border bg-card p-4">
+                                    <div className="flex flex-col gap-1">
+                                        <h3 className="text-base font-semibold text-foreground">Run History</h3>
+                                        <p className="text-sm text-muted-foreground">Review previous runs, durations, and scraper output.</p>
+                                    </div>
+                                    {logs.length === 0 ? (
+                                        <p className="text-sm text-muted-foreground">No scheduled runs yet.</p>
+                                    ) : (
+                                        <div className="flex flex-col gap-3">
+                                            {logs.map((log, i) => (
+                                                <div key={i} className="flex flex-col overflow-hidden rounded-lg border">
+                                                    <div
+                                                        className="flex flex-wrap cursor-pointer items-center gap-x-3 gap-y-1.5 px-4 py-3 hover:bg-muted/40"
+                                                        onClick={() => {
+                                                            if (expandedLog === i) {
+                                                                setExpandedLog(null);
+                                                            } else {
+                                                                setExpandedLog(i);
+                                                                setScraperLogTab('summary');
+                                                                if (!scraperLogData[i] && apiFetch) {
+                                                                    apiFetch(`/api/schedule/logs/${i}/scrapers`)
+                                                                        .then(async (r) => {
+                                                                            if (!r.ok) throw new Error('Failed to load scraper logs');
+                                                                            return r.json();
+                                                                        })
+                                                                        .then((data) => setScraperLogData((prev) => ({ ...prev, [i]: data })))
+                                                                        .catch(() => { });
+                                                                }
+                                                            }
+                                                        }}
+                                                    >
+                                                        <Badge className={log.success ? 'bg-green-700 text-white' : 'bg-red-700 text-white'}>
+                                                            {log.success ? 'OK' : 'Failed'}
+                                                        </Badge>
+                                                        <Badge variant="outline">
+                                                            {log.trigger === 'scheduled' ? 'Auto' : 'Manual'}
+                                                        </Badge>
+                                                        <span className="text-xs text-muted-foreground">{formatDateTime(log.started_at)}</span>
+                                                        <span className="text-xs text-muted-foreground">{formatDuration(log.started_at, log.finished_at)}</span>
+                                                        <span className="text-xs font-medium text-foreground">{log.new_project_count ?? log.summary?.new_projects ?? 0} new</span>
+                                                        <span className="ml-auto text-sm font-medium text-muted-foreground">{expandedLog === i ? '-' : '+'}</span>
+                                                    </div>
+                                                    {expandedLog === i && (
+                                                        <div className="flex flex-col gap-3 border-t bg-muted/30 px-4 py-4">
+                                                            <div className="flex flex-wrap gap-2">
+                                                                <Button
+                                                                    type="button"
+                                                                    size="sm"
+                                                                    variant={scraperLogTab === 'summary' ? 'default' : 'outline'}
+                                                                    onClick={() => setScraperLogTab('summary')}
+                                                                >
+                                                                    Summary
+                                                                </Button>
+                                                                {scraperLogData[i] && Object.entries(scraperLogData[i]).map(([key, s]) => (
+                                                                    <Button
+                                                                        key={key}
+                                                                        type="button"
+                                                                        size="sm"
+                                                                        variant={scraperLogTab === key ? 'default' : 'outline'}
+                                                                        onClick={() => setScraperLogTab(key)}
+                                                                    >
+                                                                        {s.label || key}
+                                                                    </Button>
+                                                                ))}
+                                                            </div>
+                                                            <pre className="max-h-72 overflow-y-auto rounded-lg border bg-card p-4 font-mono text-xs leading-5 text-foreground">
+                                                                {scraperLogTab === 'summary'
+                                                                    ? (log.log_lines || []).join('\n') || '(no output)'
+                                                                    : (scraperLogData[i]?.[scraperLogTab]?.output || []).join('\n') || '(no output)'}
+                                                            </pre>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            </>
+                        )}
+                    </div>
+                </ScrollArea>
+
+                <SheetFooter className="border-t p-4">
+                    <div className="flex w-full items-center justify-between gap-3">
+                        <div className="flex flex-col">
+                            <strong className="text-sm text-foreground">{schedule.enabled ? 'Schedule enabled' : 'Schedule disabled'}</strong>
+                            <span className="text-xs text-muted-foreground">
                                 {schedule.enabled && nextRun
                                     ? `Next run ${formatDateTime(nextRun)}`
                                     : `${selectedSourceCount} source${selectedSourceCount === 1 ? '' : 's'} configured`}
                             </span>
                         </div>
+                        <div className="flex items-center gap-3">
+                            <Button type="button" variant="outline" onClick={onClose} disabled={saving}>Close</Button>
+                            <Button type="button" onClick={handleSave} disabled={saving || !!loadError}>
+                                {saving && <LoaderCircle className="size-4 animate-spin" />}
+                                Save Schedule
+                            </Button>
+                        </div>
                     </div>
-                    <div className="sync-footer-actions">
-                        <Button color="secondary" className="sync-footer-btn sync-footer-btn-secondary" onPress={onClose} isDisabled={saving}>Close</Button>
-                        <Button
-                            color="primary"
-                            className="sync-footer-btn sync-primary-btn"
-                            onPress={handleSave}
-                            isDisabled={saving || !!loadError}
-                            isLoading={saving}
-                        >
-                            Save Schedule
-                        </Button>
-                    </div>
-                </div>
-            </div>
-        </div>
+                </SheetFooter>
+            </SheetContent>
+        </Sheet>
     );
 }

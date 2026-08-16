@@ -1,4 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
+import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
 
 /**
  * Mobile-style analog clock time picker (24h only).
@@ -138,44 +140,48 @@ export default function ClockTimePicker({ hour: initHour, minute: initMinute, on
     const pad = (n) => String(n).padStart(2, '0');
 
     return (
-        <div className="ctp-overlay" onClick={onCancel}>
-            <div className="ctp-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 z-[1000] grid place-items-center overflow-y-auto bg-slate-950/45 p-4" onClick={onCancel}>
+            <div className="flex min-w-[300px] flex-col items-center gap-4 rounded-xl border bg-card p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
                 {/* HH:mm editable header */}
-                <div className="ctp-header">
-                    <input
-                        className={`ctp-input ${mode === 'hour' ? 'active' : ''}`}
-                        name="clockHour"
-                        aria-label="Hour"
-                        value={editingH !== null ? editingH : pad(hour)}
-                        onFocus={() => { setEditingH(pad(hour)); setMode('hour'); }}
-                        onChange={(e) => setEditingH(e.target.value.replace(/[^0-9]/g, '').slice(0, 2))}
-                        onBlur={(e) => commitH(e.target.value)}
-                        onKeyDown={(e) => { if (e.key === 'Enter') commitH(e.target.value); }}
-                        maxLength={2}
-                        inputMode="numeric"
-                    />
-                    <span className="ctp-colon">:</span>
-                    <input
-                        className={`ctp-input ${mode === 'minute' ? 'active' : ''}`}
-                        name="clockMinute"
-                        aria-label="Minute"
-                        value={editingM !== null ? editingM : pad(minute)}
-                        onFocus={() => { setEditingM(pad(minute)); setMode('minute'); }}
-                        onChange={(e) => setEditingM(e.target.value.replace(/[^0-9]/g, '').slice(0, 2))}
-                        onBlur={(e) => commitM(e.target.value)}
-                        onKeyDown={(e) => { if (e.key === 'Enter') commitM(e.target.value); }}
-                        maxLength={2}
-                        inputMode="numeric"
-                    />
+                <div className="flex items-center gap-1">
+                    <div className="w-14">
+                        <Input
+                            className={`h-12 px-0 text-center font-mono text-2xl font-bold ${mode === 'hour' ? 'border-primary bg-primary/10' : ''}`}
+                            name="clockHour"
+                            aria-label="Hour"
+                            value={editingH !== null ? editingH : pad(hour)}
+                            onFocus={() => { setEditingH(pad(hour)); setMode('hour'); }}
+                            onChange={(e) => setEditingH(e.target.value.replace(/[^0-9]/g, '').slice(0, 2))}
+                            onBlur={(e) => commitH(e.target.value)}
+                            onKeyDown={(e) => { if (e.key === 'Enter') commitH(e.target.value); }}
+                            maxLength={2}
+                            inputMode="numeric"
+                        />
+                    </div>
+                    <span className="px-0.5 font-mono text-2xl font-bold text-muted-foreground">:</span>
+                    <div className="w-14">
+                        <Input
+                            className={`h-12 px-0 text-center font-mono text-2xl font-bold ${mode === 'minute' ? 'border-primary bg-primary/10' : ''}`}
+                            name="clockMinute"
+                            aria-label="Minute"
+                            value={editingM !== null ? editingM : pad(minute)}
+                            onFocus={() => { setEditingM(pad(minute)); setMode('minute'); }}
+                            onChange={(e) => setEditingM(e.target.value.replace(/[^0-9]/g, '').slice(0, 2))}
+                            onBlur={(e) => commitM(e.target.value)}
+                            onKeyDown={(e) => { if (e.key === 'Enter') commitM(e.target.value); }}
+                            maxLength={2}
+                            inputMode="numeric"
+                        />
+                    </div>
                 </div>
 
-                <div className="ctp-mode-label">
+                <div className="text-xs uppercase tracking-wider text-muted-foreground">
                     {mode === 'hour' ? 'Select hour' : 'Select minute'}
                 </div>
 
                 {/* Clock face */}
                 <div
-                    className="ctp-clock"
+                    className="relative cursor-pointer select-none touch-none"
                     ref={clockRef}
                     style={{ width: SIZE, height: SIZE }}
                     onMouseDown={onPointerDown}
@@ -185,18 +191,18 @@ export default function ClockTimePicker({ hour: initHour, minute: initMinute, on
                     onTouchMove={onPointerMove}
                     onTouchEnd={onPointerUp}
                 >
-                    <svg width={SIZE} height={SIZE} className="ctp-svg">
+                    <svg width={SIZE} height={SIZE} className="block">
                         {/* Clock background */}
-                        <circle cx={CX} cy={CY} r={CX - 2} className="ctp-face" />
+                        <circle cx={CX} cy={CY} r={CX - 2} className="fill-muted stroke-border" />
 
                         {/* Center dot */}
-                        <circle cx={CX} cy={CY} r={4} className="ctp-center-dot" />
+                        <circle cx={CX} cy={CY} r={4} className="fill-primary" />
 
                         {/* Hand line */}
-                        <line x1={CX} y1={CY} x2={handX} y2={handY} className="ctp-hand" />
+                        <line x1={CX} y1={CY} x2={handX} y2={handY} className="stroke-primary" strokeWidth={2} />
 
                         {/* Selected dot */}
-                        <circle cx={handX} cy={handY} r={DOT_R} className="ctp-selected-dot" />
+                        <circle cx={handX} cy={handY} r={DOT_R} className="fill-primary" />
 
                         {/* Numbers */}
                         {mode === 'hour' ? (
@@ -205,7 +211,7 @@ export default function ClockTimePicker({ hour: initHour, minute: initMinute, on
                                     key={hp.value}
                                     x={hp.x}
                                     y={hp.y}
-                                    className={`ctp-num ${hp.ring === 'inner' ? 'ctp-num-inner' : ''} ${hp.value === hour ? 'ctp-num-selected' : ''}`}
+                                    className={`pointer-events-none fill-secondary-foreground text-[0.82rem] font-medium ${hp.ring === 'inner' ? 'fill-muted-foreground text-[0.72rem]' : ''} ${hp.value === hour ? 'fill-primary-foreground font-bold' : ''}`}
                                     dominantBaseline="central"
                                     textAnchor="middle"
                                 >
@@ -218,7 +224,7 @@ export default function ClockTimePicker({ hour: initHour, minute: initMinute, on
                                     key={mp.value}
                                     x={mp.x}
                                     y={mp.y}
-                                    className={`ctp-num ${mp.value === minute ? 'ctp-num-selected' : ''}`}
+                                    className={`pointer-events-none fill-secondary-foreground text-[0.82rem] font-medium ${mp.value === minute ? 'fill-primary-foreground font-bold' : ''}`}
                                     dominantBaseline="central"
                                     textAnchor="middle"
                                 >
@@ -230,14 +236,13 @@ export default function ClockTimePicker({ hour: initHour, minute: initMinute, on
                 </div>
 
                 {/* Actions */}
-                <div className="ctp-actions">
-                    <button type="button" className="ctp-btn ctp-cancel" onClick={onCancel}>Cancel</button>
-                    <button type="button" className="ctp-btn ctp-confirm" onClick={() => onConfirm(hour, minute)}>
+                <div className="flex w-full gap-3">
+                    <Button type="button" variant="outline" className="flex-1" onClick={onCancel}>Cancel</Button>
+                    <Button type="button" className="flex-1" onClick={() => onConfirm(hour, minute)}>
                         Confirm {pad(hour)}:{pad(minute)}
-                    </button>
+                    </Button>
                 </div>
             </div>
         </div>
     );
 }
-

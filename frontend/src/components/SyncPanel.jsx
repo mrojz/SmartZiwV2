@@ -1,7 +1,23 @@
 import { useState, useRef, useEffect } from 'react';
-import { X } from '@untitledui/icons';
-import { Button } from '@/components/base/buttons/button';
-import { Toggle } from '@/components/base/toggle/toggle';
+import { LoaderCircle } from 'lucide-react';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
+import { Badge } from '@/components/ui/badge';
+import { ScrollArea } from '@/components/ui/scroll-area';
+
+function setModalScrollLock(locked) {
+  if (typeof document === 'undefined') return;
+  const body = document.body;
+  const html = document.documentElement;
+  const current = Number(body.dataset.modalLockCount || '0');
+  const next = locked ? current + 1 : Math.max(0, current - 1);
+  body.dataset.modalLockCount = String(next);
+  const shouldLock = next > 0;
+  body.classList.toggle('modal-scroll-locked', shouldLock);
+  html.classList.toggle('modal-scroll-locked', shouldLock);
+}
 
 function buildSyncStreamUrl() {
   const token = localStorage.getItem('pw_access_token');
@@ -26,18 +42,6 @@ const SOURCES = [
   { key: 'oas', label: 'OAS' },
   { key: 'africanunion', label: 'African Union' },
 ];
-
-function setModalScrollLock(locked) {
-  if (typeof document === 'undefined') return;
-  const body = document.body;
-  const html = document.documentElement;
-  const current = Number(body.dataset.modalLockCount || '0');
-  const next = locked ? current + 1 : Math.max(0, current - 1);
-  body.dataset.modalLockCount = String(next);
-  const shouldLock = next > 0;
-  body.classList.toggle('modal-scroll-locked', shouldLock);
-  html.classList.toggle('modal-scroll-locked', shouldLock);
-}
 
 export default function SyncPanel({ open, onClose, onSyncDone, onSyncStart, apiFetch }) {
   const [iadb, setIadb] = useState(true);
@@ -191,6 +195,22 @@ export default function SyncPanel({ open, onClose, onSyncDone, onSyncStart, apiF
     africanunion,
   };
 
+  const sourceSetters = {
+    iadb: setIadb,
+    worldbank: setWorldbank,
+    globaltenders: setGlobaltenders,
+    giz: setGiz,
+    devaid: setDevaid,
+    dgmarket: setDgmarket,
+    africagateway: setAfricagateway,
+    isdb: setIsdb,
+    badea: setBadea,
+    bcie: setBcie,
+    eabr: setEabr,
+    oas: setOas,
+    africanunion: setAfricanunion,
+  };
+
   const selectedSourceCount = Object.values(selectedSources).filter(Boolean).length;
 
   const scrollToBottom = () => {
@@ -244,140 +264,118 @@ export default function SyncPanel({ open, onClose, onSyncDone, onSyncStart, apiF
   };
 
   return (
-    <div className="sync-overlay" onClick={onClose}>
-      <div className="sync-panel sync-dialog" onClick={(e) => e.stopPropagation()}>
-        <div className="sync-header sync-dialog-header">
-          <div className="sync-dialog-copy">
-            <h2>Sync Projects</h2>
-            <p>Select the sources and processing options to run a manual sync.</p>
-          </div>
-          <Button color="tertiary" size="sm" iconLeading={X} onPress={onClose} aria-label="Close sync dialog" />
-        </div>
+    <Dialog open={open} onOpenChange={(nextOpen) => { if (!nextOpen) onClose(); }}>
+      <DialogContent className="flex max-h-[90dvh] flex-col gap-0 p-0 sm:max-w-[560px]">
+        <DialogHeader className="border-b p-5">
+          <DialogTitle>Sync Projects</DialogTitle>
+          <DialogDescription>Select the sources and processing options to run a manual sync.</DialogDescription>
+        </DialogHeader>
 
-        <div className="sync-body sync-dialog-body">
-          <div className="sync-card">
-            <div className="sync-card-header">
-              <div>
-                <h3>Sources</h3>
-                <p>Choose which feeds to include in this sync run.</p>
+        <ScrollArea className="min-h-0 flex-1">
+          <div className="flex flex-col gap-4 p-5">
+            <div className="flex flex-col gap-4 rounded-lg border bg-card p-4">
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div className="flex flex-col gap-1">
+                  <h3 className="text-base font-semibold text-foreground">Sources</h3>
+                  <p className="text-sm text-muted-foreground">Choose which feeds to include in this sync run.</p>
+                </div>
+                <Badge variant="outline">{selectedSourceCount} selected</Badge>
               </div>
-              <span className="sync-card-meta">{selectedSourceCount} selected</span>
-            </div>
-            <div className="sync-source-grid">
-              <div className="sync-source-item"><Toggle isSelected={iadb} onChange={setIadb} isDisabled={syncing} label="IADB" /></div>
-              <div className="sync-source-item"><Toggle isSelected={worldbank} onChange={setWorldbank} isDisabled={syncing} label="World Bank" /></div>
-              <div className="sync-source-item"><Toggle isSelected={globaltenders} onChange={setGlobaltenders} isDisabled={syncing} label="Global Tenders" /></div>
-              <div className="sync-source-item"><Toggle isSelected={giz} onChange={setGiz} isDisabled={syncing} label="GIZ" /></div>
-              <div className="sync-source-item"><Toggle isSelected={devaid} onChange={setDevaid} isDisabled={syncing} label="DevelopmentAid" /></div>
-              <div className="sync-source-item"><Toggle isSelected={dgmarket} onChange={setDgmarket} isDisabled={syncing} label="DGMarket" /></div>
-              <div className="sync-source-item"><Toggle isSelected={africagateway} onChange={setAfricagateway} isDisabled={syncing} label="Africa Gateway" /></div>
-              <div className="sync-source-item"><Toggle isSelected={isdb} onChange={setIsdb} isDisabled={syncing} label="IsDB" /></div>
-              <div className="sync-source-item"><Toggle isSelected={badea} onChange={setBadea} isDisabled={syncing} label="BADEA" /></div>
-              <div className="sync-source-item"><Toggle isSelected={bcie} onChange={setBcie} isDisabled={syncing} label="BCIE" /></div>
-              <div className="sync-source-item"><Toggle isSelected={eabr} onChange={setEabr} isDisabled={syncing} label="EABR" /></div>
-              <div className="sync-source-item"><Toggle isSelected={oas} onChange={setOas} isDisabled={syncing} label="OAS" /></div>
-              <div className="sync-source-item"><Toggle isSelected={africanunion} onChange={setAfricanunion} isDisabled={syncing} label="African Union" /></div>
-            </div>
-          </div>
-
-          <div className="sync-card">
-            <div className="sync-card-header">
-              <div>
-                <h3>Options</h3>
-                <p>Adjust processing behavior for this one-off sync.</p>
+              <div className="grid gap-3 sm:grid-cols-2">
+                {SOURCES.map((src) => (
+                  <div key={src.key} className="flex items-center justify-between gap-3 rounded-lg border px-3 py-2.5">
+                    <Label htmlFor={`sync-source-${src.key}`} className="text-sm font-medium">{src.label}</Label>
+                    <Switch
+                      id={`sync-source-${src.key}`}
+                      checked={selectedSources[src.key]}
+                      onCheckedChange={sourceSetters[src.key]}
+                      disabled={syncing}
+                    />
+                  </div>
+                ))}
               </div>
             </div>
-            <div className="sync-options-grid">
-              <div className="sync-option-item"><Toggle isSelected={noAi} onChange={setNoAi} isDisabled={syncing} label="Skip AI Filter" /></div>
-              <div className="sync-option-item"><Toggle isSelected={includeExpired} onChange={setIncludeExpired} isDisabled={syncing} label="Include Expired" /></div>
-            </div>
-          </div>
 
-          {(logs.length > 0 || syncing) && (
-            <div className="sync-card sync-logs-card">
-              <div className="sync-card-header">
-                <div>
-                  <h3>Live Status</h3>
-                  <p>Stream output from the active sync process.</p>
+            <div className="flex flex-col gap-4 rounded-lg border bg-card p-4">
+              <div className="flex flex-col gap-1">
+                <h3 className="text-base font-semibold text-foreground">Options</h3>
+                <p className="text-sm text-muted-foreground">Adjust processing behavior for this one-off sync.</p>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="flex items-center justify-between gap-3 rounded-lg border px-3 py-2.5">
+                  <Label htmlFor="sync-no-ai" className="text-sm font-medium">Skip AI Filter</Label>
+                  <Switch id="sync-no-ai" checked={noAi} onCheckedChange={setNoAi} disabled={syncing} />
+                </div>
+                <div className="flex items-center justify-between gap-3 rounded-lg border px-3 py-2.5">
+                  <Label htmlFor="sync-include-expired" className="text-sm font-medium">Include Expired</Label>
+                  <Switch id="sync-include-expired" checked={includeExpired} onCheckedChange={setIncludeExpired} disabled={syncing} />
                 </div>
               </div>
-              <pre className="sync-output">
-                {logs.length > 0 ? logs.join('\n') : (syncing ? 'Waiting for output...' : '')}
-                {syncing && <span className="sync-cursor">|</span>}
-                <span ref={logsEndRef} />
-              </pre>
             </div>
-          )}
 
-          {result && (
-            <div className={`sync-result ${result.success ? 'success' : 'error'}`}>
-              <div className="sync-result-header">
-                <span>{result.success ? 'Success:' : 'Warning:'} {result.message}</span>
+            {(logs.length > 0 || syncing) && (
+              <div className="flex flex-col gap-3 rounded-lg border bg-card p-4">
+                <div className="flex flex-col gap-1">
+                  <h3 className="text-base font-semibold text-foreground">Live Status</h3>
+                  <p className="text-sm text-muted-foreground">Stream output from the active sync process.</p>
+                </div>
+                <pre className="max-h-64 overflow-y-auto rounded-lg border bg-muted/40 p-4 font-mono text-xs leading-5 text-foreground">
+                  {logs.length > 0 ? logs.join('\n') : (syncing ? 'Waiting for output...' : '')}
+                  {syncing && <span className="text-primary">|</span>}
+                  <span ref={logsEndRef} />
+                </pre>
               </div>
-              {result.summary && (
-                <div className="sync-summary">
-                  <div className="sync-summary-row">
-                    <span>Total scraped:</span>
-                    <strong>{result.summary.total_scraped}</strong>
-                  </div>
-                  <div className="sync-summary-row">
-                    <span>New projects:</span>
-                    <strong>{result.summary.new_projects}</strong>
-                  </div>
-                  <div className="sync-summary-row">
-                    <span>AI validated:</span>
-                    <strong>{result.summary.ai_verified}</strong>
-                  </div>
-                  <div className="sync-summary-row">
-                    <span>AI rejected:</span>
-                    <strong>{result.summary.ai_rejected}</strong>
-                  </div>
-                  <div className="sync-summary-row">
-                    <span>Total in DB:</span>
-                    <strong>{result.summary.total_projects}</strong>
-                  </div>
-                  {result.summary.scrapers && (
-                    <div className="sync-scrapers-grid">
-                      {Object.entries(result.summary.scrapers).map(([key, s]) => (
-                        <div key={key} className={`sync-scraper-chip ${s.error ? 'failed' : 'ok'}`}>
-                          <span>{s.error ? 'Failed' : 'OK'} {s.label}</span>
-                          <span className="chip-count">{s.count} | {s.duration}s</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-              {!result.summary && result.project_count != null && (
-                <div className="sync-result-header">
-                  <span className="sync-count">{result.project_count} projects</span>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
+            )}
 
-        <div className="sync-footer">
-          <div className="sync-footer-meta">
-            <div className="sync-footer-copy">
-              <strong>{selectedSourceCount} source{selectedSourceCount === 1 ? '' : 's'} ready</strong>
-              <span>Manual run with the current source and processing options.</span>
+            {result && (
+              <div className={`flex flex-col gap-3 rounded-lg border p-4 ${result.success ? 'border-green-700/30 bg-green-50' : 'border-destructive/30 bg-destructive/5'}`}>
+                <span className={`text-sm font-semibold ${result.success ? 'text-green-700' : 'text-destructive'}`}>
+                  {result.success ? 'Success:' : 'Warning:'} {result.message}
+                </span>
+                {result.summary && (
+                  <div className="flex flex-col gap-1.5 text-sm">
+                    <div className="flex items-center justify-between gap-3"><span className="text-muted-foreground">Total scraped:</span><strong className="text-foreground">{result.summary.total_scraped}</strong></div>
+                    <div className="flex items-center justify-between gap-3"><span className="text-muted-foreground">New projects:</span><strong className="text-foreground">{result.summary.new_projects}</strong></div>
+                    <div className="flex items-center justify-between gap-3"><span className="text-muted-foreground">AI validated:</span><strong className="text-foreground">{result.summary.ai_verified}</strong></div>
+                    <div className="flex items-center justify-between gap-3"><span className="text-muted-foreground">AI rejected:</span><strong className="text-foreground">{result.summary.ai_rejected}</strong></div>
+                    <div className="flex items-center justify-between gap-3"><span className="text-muted-foreground">Total in DB:</span><strong className="text-foreground">{result.summary.total_projects}</strong></div>
+                    {result.summary.scrapers && (
+                      <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                        {Object.entries(result.summary.scrapers).map(([key, s]) => (
+                          <div key={key} className={`rounded-lg border px-3 py-2 ${s.error ? 'border-destructive/30 bg-destructive/5' : 'border-green-700/30 bg-card'}`}>
+                            <span className={`text-xs font-semibold ${s.error ? 'text-destructive' : 'text-green-700'}`}>{s.error ? 'Failed' : 'OK'} {s.label}</span>
+                            <span className="block text-xs text-muted-foreground">{s.count} | {s.duration}s</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+                {!result.summary && result.project_count != null && (
+                  <span className="text-sm font-semibold text-foreground">{result.project_count} projects</span>
+                )}
+              </div>
+            )}
+          </div>
+        </ScrollArea>
+
+        <DialogFooter className="border-t p-4">
+          <div className="flex w-full items-center justify-between gap-3">
+            <div className="flex flex-col">
+              <strong className="text-sm text-foreground">{selectedSourceCount} source{selectedSourceCount === 1 ? '' : 's'} ready</strong>
+              <span className="text-xs text-muted-foreground">Manual run with the current source and processing options.</span>
+            </div>
+            <div className="flex items-center gap-3">
+              <Button type="button" variant="outline" onClick={onClose} disabled={syncing}>
+                Close
+              </Button>
+              <Button type="button" onClick={handleSync} disabled={syncing || selectedSourceCount === 0}>
+                {syncing ? <><LoaderCircle className="size-4 animate-spin" /> Running scrapers...</> : 'Run Sync'}
+              </Button>
             </div>
           </div>
-          <div className="sync-footer-actions">
-            <Button color="secondary" className="sync-footer-btn sync-footer-btn-secondary" onPress={onClose} isDisabled={syncing}>Close</Button>
-            <Button
-              color="primary"
-              className="sync-footer-btn sync-primary-btn"
-              onPress={handleSync}
-              isDisabled={syncing || selectedSourceCount === 0}
-              isLoading={syncing}
-            >
-              {syncing ? 'Running scrapers...' : 'Run Sync'}
-            </Button>
-          </div>
-        </div>
-      </div>
-    </div>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

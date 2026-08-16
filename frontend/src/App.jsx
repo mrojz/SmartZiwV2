@@ -655,24 +655,33 @@ function groupReleaseItems(items) {
 function ReleaseChangelogCard({ note, isLatest = false, compact = false }) {
     const groups = groupReleaseItems(note.items);
     return (
-        <article className={`release-card${isLatest ? ' is-latest' : ''}${compact ? ' is-compact' : ''}`}>
-            <div className="release-card-badge-row">
-                <span className="release-card-badge">v{note.version}</span>
-                {isLatest ? <span className="release-card-tag">Latest</span> : null}
-            </div>
-            <h3 className="release-card-title">{note.title}</h3>
-            <p className="release-card-summary">{note.summary}</p>
-            <div className="release-card-groups">
-                {groups.map((group) => (
-                    <div key={group.key} className="release-card-group">
-                        <h4 className="release-card-group-title">{group.label}</h4>
-                        <ul className="release-card-list">
-                            {group.items.map((item) => <li key={item} className="release-card-item">{item}</li>)}
-                        </ul>
-                    </div>
-                ))}
-            </div>
-        </article>
+        <Card className={isLatest ? 'border-primary/40' : ''}>
+            <CardHeader className={compact ? 'pb-2' : ''}>
+                <div className="flex flex-wrap items-center gap-2">
+                    <Badge variant="outline">v{note.version}</Badge>
+                    {isLatest ? <Badge className="bg-primary text-primary-foreground">Latest</Badge> : null}
+                </div>
+                <CardTitle className="text-lg">{note.title}</CardTitle>
+                <p className="text-sm text-muted-foreground">{note.summary}</p>
+            </CardHeader>
+            <CardContent className={compact ? 'pt-0' : ''}>
+                <div className="flex flex-col gap-4">
+                    {groups.map((group) => (
+                        <div key={group.key}>
+                            <h4 className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">{group.label}</h4>
+                            <ul className="flex flex-col gap-1.5">
+                                {group.items.map((item) => (
+                                    <li key={item} className="flex gap-2 text-sm leading-5 text-foreground">
+                                        <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-primary" aria-hidden="true" />
+                                        <span>{item}</span>
+                                    </li>
+                                ))}
+                            </ul>
+                        </div>
+                    ))}
+                </div>
+            </CardContent>
+        </Card>
     );
 }
 
@@ -732,15 +741,15 @@ function ReleaseNotesModal({ open, releases, onClose, onOpenFull }) {
 
 function ReleaseNotesPage({ releases, onBack }) {
     return (
-        <div className="release-notes-page">
-            <div className="release-notes-page-header">
+        <div className="mx-auto w-full max-w-3xl px-4 py-8">
+            <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
                 <div>
-                    <h1 className="layout-page-title">Release Notes</h1>
-                    <p className="layout-page-subtitle">Track major platform updates and newly delivered capabilities.</p>
+                    <h1 className="text-2xl font-semibold tracking-tight">Release Notes</h1>
+                    <p className="text-sm text-muted-foreground">Track major platform updates and newly delivered capabilities.</p>
                 </div>
-                <button type="button" className="header-secondary-btn" onClick={onBack}>Back</button>
+                <ShadcnButton type="button" variant="outline" onClick={onBack}>Back</ShadcnButton>
             </div>
-            <div className="release-notes-timeline">
+            <div className="flex flex-col gap-4">
                 {releases.map((note) => (
                     <ReleaseChangelogCard
                         key={note.version}
@@ -2606,50 +2615,50 @@ function AdminPage({ apiFetch, initialTab = 'users' }) {
             </TabsContent>
 
             <TabsContent value="release-notes" className="mt-4">
-                <div className="table-wrapper table-surface admin-release-surface">
-                    <div className="admin-release-head">
-                        <h3>Release Notes</h3>
-                        <p>Create new release notes or update existing versions.</p>
+                <div className="overflow-hidden rounded-lg border bg-card shadow-sm">
+                    <div className="border-b p-4">
+                        <h3 className="text-base font-semibold text-foreground">Release Notes</h3>
+                        <p className="text-sm text-muted-foreground">Create new release notes or update existing versions.</p>
                     </div>
-                    {message ? <div className="admin-users-message">{message}</div> : null}
-                    <div className="admin-release-layout">
-                        <aside className="admin-release-list">
+                    {message ? <div className="border-y border-border bg-primary/5 px-5 py-3 text-sm text-foreground/80">{message}</div> : null}
+                    <div className="grid gap-4 p-4 md:grid-cols-[240px_1fr]">
+                        <aside className="flex flex-col gap-1.5">
                             {releaseNotes.map((note) => (
                                 <button
                                     key={note.version}
                                     type="button"
-                                    className={`admin-release-list-item ${selectedReleaseVersion === note.version ? 'active' : ''}`}
+                                    className={`flex flex-col items-start gap-0.5 rounded-lg border px-3 py-2 text-left transition-colors ${selectedReleaseVersion === note.version ? 'border-primary/40 bg-primary/5' : 'border-border bg-card hover:bg-muted'}`}
                                     onClick={() => setSelectedReleaseVersion(note.version)}
                                 >
-                                    <span className="admin-release-version">v{note.version}</span>
-                                    <strong>{note.title}</strong>
+                                    <span className="text-xs font-semibold text-primary">v{note.version}</span>
+                                    <strong className="text-sm font-medium text-foreground">{note.title}</strong>
                                 </button>
                             ))}
                         </aside>
-                        <div className="admin-release-editor">
-                            <div className="modal-grid-2col">
-                                <div className="auth-field">
-                                    <label className="auth-label" htmlFor="release-version">Version</label>
-                                    <input id="release-version" className="auth-input" value={releaseForm.version} onChange={(e) => setReleaseForm((prev) => ({ ...prev, version: e.target.value }))} placeholder="1.3" />
+                        <div className="flex flex-col gap-4 rounded-lg border bg-card p-4">
+                            <div className="grid gap-4 sm:grid-cols-2">
+                                <div className="flex flex-col gap-1.5">
+                                    <Label htmlFor="release-version" className="text-sm font-medium">Version</Label>
+                                    <ShadcnInput id="release-version" value={releaseForm.version} onChange={(e) => setReleaseForm((prev) => ({ ...prev, version: e.target.value }))} placeholder="1.3" />
                                 </div>
-                                <div className="auth-field">
-                                    <label className="auth-label" htmlFor="release-title">Title</label>
-                                    <input id="release-title" className="auth-input" value={releaseForm.title} onChange={(e) => setReleaseForm((prev) => ({ ...prev, title: e.target.value }))} placeholder="Release title" />
+                                <div className="flex flex-col gap-1.5">
+                                    <Label htmlFor="release-title" className="text-sm font-medium">Title</Label>
+                                    <ShadcnInput id="release-title" value={releaseForm.title} onChange={(e) => setReleaseForm((prev) => ({ ...prev, title: e.target.value }))} placeholder="Release title" />
                                 </div>
                             </div>
-                            <div className="auth-field">
-                                <label className="auth-label" htmlFor="release-summary">Summary</label>
-                                <input id="release-summary" className="auth-input" value={releaseForm.summary} onChange={(e) => setReleaseForm((prev) => ({ ...prev, summary: e.target.value }))} placeholder="Short summary shown in the release modal" />
+                            <div className="flex flex-col gap-1.5">
+                                <Label htmlFor="release-summary" className="text-sm font-medium">Summary</Label>
+                                <ShadcnInput id="release-summary" value={releaseForm.summary} onChange={(e) => setReleaseForm((prev) => ({ ...prev, summary: e.target.value }))} placeholder="Short summary shown in the release modal" />
                             </div>
-                            <div className="auth-field">
-                                <label className="auth-label" htmlFor="release-items">Items</label>
-                                <textarea id="release-items" className="auth-input admin-release-textarea" value={releaseForm.itemsText} onChange={(e) => setReleaseForm((prev) => ({ ...prev, itemsText: e.target.value }))} placeholder="One bullet item per line" />
+                            <div className="flex flex-col gap-1.5">
+                                <Label htmlFor="release-items" className="text-sm font-medium">Items</Label>
+                                <Textarea id="release-items" rows={6} value={releaseForm.itemsText} onChange={(e) => setReleaseForm((prev) => ({ ...prev, itemsText: e.target.value }))} placeholder="One bullet item per line" />
                             </div>
-                            <div className="admin-release-actions">
-                                <button type="button" className="profile-btn profile-btn-secondary" disabled={savingReleaseNotes || selectedReleaseVersion === '__new__' || !selectedReleaseVersion} onClick={deleteReleaseNote}>Delete</button>
-                                <button type="button" className="profile-btn profile-btn-primary" disabled={savingReleaseNotes} onClick={saveReleaseNotes}>
+                            <div className="flex items-center justify-end gap-3 border-t pt-4">
+                                <ShadcnButton type="button" variant="outline" disabled={savingReleaseNotes || selectedReleaseVersion === '__new__' || !selectedReleaseVersion} onClick={deleteReleaseNote}>Delete</ShadcnButton>
+                                <ShadcnButton type="button" disabled={savingReleaseNotes} onClick={saveReleaseNotes}>
                                     {savingReleaseNotes ? 'Saving...' : 'Save Release Note'}
-                                </button>
+                                </ShadcnButton>
                             </div>
                         </div>
                     </div>
