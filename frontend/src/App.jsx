@@ -5,19 +5,10 @@ import DemoWalkthrough from './components/DemoWalkthrough';
 import SyncPanel from './components/SyncPanel';
 import ConfigPanel from './components/ConfigPanel';
 import SchedulePanel from './components/SchedulePanel';
-import { X, Edit01, Key01, UserX01, UserCheck01, SearchLg } from '@untitledui/icons';
-import { Button } from '@/components/base/buttons/button';
-import { Input } from '@/components/base/input/input';
-import { InputBase } from '@/components/base/input/input';
-import { Toggle } from '@/components/base/toggle/toggle';
-import { Select } from '@/components/base/select/select';
-import { TextArea } from '@/components/base/textarea/textarea';
-import { ModalOverlay, Modal, Dialog } from '@/components/application/modals/modal';
-import { Table } from '@/components/application/table/table';
-import { Dropdown } from '@/components/base/dropdown/dropdown';
+import { X } from '@untitledui/icons';
 import Sidebar, { Avatar, NAV_GROUPS } from './components/Sidebar';
 import AnalyticsPage from './components/AnalyticsPage';
-import { Search, Bell, RefreshCw, User, Shield, Settings, CalendarClock, LogOut, Mail, Lock, XIcon, Paperclip, Send } from 'lucide-react';
+import { Search, Bell, RefreshCw, User, Shield, Settings, CalendarClock, LogOut, Mail, Lock, XIcon, Paperclip, Send, ArrowUp, ArrowDown, ArrowUpDown, MoreVertical, PenLine, KeyRound, UserCheck, UserX } from 'lucide-react';
 import { SidebarProvider } from '@/components/ui/sidebar';
 import { CommandDialog, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { toast } from 'sonner';
@@ -34,6 +25,11 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { Textarea } from '@/components/ui/textarea';
 import { Avatar as ShadcnAvatar, AvatarFallback } from '@/components/ui/avatar';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Switch } from '@/components/ui/switch';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 
 const API = '/api';
 const APP_RELEASE_VERSION = '1.6';
@@ -1860,12 +1856,12 @@ function UserDrawer({ open, mode, initialUser, onClose, onSave, saving }) {
     if (!open) return null;
 
     return (
-        <div className="modal-overlay" onClick={onClose}>
-            <div className="modal-card" onClick={(e) => e.stopPropagation()}>
-                <div className="modal-header">
-                    <h2 className="modal-title">{mode === 'create' ? 'Create User' : 'Edit User'}</h2>
-                    <button type="button" className="modal-close-btn" onClick={onClose} aria-label="Close user drawer"><X /></button>
-                </div>
+        <Dialog open={open} onOpenChange={(nextOpen) => { if (!nextOpen) onClose(); }}>
+            <DialogContent className="sm:max-w-md">
+                <DialogHeader>
+                    <DialogTitle>{mode === 'create' ? 'Create User' : 'Edit User'}</DialogTitle>
+                    <DialogDescription className="sr-only">{mode === 'create' ? 'Create a new user account' : 'Edit user account details'}</DialogDescription>
+                </DialogHeader>
 
                 <form
                     onSubmit={(event) => {
@@ -1879,68 +1875,69 @@ function UserDrawer({ open, mode, initialUser, onClose, onSave, saving }) {
                             isActive,
                         });
                     }}
+                    className="flex flex-col gap-4"
                 >
-                    <div className="modal-body">
-                        <div className="modal-grid-2col">
-                            <div className="auth-field">
-                                <label className="auth-label" htmlFor="ud-first">First name</label>
-                                <input id="ud-first" name="firstName" className="auth-input" placeholder="First name" value={firstName} onChange={(e) => setFirstName(e.target.value)} />
-                            </div>
-                            <div className="auth-field">
-                                <label className="auth-label" htmlFor="ud-last">Last name</label>
-                                <input id="ud-last" name="lastName" className="auth-input" placeholder="Last name" value={lastName} onChange={(e) => setLastName(e.target.value)} />
-                            </div>
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                        <div className="flex flex-col gap-2">
+                            <Label htmlFor="ud-first">First name</Label>
+                            <ShadcnInput id="ud-first" name="firstName" placeholder="First name" value={firstName} onChange={(e) => setFirstName(e.target.value)} />
                         </div>
-
-                        <div className="auth-field">
-                            <label className="auth-label" htmlFor="ud-email">Email</label>
-                            <input id="ud-email" name="email" className="auth-input" type="email" placeholder="user@example.com" value={email} onChange={(e) => setEmail(e.target.value)} />
+                        <div className="flex flex-col gap-2">
+                            <Label htmlFor="ud-last">Last name</Label>
+                            <ShadcnInput id="ud-last" name="lastName" placeholder="Last name" value={lastName} onChange={(e) => setLastName(e.target.value)} />
                         </div>
-
-                        <div className="modal-grid-2col">
-                            <div className="auth-field">
-                                <label className="auth-label" htmlFor="ud-role">Role</label>
-                                <select id="ud-role" name="role" className="auth-input" value={role} onChange={(e) => setRole(e.target.value)}>
-                                    <option value="user">User</option>
-                                    <option value="manager">Manager</option>
-                                    <option value="admin">Admin</option>
-                                </select>
-                            </div>
-                            <div className="auth-field">
-                                <label className="auth-label" htmlFor="ud-active">Status</label>
-                                <label className="modal-toggle-row" htmlFor="ud-active">
-                                    <input id="ud-active" name="isActive" type="checkbox" checked={isActive} onChange={(e) => setIsActive(e.target.checked)} />
-                                    <span className={`modal-toggle-label ${isActive ? 'active' : 'inactive'}`}>{isActive ? 'Active' : 'Disabled'}</span>
-                                </label>
-                            </div>
-                        </div>
-
-                        <div className="auth-field">
-                            <label className="auth-label" htmlFor="ud-avatar">Avatar URL</label>
-                            <input id="ud-avatar" name="avatarUrl" className="auth-input" placeholder="https://..." value={avatarUrl} onChange={(e) => setAvatarUrl(e.target.value)} />
-                        </div>
-
-                        {mode === 'create' && (
-                            <div className="auth-field">
-                                <label className="auth-label" htmlFor="ud-pwd">Temporary password <span style={{ fontWeight: 400, color: 'var(--text-muted)' }}>(optional, auto-generated if empty)</span></label>
-                                <input id="ud-pwd" name="temporaryPassword" className="auth-input" type="password" placeholder="Temporary password" autoComplete="new-password" value={tempPassword} onChange={(e) => setTempPassword(e.target.value)} />
-                            </div>
-                        )}
                     </div>
 
-                    <div className="modal-footer">
-                        <button type="button" className="profile-btn profile-btn-secondary" onClick={onClose}>Cancel</button>
-                        <button
+                    <div className="flex flex-col gap-2">
+                        <Label htmlFor="ud-email">Email</Label>
+                        <ShadcnInput id="ud-email" name="email" type="email" placeholder="user@example.com" value={email} onChange={(e) => setEmail(e.target.value)} />
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                        <div className="flex flex-col gap-2">
+                            <Label htmlFor="ud-role">Role</Label>
+                            <Select value={role} onValueChange={(value) => setRole(value)}>
+                                <SelectTrigger id="ud-role" className="w-full"><SelectValue placeholder="Select role" /></SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="user">User</SelectItem>
+                                    <SelectItem value="manager">Manager</SelectItem>
+                                    <SelectItem value="admin">Admin</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        <div className="flex flex-col gap-2">
+                            <Label htmlFor="ud-active">Status</Label>
+                            <div className="flex h-9 items-center gap-2">
+                                <Switch id="ud-active" checked={isActive} onCheckedChange={setIsActive} />
+                                <span className="text-sm text-muted-foreground">{isActive ? 'Active' : 'Disabled'}</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="flex flex-col gap-2">
+                        <Label htmlFor="ud-avatar">Avatar URL</Label>
+                        <ShadcnInput id="ud-avatar" name="avatarUrl" placeholder="https://..." value={avatarUrl} onChange={(e) => setAvatarUrl(e.target.value)} />
+                    </div>
+
+                    {mode === 'create' && (
+                        <div className="flex flex-col gap-2">
+                            <Label htmlFor="ud-pwd">Temporary password <span className="font-normal text-muted-foreground">(optional, auto-generated if empty)</span></Label>
+                            <ShadcnInput id="ud-pwd" name="temporaryPassword" type="password" placeholder="Temporary password" autoComplete="new-password" value={tempPassword} onChange={(e) => setTempPassword(e.target.value)} />
+                        </div>
+                    )}
+
+                    <DialogFooter className="mt-2">
+                        <ShadcnButton type="button" variant="outline" onClick={onClose}>Cancel</ShadcnButton>
+                        <ShadcnButton
                             type="submit"
-                            className="profile-btn profile-btn-primary"
                             disabled={saving || !email.trim()}
                         >
                             {saving ? 'Saving...' : mode === 'create' ? 'Create User' : 'Save Changes'}
-                        </button>
-                    </div>
+                        </ShadcnButton>
+                    </DialogFooter>
                 </form>
-            </div>
-        </div>
+            </DialogContent>
+        </Dialog>
     );
 }
 
@@ -1955,37 +1952,36 @@ function ResetPasswordModal({ open, user, onClose, onReset, saving, result }) {
     if (!open || !user) return null;
 
     return (
-        <div className="modal-overlay" onClick={onClose}>
-            <div className="modal-card modal-card-sm" onClick={(e) => e.stopPropagation()}>
-                <div className="modal-header">
-                    <h2 className="modal-title">Reset Password</h2>
-                    <button type="button" className="modal-close-btn" aria-label="Close dialog" onClick={onClose}><X /></button>
-                </div>
+        <Dialog open={open} onOpenChange={(nextOpen) => { if (!nextOpen) onClose(); }}>
+            <DialogContent className="sm:max-w-sm">
+                <DialogHeader>
+                    <DialogTitle>Reset Password</DialogTitle>
+                    <DialogDescription className="sr-only">Set a new password for {user.name || user.email}</DialogDescription>
+                </DialogHeader>
                 <form
                     onSubmit={(event) => {
                         event.preventDefault();
                         onReset(password || null);
                     }}
+                    className="flex flex-col gap-4"
                 >
-                    <div className="modal-body">
-                        <p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: '0.88rem' }}>
-                            Reset password for <strong>{user.name || user.email}</strong>
-                        </p>
-                        <div className="auth-field">
-                            <label className="auth-label" htmlFor="rp-pwd">New password <span style={{ fontWeight: 400, color: 'var(--text-muted)' }}>(leave empty to auto-generate)</span></label>
-                            <input id="rp-pwd" name="resetPassword" className="auth-input" type="password" placeholder="Auto-generated if empty" autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} />
-                        </div>
-                        {result && <p className="profile-success-msg">{result}</p>}
+                    <p className="m-0 text-sm text-muted-foreground">
+                        Reset password for <strong className="font-semibold text-foreground">{user.name || user.email}</strong>
+                    </p>
+                    <div className="flex flex-col gap-2">
+                        <Label htmlFor="rp-pwd">New password <span className="font-normal text-muted-foreground">(leave empty to auto-generate)</span></Label>
+                        <ShadcnInput id="rp-pwd" name="resetPassword" type="password" placeholder="Auto-generated if empty" autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} />
                     </div>
-                    <div className="modal-footer">
-                        <button type="button" className="profile-btn profile-btn-secondary" onClick={onClose}>Cancel</button>
-                        <button type="submit" className="profile-btn profile-btn-primary" disabled={saving}>
+                    {result && <p className="text-sm text-primary">{result}</p>}
+                    <DialogFooter className="mt-2">
+                        <ShadcnButton type="button" variant="outline" onClick={onClose}>Cancel</ShadcnButton>
+                        <ShadcnButton type="submit" disabled={saving}>
                             {saving ? 'Resetting...' : 'Reset Password'}
-                        </button>
-                    </div>
+                        </ShadcnButton>
+                    </DialogFooter>
                 </form>
-            </div>
-        </div>
+            </DialogContent>
+        </Dialog>
     );
 }
 
@@ -2316,10 +2312,6 @@ function AdminPage({ apiFetch, initialTab = 'users' }) {
     const startItem = sorted.length === 0 ? 0 : page * rowsPerPage + 1;
     const endItem = Math.min((page + 1) * rowsPerPage, sorted.length);
 
-    const sortDescriptor = sortCol
-        ? { column: sortCol, direction: sortDir === 'asc' ? 'ascending' : 'descending' }
-        : undefined;
-
     const handleSortChange = (descriptor) => {
         setSortCol(descriptor?.column ? String(descriptor.column) : null);
         setSortDir(descriptor?.direction === 'descending' ? 'desc' : 'asc');
@@ -2394,254 +2386,224 @@ function AdminPage({ apiFetch, initialTab = 'users' }) {
                 title="Admin"
                 subtitle={adminTab === 'users' ? 'Create, edit, deactivate users, and reset passwords.' : adminTab === 'release-notes' ? 'Create new release notes or update existing versions.' : adminTab === 'llm' ? 'Configure the LLM backend used by the Smart-Ziw agent.' : 'Configure the Smart-Ziw agent and optional GitLab push.'}
                 action={(
-                    <div className="admin-users-header-actions">
+                    <>
                         {adminTab === 'users' ? (
-                            <button
+                            <ShadcnButton
                                 type="button"
-                                className="profile-btn profile-btn-primary admin-toolbar-btn admin-users-create-btn"
                                 disabled={savingDrawer}
                                 onClick={() => setDrawer({ open: true, mode: 'create', user: null })}
                             >
                                 Create User
-                            </button>
+                            </ShadcnButton>
                         ) : adminTab === 'release-notes' ? (
-                            <button
+                            <ShadcnButton
                                 type="button"
-                                className="profile-btn profile-btn-primary admin-toolbar-btn admin-users-create-btn"
                                 disabled={savingReleaseNotes}
                                 onClick={startNewReleaseNote}
                             >
                                 New Release Note
-                            </button>
+                            </ShadcnButton>
                         ) : null}
-                    </div>
+                    </>
                 )}
             />
 
-            <div className="stats-row admin-stats-row">
-                <div className="stat-card">
-                    <span className="stat-card-label">Total Users</span>
-                    <span className="stat-card-value">{users.length}</span>
-                    <span className="stat-card-sub">Accounts in the system</span>
-                </div>
-                <div className="stat-card">
-                    <span className="stat-card-label">Active Users</span>
-                    <span className="stat-card-value">{users.filter((u) => u.isActive).length}</span>
-                    <span className="stat-card-sub">Currently enabled</span>
-                </div>
-                <div className="stat-card">
-                    <span className="stat-card-label">Admins</span>
-                    <span className="stat-card-value">{users.filter((u) => u.role === 'admin').length}</span>
-                    <span className="stat-card-sub">Privileged accounts</span>
-                </div>
+            <div className="mb-5 grid grid-cols-1 gap-4 sm:grid-cols-3">
+                <Card>
+                    <CardContent className="flex flex-col gap-1.5">
+                        <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Total Users</span>
+                        <span className="text-3xl font-bold tracking-tight text-foreground">{users.length}</span>
+                        <span className="text-sm text-muted-foreground">Accounts in the system</span>
+                    </CardContent>
+                </Card>
+                <Card>
+                    <CardContent className="flex flex-col gap-1.5">
+                        <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Active Users</span>
+                        <span className="text-3xl font-bold tracking-tight text-foreground">{users.filter((u) => u.isActive).length}</span>
+                        <span className="text-sm text-muted-foreground">Currently enabled</span>
+                    </CardContent>
+                </Card>
+                <Card>
+                    <CardContent className="flex flex-col gap-1.5">
+                        <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Admins</span>
+                        <span className="text-3xl font-bold tracking-tight text-foreground">{users.filter((u) => u.role === 'admin').length}</span>
+                        <span className="text-sm text-muted-foreground">Privileged accounts</span>
+                    </CardContent>
+                </Card>
             </div>
 
-            <div className="admin-page-tabs">
-                <button type="button" className={`admin-page-tab ${adminTab === 'users' ? 'active' : ''}`} onClick={() => setAdminTab('users')}>User Management</button>
-                <button type="button" className={`admin-page-tab ${adminTab === 'release-notes' ? 'active' : ''}`} onClick={() => setAdminTab('release-notes')}>Release Notes</button>
-                <button type="button" className={`admin-page-tab ${adminTab === 'smart-ziw' ? 'active' : ''}`} onClick={() => setAdminTab('smart-ziw')}>Smart-Ziw Settings</button>
-                <button type="button" className={`admin-page-tab ${adminTab === 'llm' ? 'active' : ''}`} onClick={() => setAdminTab('llm')}>LLM Provider</button>
-            </div>
+            <Tabs value={adminTab} onValueChange={setAdminTab} className="w-full">
+                <TabsList className="w-full justify-start overflow-x-auto rounded-lg border bg-card">
+                    <TabsTrigger value="users">User Management</TabsTrigger>
+                    <TabsTrigger value="release-notes">Release Notes</TabsTrigger>
+                    <TabsTrigger value="smart-ziw">Smart-Ziw Settings</TabsTrigger>
+                    <TabsTrigger value="llm">LLM Provider</TabsTrigger>
+                </TabsList>
 
-            {adminTab === 'users' ? (
-            <div className="table-wrapper table-surface admin-users-surface">
-                <div className="table-toolbar admin-users-toolbar">
-                    <div className="admin-users-toolbar-row">
-                        <div className="admin-users-toolbar-controls">
-                            <div className="admin-users-search-slot">
-                                <Input
-                                    icon={SearchLg}
-                                    placeholder="Search users..."
-                                    value={q}
-                                    onChange={handleSearchChange}
-                                    className="admin-users-search-field"
-                                    wrapperClassName="admin-users-search-wrapper"
-                                    inputClassName="admin-users-search-input pl-11"
-                                    iconClassName="admin-users-search-icon"
-                                />
-                            </div>
-                            <div className="admin-users-filter-row">
-                                <select
-                                    className="filter-select filter-select-compact admin-users-filter-select"
-                                    name="admin-role-filter"
-                                    aria-label="Filter users by role"
-                                    value={roleFilter}
-                                    onChange={(e) => setRoleFilter(e.target.value)}
-                                >
-                                    <option value="all">All roles</option>
-                                    <option value="admin">Admin</option>
-                                    <option value="manager">Manager</option>
-                                    <option value="user">User</option>
-                                </select>
-                                <select
-                                    className="filter-select filter-select-compact admin-users-filter-select"
-                                    name="admin-status-filter"
-                                    aria-label="Filter users by status"
-                                    value={statusFilter}
-                                    onChange={(e) => setStatusFilter(e.target.value)}
-                                >
-                                    <option value="all">All status</option>
-                                    <option value="active">Active</option>
-                                    <option value="disabled">Disabled</option>
-                                </select>
-                            </div>
+            <TabsContent value="users" className="mt-4">
+            <div className="overflow-hidden rounded-lg border bg-card shadow-sm">
+                <div className="flex flex-wrap items-center justify-between gap-3 border-b p-4">
+                    <div className="flex flex-wrap items-center gap-3">
+                        <div className="relative">
+                            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                            <ShadcnInput
+                                type="search"
+                                placeholder="Search users..."
+                                value={q}
+                                onChange={handleSearchChange}
+                                className="h-9 w-64 pl-10"
+                                aria-label="Search users"
+                            />
                         </div>
-                        <div className="admin-users-toolbar-actions">
-                            <span className="admin-users-toolbar-count">
-                                <strong>{filteredUsers.length}</strong>
-                                <span>{filteredUsers.length === 1 ? 'user' : 'users'}</span>
-                            </span>
-                            <button
-                                type="button"
-                                className="profile-btn profile-btn-secondary admin-toolbar-btn admin-users-refresh-btn"
-                                onClick={loadUsers}
-                                disabled={refreshingUsers}
-                            >
-                                {refreshingUsers ? 'Refreshing...' : 'Refresh'}
-                            </button>
-                        </div>
+                        <Select value={roleFilter} onValueChange={(value) => setRoleFilter(value)}>
+                            <SelectTrigger className="h-9 w-36" aria-label="Filter users by role"><SelectValue placeholder="All roles" /></SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="all">All roles</SelectItem>
+                                <SelectItem value="admin">Admin</SelectItem>
+                                <SelectItem value="manager">Manager</SelectItem>
+                                <SelectItem value="user">User</SelectItem>
+                            </SelectContent>
+                        </Select>
+                        <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value)}>
+                            <SelectTrigger className="h-9 w-36" aria-label="Filter users by status"><SelectValue placeholder="All status" /></SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="all">All status</SelectItem>
+                                <SelectItem value="active">Active</SelectItem>
+                                <SelectItem value="disabled">Disabled</SelectItem>
+                            </SelectContent>
+                        </Select>
+                    </div>
+                    <div className="flex items-center gap-3">
+                        <span className="text-sm text-muted-foreground">
+                            <strong className="font-semibold text-foreground">{filteredUsers.length}</strong>{' '}
+                            {filteredUsers.length === 1 ? 'user' : 'users'}
+                        </span>
+                        <ShadcnButton
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={loadUsers}
+                            disabled={refreshingUsers}
+                        >
+                            {refreshingUsers ? 'Refreshing...' : 'Refresh'}
+                        </ShadcnButton>
                     </div>
                 </div>
 
-                {message ? <div className="admin-users-message">{message}</div> : null}
+                {message ? <div className="border-y border-border bg-primary/5 px-5 py-3 text-sm text-foreground/80">{message}</div> : null}
 
-                <Table
-                    aria-label="Users table"
-                    className="app-table admin-users-table"
-                    sortDescriptor={sortDescriptor}
-                    onSortChange={handleSortChange}
-                >
-                    <Table.Header columns={columns}>
-                        {(col) => (
-                            <Table.Head
-                                id={col.key}
-                                isRowHeader={col.key === '_user'}
-                                allowsSorting={col.type !== 'none'}
-                                className={col.key === '_actions' ? 'th-actions' : ''}
-                            >
-                                {col.label}
-                            </Table.Head>
-                        )}
-                    </Table.Header>
+                <Table aria-label="Users table" className="app-table admin-users-table">
+                    <TableHeader>
+                        <TableRow className="hover:bg-transparent">
+                            {columns.map((col) => (
+                                <TableHead
+                                    key={col.key}
+                                    className={`${col.key === '_actions' ? 'th-actions' : ''} ${col.type !== 'none' ? 'cursor-pointer select-none' : ''}`}
+                                    aria-sort={sortCol === col.key ? (sortDir === 'asc' ? 'ascending' : 'descending') : undefined}
+                                    onClick={col.type !== 'none' ? () => handleSortChange({ column: col.key, direction: sortCol === col.key && sortDir === 'asc' ? 'descending' : 'ascending' }) : undefined}
+                                >
+                                    <span className="inline-flex items-center gap-1.5">
+                                        {col.label}
+                                        {col.type !== 'none' ? (
+                                            sortCol === col.key
+                                                ? (sortDir === 'asc' ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />)
+                                                : <ArrowUpDown className="h-3 w-3 opacity-60" />
+                                        ) : null}
+                                    </span>
+                                </TableHead>
+                            ))}
+                        </TableRow>
+                    </TableHeader>
 
-                    <Table.Body items={pageData}>
-                        {(u) => (
-                            <Table.Row
-                                id={u.id}
-                                columns={columns}
-                                className={u.isActive ? 'admin-users-row' : 'admin-users-row admin-users-row-inactive'}
-                            >
-                                {(columnKey) => {
-                                    const key = typeof columnKey === 'string' ? columnKey : (columnKey?.key || columnKey?.id || '');
-                                    if (key === '_user') {
-                                        return (
-                                            <Table.Cell>
-                                                <div className="layout-user-cell admin-users-identity-cell">
-                                                    <Avatar user={u} size={40} />
-                                                    <div className="admin-users-identity-copy">
-                                                        <span className="admin-users-user-name">{u.name}</span>
-                                                    </div>
-                                                </div>
-                                            </Table.Cell>
-                                        );
-                                    }
-                                    if (key === '_email') {
-                                        return <Table.Cell><span className="admin-users-email">{u.email}</span></Table.Cell>;
-                                    }
-                                    if (key === '_role') {
-                                        return (
-                                            <Table.Cell>
-                                                    <span className={`admin-users-pill admin-users-role-pill role-${u.role}`}>
-                                                        {u.role === 'admin' ? 'Admin' : u.role === 'manager' ? 'Manager' : 'User'}
-                                                    </span>
-                                            </Table.Cell>
-                                        );
-                                    }
-                                    if (key === '_status') {
-                                        return (
-                                            <Table.Cell>
-                                                <span className={`admin-users-pill admin-users-status-pill ${u.isActive ? 'status-active' : 'status-disabled'}`}>
-                                                    <span className="admin-users-status-dot" />
-                                                    {u.isActive ? 'Active' : 'Disabled'}
-                                                </span>
-                                            </Table.Cell>
-                                        );
-                                    }
-                                    if (key === '_lastSeen') {
-                                        return <Table.Cell><span className="admin-users-last-login">{formatAdminDateTime(u.lastSeenAt)}</span></Table.Cell>;
-                                    }
-                                    return (
-                                        <Table.Cell className="td-actions admin-users-actions-cell">
-                                            <Dropdown.Root>
-                                                <Dropdown.DotsButton className="admin-users-dots-btn" />
-                                                <Dropdown.Popover className="w-min admin-users-popover">
-                                                    <Dropdown.Menu className="admin-users-menu" onAction={(actionKey) => {
-                                                        if (actionKey === 'edit') setDrawer({ open: true, mode: 'edit', user: u });
-                                                        if (actionKey === 'reset') { setResetResult(''); setResetModal({ open: true, user: u }); }
-                                                        if (actionKey === 'toggle') toggleUser(u);
-                                                    }}>
-                                                        <Dropdown.Item id="edit" icon={Edit01}>Edit user</Dropdown.Item>
-                                                        <Dropdown.Item id="reset" icon={Key01}>{resettingUserId === u.id ? 'Resetting...' : 'Reset password'}</Dropdown.Item>
-                                                        <Dropdown.Separator />
-                                                        <Dropdown.Item id="toggle" icon={u.isActive ? UserX01 : UserCheck01}>
-                                                            {togglingUserId === u.id ? 'Updating...' : (u.isActive ? 'Deactivate' : 'Activate')}
-                                                        </Dropdown.Item>
-                                                    </Dropdown.Menu>
-                                                </Dropdown.Popover>
-                                            </Dropdown.Root>
-                                        </Table.Cell>
-                                    );
-                                }}
-                            </Table.Row>
-                        )}
-                    </Table.Body>
+                    <TableBody>
+                        {pageData.map((u) => (
+                            <TableRow key={u.id} className={u.isActive ? 'admin-users-row' : 'admin-users-row admin-users-row-inactive'}>
+                                <TableCell>
+                                    <div className="flex items-center gap-3">
+                                        <Avatar user={u} size={40} />
+                                        <span className="font-medium text-foreground">{u.name}</span>
+                                    </div>
+                                </TableCell>
+                                <TableCell><span className="text-muted-foreground">{u.email}</span></TableCell>
+                                <TableCell>
+                                    <Badge variant="outline" className={u.role === 'admin' ? 'border-primary/20 bg-primary/10 text-primary' : 'bg-secondary text-secondary-foreground'}>
+                                        {u.role === 'admin' ? 'Admin' : u.role === 'manager' ? 'Manager' : 'User'}
+                                    </Badge>
+                                </TableCell>
+                                <TableCell>
+                                    <Badge variant="outline" className={u.isActive ? 'gap-1 border-green-700/25 bg-green-700/10 text-green-700' : 'gap-1 bg-secondary text-secondary-foreground'}>
+                                        <span className="h-1.5 w-1.5 rounded-full bg-current opacity-80" />
+                                        {u.isActive ? 'Active' : 'Disabled'}
+                                    </Badge>
+                                </TableCell>
+                                <TableCell><span className="text-muted-foreground">{formatAdminDateTime(u.lastSeenAt)}</span></TableCell>
+                                <TableCell className="th-actions">
+                                    <DropdownMenu>
+                                        <DropdownMenuTrigger asChild>
+                                            <ShadcnButton variant="ghost" size="icon-sm" className="h-8 w-8" aria-label={`Actions for ${u.name}`}>
+                                                <MoreVertical className="h-4 w-4" />
+                                            </ShadcnButton>
+                                        </DropdownMenuTrigger>
+                                        <DropdownMenuContent align="end" className="w-44">
+                                            <DropdownMenuItem onSelect={() => setDrawer({ open: true, mode: 'edit', user: u })}>
+                                                <PenLine className="mr-2 h-4 w-4" />Edit user
+                                            </DropdownMenuItem>
+                                            <DropdownMenuItem onSelect={() => { setResetResult(''); setResetModal({ open: true, user: u }); }}>
+                                                <KeyRound className="mr-2 h-4 w-4" />{resettingUserId === u.id ? 'Resetting...' : 'Reset password'}
+                                            </DropdownMenuItem>
+                                            <DropdownMenuSeparator />
+                                            <DropdownMenuItem onSelect={() => toggleUser(u)}>
+                                                {u.isActive ? <UserX className="mr-2 h-4 w-4" /> : <UserCheck className="mr-2 h-4 w-4" />}
+                                                {togglingUserId === u.id ? 'Updating...' : (u.isActive ? 'Deactivate' : 'Activate')}
+                                            </DropdownMenuItem>
+                                        </DropdownMenuContent>
+                                    </DropdownMenu>
+                                </TableCell>
+                            </TableRow>
+                        ))}
+                    </TableBody>
                 </Table>
 
                 {pageData.length === 0 && (
-                    <div className="table-empty-state">
-                        <div className="table-empty-inner">
-                            <h3>No users found</h3>
-                            <p>Try adjusting your search or filters</p>
-                        </div>
+                    <div className="py-12 text-center">
+                        <h3 className="text-base font-semibold text-foreground">No users found</h3>
+                        <p className="mt-1 text-sm text-muted-foreground">Try adjusting your search or filters</p>
                     </div>
                 )}
 
                 {sorted.length > 0 && (
-                    <div className="pagination-bar admin-users-pagination-bar">
-                        <div className="pagination-info admin-users-pagination-info">
-                            Showing <strong>{startItem}-{endItem}</strong> of <strong>{sorted.length}</strong>
+                    <div className="flex flex-wrap items-center justify-between gap-3 border-t p-4">
+                        <div className="text-sm text-muted-foreground">
+                            Showing <strong className="font-semibold text-foreground">{startItem}-{endItem}</strong> of <strong className="font-semibold text-foreground">{sorted.length}</strong>
                         </div>
                         {totalPages > 1 ? (
-                            <div className="pagination-controls admin-users-pagination-controls">
-                                <button className="pagination-btn" disabled={page === 0} onClick={() => setPage(0)} title="First page">{'<<'}</button>
-                                <button className="pagination-btn" disabled={page === 0} onClick={() => setPage(page - 1)} title="Previous page">{'<'}</button>
-                                <span className="pagination-pages">
-                                    Page <strong>{page + 1}</strong> of <strong>{totalPages}</strong>
+                            <div className="flex items-center gap-1">
+                                <ShadcnButton variant="outline" size="sm" className="px-2.5" disabled={page === 0} onClick={() => setPage(0)} title="First page">{'<<'}</ShadcnButton>
+                                <ShadcnButton variant="outline" size="sm" className="px-2.5" disabled={page === 0} onClick={() => setPage(page - 1)} title="Previous page">{'<'}</ShadcnButton>
+                                <span className="px-2 text-sm text-muted-foreground">
+                                    Page <strong className="font-semibold text-foreground">{page + 1}</strong> of <strong className="font-semibold text-foreground">{totalPages}</strong>
                                 </span>
-                                <button className="pagination-btn" disabled={page >= totalPages - 1} onClick={() => setPage(page + 1)} title="Next page">{'>'}</button>
-                                <button className="pagination-btn" disabled={page >= totalPages - 1} onClick={() => setPage(totalPages - 1)} title="Last page">{'>>'}</button>
+                                <ShadcnButton variant="outline" size="sm" className="px-2.5" disabled={page >= totalPages - 1} onClick={() => setPage(page + 1)} title="Next page">{'>'}</ShadcnButton>
+                                <ShadcnButton variant="outline" size="sm" className="px-2.5" disabled={page >= totalPages - 1} onClick={() => setPage(totalPages - 1)} title="Last page">{'>>'}</ShadcnButton>
                             </div>
                         ) : (
-                            <div className="admin-users-pagination-static">Single page</div>
+                            <div className="text-sm text-muted-foreground">Single page</div>
                         )}
-                        <div className="pagination-size admin-users-pagination-size">
-                            <label htmlFor="admin-rows-per-page">Rows</label>
-                            <select
-                                id="admin-rows-per-page"
-                                name="admin-rows-per-page"
-                                aria-label="Users rows per page"
-                                value={rowsPerPage}
-                                onChange={(e) => { setRowsPerPage(Number(e.target.value)); setPage(0); }}
-                            >
-                                {[10, 25, 50].map((n) => <option key={n} value={n}>{n}</option>)}
-                            </select>
+                        <div className="flex items-center gap-2 text-sm">
+                            <Label htmlFor="admin-rows-per-page" className="text-muted-foreground">Rows</Label>
+                            <Select value={String(rowsPerPage)} onValueChange={(value) => { setRowsPerPage(Number(value)); setPage(0); }}>
+                                <SelectTrigger id="admin-rows-per-page" className="h-8 w-20"><SelectValue /></SelectTrigger>
+                                <SelectContent>
+                                    {[10, 25, 50].map((n) => <SelectItem key={n} value={String(n)}>{n}</SelectItem>)}
+                                </SelectContent>
+                            </Select>
                         </div>
                     </div>
                 )}
             </div>
-            ) : null}
+            </TabsContent>
 
-            {adminTab === 'release-notes' ? (
+            <TabsContent value="release-notes" className="mt-4">
                 <div className="table-wrapper table-surface admin-release-surface">
                     <div className="admin-release-head">
                         <h3>Release Notes</h3>
@@ -2690,9 +2652,9 @@ function AdminPage({ apiFetch, initialTab = 'users' }) {
                         </div>
                     </div>
                 </div>
-            ) : null}
+            </TabsContent>
 
-            {adminTab === 'smart-ziw' ? (
+            <TabsContent value="smart-ziw" className="mt-4">
                 <div className="panel-card">
                     <div className="profile-card-head">
                         <div>
@@ -2762,9 +2724,9 @@ function AdminPage({ apiFetch, initialTab = 'users' }) {
                         </button>
                     </div>
                 </div>
-            ) : null}
+            </TabsContent>
 
-            {adminTab === 'llm' ? (
+            <TabsContent value="llm" className="mt-4">
                 <div className="panel-card">
                     <div className="profile-card-head">
                         <div>
@@ -2869,7 +2831,8 @@ function AdminPage({ apiFetch, initialTab = 'users' }) {
                         </button>
                     </div>
                 </div>
-            ) : null}
+            </TabsContent>
+            </Tabs>
 
             <UserDrawer
                 open={drawer.open}
