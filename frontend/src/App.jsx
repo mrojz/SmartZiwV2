@@ -5,7 +5,7 @@ import DemoWalkthrough from './components/DemoWalkthrough';
 import SyncPanel from './components/SyncPanel';
 import ConfigPanel from './components/ConfigPanel';
 import SchedulePanel from './components/SchedulePanel';
-import { X, Mail01, Lock01, Edit01, Key01, UserX01, UserCheck01, SearchLg, Settings01, Clock, RefreshCw01 } from '@untitledui/icons';
+import { X, Mail01, Lock01, Edit01, Key01, UserX01, UserCheck01, SearchLg, Settings01, Clock, RefreshCw01, Bell01, User01, LogOut01, Shield01 } from '@untitledui/icons';
 import { Button } from '@/components/base/buttons/button';
 import { Input } from '@/components/base/input/input';
 import { InputBase } from '@/components/base/input/input';
@@ -15,6 +15,7 @@ import { TextArea } from '@/components/base/textarea/textarea';
 import { ModalOverlay, Modal, Dialog } from '@/components/application/modals/modal';
 import { Table } from '@/components/application/table/table';
 import { Dropdown } from '@/components/base/dropdown/dropdown';
+import { Tooltip, TooltipTrigger } from '@/components/base/tooltip/tooltip';
 import Sidebar, { Avatar } from './components/Sidebar';
 import AnalyticsPage from './components/AnalyticsPage';
 
@@ -3891,6 +3892,14 @@ export default function App() {
         markAllNotificationsViewed();
     }, [notificationsOpen, markAllNotificationsViewed]);
 
+    const handleHeaderMenuAction = (key) => {
+        if (key === 'profile') navigate('profile');
+        else if (key === 'admin') navigate('admin');
+        else if (key === 'settings') setConfigOpen(true);
+        else if (key === 'schedule') setScheduleOpen(true);
+        else if (key === 'logout') doLogout();
+    };
+
     if (loading) return <div className="app"><div className="loading"><div className="spinner" /><p>Loading...</p></div></div>;
     if (!authUser) return <LoginPage onLogin={doLogin} error={authError} bootstrap={bootstrapStatus} />;
     if (authUser.mustChangePassword) return <ForcePasswordPage onSubmit={doChangePassword} error={mustChangeError} />;
@@ -3919,22 +3928,32 @@ export default function App() {
                                         action={(
                                             <div className="header-actions dashboard-header-actions">
                                                 <div className="header-buttons dashboard-header-buttons">
-                                                    <button type="button" className="header-tertiary-btn" onClick={() => setNotificationsOpen(true)}>
-                                                        <span>Notifications</span>
-                                                        {unreadNotificationCount ? <span className="header-notification-badge">{unreadNotificationCount}</span> : null}
-                                                    </button>
-                                                    <button type="button" className="header-tertiary-btn" onClick={() => setConfigOpen(true)}>
-                                                        <Settings01 className="header-btn-icon" />
-                                                        <span>Settings</span>
-                                                    </button>
-                                                    <button type="button" className="header-secondary-btn" onClick={() => setScheduleOpen(true)}>
-                                                        <Clock className="header-btn-icon" />
-                                                        Schedule
-                                                    </button>
-                                                    <button type="button" className="sync-btn" onClick={() => setSyncOpen(true)}>
-                                                        <RefreshCw01 className="header-btn-icon" />
-                                                        Sync
-                                                    </button>
+                                                    <Tooltip title="Notifications" placement="bottom">
+                                                        <TooltipTrigger className="header-icon-action-btn" aria-label="Notifications" onPress={() => setNotificationsOpen(true)}>
+                                                            <Bell01 aria-hidden="true" className="header-icon-action-icon" />
+                                                            {unreadNotificationCount ? <span className="header-notification-badge">{unreadNotificationCount}</span> : null}
+                                                        </TooltipTrigger>
+                                                    </Tooltip>
+                                                    <Tooltip title="Sync now" placement="bottom">
+                                                        <TooltipTrigger className="header-icon-action-btn" aria-label="Sync now" onPress={() => setSyncOpen(true)}>
+                                                            <RefreshCw01 aria-hidden="true" className="header-icon-action-icon" />
+                                                        </TooltipTrigger>
+                                                    </Tooltip>
+                                                    <Dropdown.Root>
+                                                        <button type="button" className="header-avatar-btn" aria-label="Account menu">
+                                                            <Avatar user={authUser} size={32} />
+                                                        </button>
+                                                        <Dropdown.Popover className="header-dropdown-menu">
+                                                            <Dropdown.Menu className="header-dropdown-menu-items" onAction={handleHeaderMenuAction}>
+                                                                <Dropdown.Item id="profile" icon={User01}>Profile</Dropdown.Item>
+                                                                {authUser.role === 'admin' ? <Dropdown.Item id="admin" icon={Shield01}>Admin</Dropdown.Item> : null}
+                                                                <Dropdown.Item id="settings" icon={Settings01}>Settings</Dropdown.Item>
+                                                                <Dropdown.Item id="schedule" icon={Clock}>Schedule</Dropdown.Item>
+                                                                <Dropdown.Separator />
+                                                                <Dropdown.Item id="logout" icon={LogOut01}>Logout</Dropdown.Item>
+                                                            </Dropdown.Menu>
+                                                        </Dropdown.Popover>
+                                                    </Dropdown.Root>
                                                 </div>
                                             </div>
                                         )}

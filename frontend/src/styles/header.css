@@ -193,3 +193,80 @@
     font-size: 1.3rem;
   }
 }
+
+/* ─── Icon-only header actions & avatar dropdown ─────────────────── */
+
+.header-icon-action-btn {
+  position: relative;
+  width: 36px;
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 160ms ease;
+}
+
+.header-icon-action-btn:hover {
+  background: var(--bg-muted);
+  color: var(--text-secondary);
+}
+
+.header-icon-action-icon {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
+
+.header-icon-action-btn .header-notification-badge {
+  position: absolute;
+  top: 1px;
+  right: 1px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 999px;
+  font-size: 10px;
+  line-height: 1;
+}
+
+.header-avatar-btn {
+  width: 36px;
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 50%;
+  background: transparent;
+  cursor: pointer;
+  transition: all 160ms ease;
+}
+
+.header-avatar-btn:hover {
+  border-color: color-mix(in srgb, var(--border-light) 82%, white);
+  background: var(--bg-muted);
+}
+
+.header-dropdown-menu {
+  min-width: 220px;
+}
+
+.header-dropdown-menu-items {
+  padding: 6px;
+}
+
+@media (max-width: 720px) {
+  .layout-page-header-compact .dashboard-header-buttons {
+    width: auto;
+    flex-direction: row;
+    align-items: center;
+    justify-content: flex-end;
+  }
+}
