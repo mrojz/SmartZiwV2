@@ -271,3 +271,90 @@ def test_admin_update_stores_lightllm_provider(monkeypatch):
     r = client.put("/api/admin/smart-ziw-config", json={"lightllm_provider": "custom"})
     assert r.status_code == 200
     assert saved["lightllm_provider"] == "custom"
+
+
+def _mk_user_no_admin():
+    return {
+        "id": "u1",
+        "email": "user@example.com",
+        "name": "User",
+        "role": "user",
+        "passwordHash": "x",
+        "avatarUrl": "",
+        "mustChangePassword": False,
+        "isActive": True,
+    }
+
+
+def test_llm_test_endpoint_ok(monkeypatch):
+    seen = {}
+    monkeypatch.setattr(server, "_get_request_user", lambda req: _mk_admin())
+    monkeypatch.setattr(server, "get_smart_ziw_config", _config_with_secrets)
+
+    def fake_get_llm_call(config, json_mode=True):
+        seen["config"] = config
+        seen["json_mode"] = json_mode
+        return lambda system_prompt, user_prompt: "OK"
+
+    monkeypatch.setattr(server, "get_llm_call", fake_get_llm_call)
+    client = TestClient(server.app)
+    r = client.post("/api/admin/llm-test", json={
+        "smart_ziw_llm_provider": "lightllm",
+        "lightllm_base_url": "http://localhost:8000/v1",
+        "lightllm_model": "m",
+        "lightllm_provider": "anthropic_compatible",
+    })
+    assert r.status_code == 200
+    data = r.json()
+    assert data["status"] == "ok"
+    assert seen["json_mode"] is False
+    assert seen["config"]["lightllm_api_key"] == "SECRET-LL-KEY"
+    assert seen["config"]["lightllm_provider"] == "anthropic_compatible"
+
+
+def test_llm_test_endpoint_resolves_blank_key(monkeypatch):
+    seen = {}
+    monkeypatch.setattr(server, "_get_request_user", lambda req: _mk_admin())
+    monkeypatch.setattr(server, "get_smart_ziw_config", _config_with_secrets)
+
+    def fake_get_llm_call(config, json_mode=True):
+        seen["config"] = config
+        return lambda system_prompt, user_prompt: "OK"
+
+    monkeypatch.setattr(server, "get_llm_call", fake_get_llm_call)
+    client = TestClient(server.app)
+    r = client.post("/api/admin/llm-test", json={
+        "smart_ziw_llm_provider": "lightllm",
+        "lightllm_base_url": "http://localhost:8000/v1",
+        "lightllm_api_key": "",
+    })
+    assert r.status_code == 200
+    assert seen["config"]["lightllm_api_key"] == "SECRET-LL-KEY"
+
+
+def test_llm_test_endpoint_returns_sanitized_error(monkeypatch):
+    monkeypatch.setattr(server, "_get_request_user", lambda req: _mk_admin())
+    monkeypatch.setattr(server, "get_smart_ziw_config", _config_with_secrets)
+
+    def failing_call(system_prompt, user_prompt):
+        raise RuntimeError("Anthropic-compatible LLM request failed with HTTP 401: sk-leaked-key-value")
+
+    monkeypatch.setattr(server, "get_llm_call", lambda config, json_mode: failing_call)
+    client = TestClient(server.app)
+    r = client.post("/api/admin/llm-test", json={
+        "smart_ziw_llm_provider": "lightllm",
+        "lightllm_base_url": "http://localhost:8000/v1",
+        "lightllm_api_key": "sk-leaked-key-value",
+    })
+    assert r.status_code == 200
+    data = r.json()
+    assert data["status"] == "error"
+    assert "HTTP 401" in data["detail"]
+    assert "sk-leaked-key-value" not in data["detail"]
+
+
+def test_llm_test_endpoint_requires_admin(monkeypatch):
+    monkeypatch.setattr(server, "_get_request_user", lambda req: _mk_user_no_admin())
+    client = TestClient(server.app)
+    r = client.post("/api/admin/llm-test", json={"smart_ziw_llm_provider": "lightllm"})
+    assert r.status_code == 403

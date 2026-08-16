@@ -1967,6 +1967,7 @@ function AdminPage({ apiFetch, initialTab = 'users' }) {
         lightllm_provider: 'openai_compatible',
     });
     const [savingSmartZiwConfig, setSavingSmartZiwConfig] = useState(false);
+    const [testingLlm, setTestingLlm] = useState(false);
     const llmSource = smartZiwConfig.smart_ziw_llm_provider === 'lightllm' ? 'lightllm'
         : smartZiwConfig.smart_ziw_llm_provider === 'deepseek' ? 'environment'
         : (smartZiwConfig.lightllm_base_url.trim() ? 'lightllm' : 'environment');
@@ -2084,6 +2085,45 @@ function AdminPage({ apiFetch, initialTab = 'users' }) {
         } catch (error) {
             setMessage(`Failed to save Smart-Ziw config: ${error?.message || 'unknown error'}`);
         } finally {
+            setSavingSmartZiwConfig(false);
+        }
+    };
+
+    const testAndSaveLlmConfig = async () => {
+        setSavingSmartZiwConfig(true);
+        setTestingLlm(true);
+        try {
+            setMessage('Testing LLM provider connection…');
+            let testOk = false;
+            let detail = '';
+            try {
+                const testRes = await apiFetch('/api/admin/llm-test', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(smartZiwConfig),
+                });
+                let testData = null;
+                try {
+                    testData = await testRes.json();
+                } catch {
+                    // Non-JSON test response.
+                }
+                testOk = testRes.ok && testData?.status === 'ok';
+                detail = testData?.detail || `The provider test failed (HTTP ${testRes.status}).`;
+            } catch (error) {
+                detail = `The provider test could not run: ${error?.message || 'unknown error'}`;
+            }
+            if (!testOk) {
+                const proceed = window.confirm(`LLM provider test failed: ${detail}\n\nSave this configuration anyway?`);
+                if (!proceed) {
+                    setMessage('Not saved — the provider test failed. Fix the settings and try again.');
+                    return;
+                }
+            }
+            setTestingLlm(false);
+            await saveSmartZiwConfig();
+        } finally {
+            setTestingLlm(false);
             setSavingSmartZiwConfig(false);
         }
     };
@@ -2742,8 +2782,8 @@ function AdminPage({ apiFetch, initialTab = 'users' }) {
                         )}
                     </div>
                     <div className="profile-card-footer profile-card-footer-end">
-                        <button type="button" className="profile-btn profile-btn-primary" onClick={saveSmartZiwConfig} disabled={savingSmartZiwConfig}>
-                            {savingSmartZiwConfig ? 'Saving...' : 'Save config'}
+                        <button type="button" className="profile-btn profile-btn-primary" onClick={testAndSaveLlmConfig} disabled={savingSmartZiwConfig}>
+                            {testingLlm ? 'Testing…' : savingSmartZiwConfig ? 'Saving...' : 'Save config'}
                         </button>
                     </div>
                 </div>

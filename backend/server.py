@@ -79,6 +79,7 @@ from database import (
 )
 from smart_ziw_agent import run as run_smart_ziw_agent, CHAT_PROMPT
 from smart_ziw_llm import discover_lightllm_models, get_llm_call
+from concurrent.futures import ThreadPoolExecutor
 
 BASE_DIR = Path(__file__).resolve().parent
 PROJECTS_XLSX = BASE_DIR / "projects.xlsx"
@@ -1774,6 +1775,44 @@ def admin_update_smart_ziw_config(body: SmartZiwConfigUpdate, request: Request):
 def admin_discover_llm_models(body: LlmModelsRequest, request: Request):
     _require_admin(request)
     return discover_lightllm_models(body.provider, body.base_url, body.api_key)
+
+
+_LLM_TEST_TIMEOUT_SECONDS = 20.0
+_LLM_TEST_SYSTEM_PROMPT = "You are a connectivity check for the Smart-Ziw LLM provider configuration."
+_LLM_TEST_USER_PROMPT = "Reply with exactly: OK"
+
+
+@app.post("/api/admin/llm-test")
+def admin_test_llm(body: SmartZiwConfigUpdate, request: Request):
+    """Test the submitted LLM provider configuration with a real minimal call.
+
+    Uses the same get_llm_call factory as the runtime Smart-Ziw agent, so
+    the test exercises exactly what production will use (Environment,
+    LightLLM OpenAI-compatible, or Anthropic-compatible). Nothing is
+    persisted. Blank secrets resolve from the stored config like the
+    PUT endpoint. The API key never appears in the response.
+    """
+    _require_admin(request)
+    data = body.model_dump()
+    existing = get_smart_ziw_config()
+    if not data.get("lightllm_api_key"):
+        data["lightllm_api_key"] = existing.get("lightllm_api_key", "")
+    call = get_llm_call(data, json_mode=False)
+    try:
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            future = pool.submit(call, _LLM_TEST_SYSTEM_PROMPT, _LLM_TEST_USER_PROMPT)
+            reply = future.result(timeout=_LLM_TEST_TIMEOUT_SECONDS)
+    except TimeoutError:
+        return {"status": "error", "detail": f"The provider did not respond within {int(_LLM_TEST_TIMEOUT_SECONDS)} seconds"}
+    except Exception as exc:
+        detail = str(exc)[:300] or "The provider test failed"
+        for key in (data.get("lightllm_api_key"), existing.get("lightllm_api_key")):
+            if key and key in detail:
+                detail = detail.replace(key, "[redacted]")
+        return {"status": "error", "detail": detail}
+    if not reply or not str(reply).strip():
+        return {"status": "error", "detail": "The provider returned an empty response"}
+    return {"status": "ok", "message": "The LLM provider responded successfully."}
 
 
 @app.get("/api/admin/llm-env-status")
