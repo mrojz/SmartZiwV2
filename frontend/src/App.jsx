@@ -8,7 +8,7 @@ import SchedulePanel from './components/SchedulePanel';
 import { X } from '@untitledui/icons';
 import Sidebar, { Avatar, NAV_GROUPS } from './components/Sidebar';
 import AnalyticsPage from './components/AnalyticsPage';
-import { Search, Bell, RefreshCw, User, Shield, Settings, CalendarClock, LogOut, Mail, Lock, XIcon, Paperclip, Send, ArrowUp, ArrowDown, ArrowUpDown, MoreVertical, PenLine, KeyRound, UserCheck, UserX } from 'lucide-react';
+import { Search, Bell, RefreshCw, User, Shield, Settings, CalendarClock, LogOut, Mail, Lock, XIcon, Paperclip, Send, ArrowUp, ArrowDown, ArrowUpDown, MoreVertical, PenLine, KeyRound, UserCheck, UserX, ChevronDown } from 'lucide-react';
 import { SidebarProvider } from '@/components/ui/sidebar';
 import { CommandDialog, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { toast } from 'sonner';
@@ -30,6 +30,8 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 
 const API = '/api';
 const APP_RELEASE_VERSION = '1.6';
@@ -2655,146 +2657,152 @@ function AdminPage({ apiFetch, initialTab = 'users' }) {
             </TabsContent>
 
             <TabsContent value="smart-ziw" className="mt-4">
-                <div className="panel-card">
-                    <div className="profile-card-head">
-                        <div>
-                            <h3>Smart-Ziw Agent</h3>
-                            <p className="profile-card-description">Configure local mirror path, web research, and optional GitLab push.</p>
+                <Card>
+                    <CardHeader>
+                        <CardTitle>Smart-Ziw Agent</CardTitle>
+                        <p className="text-sm text-muted-foreground">Configure local mirror path, web research, and optional GitLab push.</p>
+                    </CardHeader>
+                    {message ? <div className="border-y border-border bg-primary/5 px-5 py-3 text-sm text-foreground/80">{message}</div> : null}
+                    <CardContent className="grid gap-4 sm:grid-cols-2">
+                        <div className="flex items-center justify-between rounded-lg border px-4 py-3 sm:col-span-2">
+                            <Label htmlFor="smart-ziw-enabled" className="text-sm font-semibold">Enable Smart-Ziw Agent</Label>
+                            <Switch id="smart-ziw-enabled" checked={smartZiwConfig.smart_ziw_enabled} onCheckedChange={(checked) => setSmartZiwConfig({ ...smartZiwConfig, smart_ziw_enabled: checked })} />
                         </div>
-                    </div>
-                    {message ? <div className="admin-users-message">{message}</div> : null}
-                    <div className="profile-settings-grid">
-                        <label className="modal-toggle-row">
-                            <input type="checkbox" checked={smartZiwConfig.smart_ziw_enabled} onChange={(e) => setSmartZiwConfig({ ...smartZiwConfig, smart_ziw_enabled: e.target.checked })} />
-                            <span className={`modal-toggle-label ${smartZiwConfig.smart_ziw_enabled ? 'active' : 'inactive'}`}>Enable Smart-Ziw Agent</span>
-                        </label>
-                        <div className="auth-field profile-field-span-2">
-                            <label className="auth-label">Local repo path</label>
-                            <input className="auth-input" value={smartZiwConfig.smart_ziw_repo_path} onChange={(e) => setSmartZiwConfig({ ...smartZiwConfig, smart_ziw_repo_path: e.target.value })} />
+                        <div className="flex flex-col gap-1.5 sm:col-span-2">
+                            <Label htmlFor="smart-ziw-repo-path" className="text-sm font-medium">Local repo path</Label>
+                            <ShadcnInput id="smart-ziw-repo-path" value={smartZiwConfig.smart_ziw_repo_path} onChange={(e) => setSmartZiwConfig({ ...smartZiwConfig, smart_ziw_repo_path: e.target.value })} />
                         </div>
-                        <label className="modal-toggle-row">
-                            <input type="checkbox" checked={smartZiwConfig.gitlab_push_enabled} onChange={(e) => setSmartZiwConfig({ ...smartZiwConfig, gitlab_push_enabled: e.target.checked })} />
-                            <span className={`modal-toggle-label ${smartZiwConfig.gitlab_push_enabled ? 'active' : 'inactive'}`}>Enable GitLab push</span>
-                        </label>
-                        <div className="auth-field profile-field-span-2">
-                            <label className="auth-label">GitLab URL</label>
-                            <input className="auth-input" value={smartZiwConfig.gitlab_url} onChange={(e) => setSmartZiwConfig({ ...smartZiwConfig, gitlab_url: e.target.value })} />
+                        <div className="flex items-center justify-between rounded-lg border px-4 py-3 sm:col-span-2">
+                            <Label htmlFor="gitlab-push-enabled" className="text-sm font-semibold">Enable GitLab push</Label>
+                            <Switch id="gitlab-push-enabled" checked={smartZiwConfig.gitlab_push_enabled} onCheckedChange={(checked) => setSmartZiwConfig({ ...smartZiwConfig, gitlab_push_enabled: checked })} />
                         </div>
-                        <div className="auth-field profile-field-span-2">
-                            <label className="auth-label">GitLab token</label>
-                            <input className="auth-input" type="password" value={smartZiwConfig.gitlab_token} onChange={(e) => setSmartZiwConfig({ ...smartZiwConfig, gitlab_token: e.target.value })} />
+                        <div className="flex flex-col gap-1.5 sm:col-span-2">
+                            <Label htmlFor="gitlab-url" className="text-sm font-medium">GitLab URL</Label>
+                            <ShadcnInput id="gitlab-url" value={smartZiwConfig.gitlab_url} onChange={(e) => setSmartZiwConfig({ ...smartZiwConfig, gitlab_url: e.target.value })} />
                         </div>
-                        <div className="auth-field profile-field-span-2">
-                            <label className="auth-label">GitLab project path</label>
-                            <input className="auth-input" value={smartZiwConfig.gitlab_project_path} onChange={(e) => setSmartZiwConfig({ ...smartZiwConfig, gitlab_project_path: e.target.value })} />
+                        <div className="flex flex-col gap-1.5 sm:col-span-2">
+                            <Label htmlFor="gitlab-token" className="text-sm font-medium">GitLab token</Label>
+                            <ShadcnInput id="gitlab-token" type="password" value={smartZiwConfig.gitlab_token} onChange={(e) => setSmartZiwConfig({ ...smartZiwConfig, gitlab_token: e.target.value })} />
                         </div>
-                        <div className="auth-field">
-                            <label className="auth-label">Branch</label>
-                            <input className="auth-input" value={smartZiwConfig.gitlab_branch} onChange={(e) => setSmartZiwConfig({ ...smartZiwConfig, gitlab_branch: e.target.value })} />
+                        <div className="flex flex-col gap-1.5 sm:col-span-2">
+                            <Label htmlFor="gitlab-project-path" className="text-sm font-medium">GitLab project path</Label>
+                            <ShadcnInput id="gitlab-project-path" value={smartZiwConfig.gitlab_project_path} onChange={(e) => setSmartZiwConfig({ ...smartZiwConfig, gitlab_project_path: e.target.value })} />
                         </div>
-                        <div className="auth-field">
-                            <label className="auth-label">Author name</label>
-                            <input className="auth-input" value={smartZiwConfig.gitlab_author_name} onChange={(e) => setSmartZiwConfig({ ...smartZiwConfig, gitlab_author_name: e.target.value })} />
+                        <div className="flex flex-col gap-1.5">
+                            <Label htmlFor="gitlab-branch" className="text-sm font-medium">Branch</Label>
+                            <ShadcnInput id="gitlab-branch" value={smartZiwConfig.gitlab_branch} onChange={(e) => setSmartZiwConfig({ ...smartZiwConfig, gitlab_branch: e.target.value })} />
                         </div>
-                        <div className="auth-field profile-field-span-2">
-                            <label className="auth-label">Author email</label>
-                            <input className="auth-input" value={smartZiwConfig.gitlab_author_email} onChange={(e) => setSmartZiwConfig({ ...smartZiwConfig, gitlab_author_email: e.target.value })} />
+                        <div className="flex flex-col gap-1.5">
+                            <Label htmlFor="gitlab-author-name" className="text-sm font-medium">Author name</Label>
+                            <ShadcnInput id="gitlab-author-name" value={smartZiwConfig.gitlab_author_name} onChange={(e) => setSmartZiwConfig({ ...smartZiwConfig, gitlab_author_name: e.target.value })} />
                         </div>
-                        <h4 style={{ gridColumn: '1 / -1', margin: '8px 0 0' }}>Web research</h4>
-                        <label className="modal-toggle-row">
-                            <input type="checkbox" checked={smartZiwConfig.smart_ziw_research_enabled} onChange={(e) => setSmartZiwConfig({ ...smartZiwConfig, smart_ziw_research_enabled: e.target.checked })} />
-                            <span className={`modal-toggle-label ${smartZiwConfig.smart_ziw_research_enabled ? 'active' : 'inactive'}`}>Enable web research (Firecrawl)</span>
-                        </label>
-                        <div className="auth-field profile-field-span-2">
-                            <label className="auth-label">Firecrawl API key</label>
-                            <input className="auth-input" type="password" value={smartZiwConfig.firecrawl_api_key} onChange={(e) => setSmartZiwConfig({ ...smartZiwConfig, firecrawl_api_key: e.target.value })} placeholder="Leave blank to keep the stored key" />
+                        <div className="flex flex-col gap-1.5 sm:col-span-2">
+                            <Label htmlFor="gitlab-author-email" className="text-sm font-medium">Author email</Label>
+                            <ShadcnInput id="gitlab-author-email" value={smartZiwConfig.gitlab_author_email} onChange={(e) => setSmartZiwConfig({ ...smartZiwConfig, gitlab_author_email: e.target.value })} />
                         </div>
-                        <div className="auth-field profile-field-span-2">
-                            <label className="auth-label">Firecrawl base URL</label>
-                            <input className="auth-input" value={smartZiwConfig.firecrawl_base_url} onChange={(e) => setSmartZiwConfig({ ...smartZiwConfig, firecrawl_base_url: e.target.value })} />
+                        <h4 className="text-sm font-semibold text-foreground sm:col-span-2">Web research</h4>
+                        <div className="flex items-center justify-between rounded-lg border px-4 py-3 sm:col-span-2">
+                            <Label htmlFor="research-enabled" className="text-sm font-semibold">Enable web research (Firecrawl)</Label>
+                            <Switch id="research-enabled" checked={smartZiwConfig.smart_ziw_research_enabled} onCheckedChange={(checked) => setSmartZiwConfig({ ...smartZiwConfig, smart_ziw_research_enabled: checked })} />
                         </div>
-                        <div className="auth-field">
-                            <label className="auth-label">Research timeout (seconds)</label>
-                            <input className="auth-input" type="number" min={1} value={smartZiwConfig.smart_ziw_research_timeout_seconds} onChange={(e) => { const value = Number(e.target.value); setSmartZiwConfig({ ...smartZiwConfig, smart_ziw_research_timeout_seconds: Number.isFinite(value) && value >= 1 ? value : 900 }) }} />
+                        <div className="flex flex-col gap-1.5 sm:col-span-2">
+                            <Label htmlFor="firecrawl-api-key" className="text-sm font-medium">Firecrawl API key</Label>
+                            <ShadcnInput id="firecrawl-api-key" type="password" value={smartZiwConfig.firecrawl_api_key} onChange={(e) => setSmartZiwConfig({ ...smartZiwConfig, firecrawl_api_key: e.target.value })} placeholder="Leave blank to keep the stored key" />
                         </div>
-                    </div>
-                    <div className="profile-card-footer profile-card-footer-end">
-                        <button type="button" className="profile-btn profile-btn-primary" onClick={saveSmartZiwConfig} disabled={savingSmartZiwConfig}>
+                        <div className="flex flex-col gap-1.5 sm:col-span-2">
+                            <Label htmlFor="firecrawl-base-url" className="text-sm font-medium">Firecrawl base URL</Label>
+                            <ShadcnInput id="firecrawl-base-url" value={smartZiwConfig.firecrawl_base_url} onChange={(e) => setSmartZiwConfig({ ...smartZiwConfig, firecrawl_base_url: e.target.value })} />
+                        </div>
+                        <div className="flex flex-col gap-1.5">
+                            <Label htmlFor="research-timeout" className="text-sm font-medium">Research timeout (seconds)</Label>
+                            <ShadcnInput id="research-timeout" type="number" min={1} value={smartZiwConfig.smart_ziw_research_timeout_seconds} onChange={(e) => { const value = Number(e.target.value); setSmartZiwConfig({ ...smartZiwConfig, smart_ziw_research_timeout_seconds: Number.isFinite(value) && value >= 1 ? value : 900 }) }} />
+                        </div>
+                    </CardContent>
+                    <CardFooter className="justify-end border-t pt-6">
+                        <ShadcnButton type="button" onClick={saveSmartZiwConfig} disabled={savingSmartZiwConfig}>
                             {savingSmartZiwConfig ? 'Saving...' : 'Save config'}
-                        </button>
-                    </div>
-                </div>
+                        </ShadcnButton>
+                    </CardFooter>
+                </Card>
             </TabsContent>
 
             <TabsContent value="llm" className="mt-4">
-                <div className="panel-card">
-                    <div className="profile-card-head">
-                        <div>
-                            <h3>LLM Provider</h3>
-                            <p className="profile-card-description">Configure the LLM backend used by the Smart-Ziw agent.</p>
-                        </div>
-                    </div>
-                    {message ? <div className="admin-users-message">{message}</div> : null}
-                    <div className="profile-settings-grid">
-                        <div className="auth-field profile-field-span-2">
-                            <label className="auth-label">Configuration source</label>
-                            <div className="llm-source-options">
-                                <label className="llm-source-option">
-                                    <input type="radio" name="llm-source" checked={llmSource === 'environment'} onChange={() => { llmDiscoverySeq.current += 1; setLlmModelsLoading(false); setSmartZiwConfig({ ...smartZiwConfig, smart_ziw_llm_provider: 'deepseek' }); }} />
-                                    <span>
-                                        <strong>Environment (.env)</strong>
-                                        <em>Use the DeepSeek settings from the backend .env file.</em>
+                <Card>
+                    <CardHeader>
+                        <CardTitle>LLM Provider</CardTitle>
+                        <p className="text-sm text-muted-foreground">Configure the LLM backend used by the Smart-Ziw agent.</p>
+                    </CardHeader>
+                    {message ? <div className="border-y border-border bg-primary/5 px-5 py-3 text-sm text-foreground/80">{message}</div> : null}
+                    <CardContent className="grid gap-4 sm:grid-cols-2">
+                        <div className="flex flex-col gap-1.5 sm:col-span-2">
+                            <Label className="text-sm font-medium">Configuration source</Label>
+                            <RadioGroup
+                                value={llmSource}
+                                onValueChange={(value) => { llmDiscoverySeq.current += 1; setLlmModelsLoading(false); setSmartZiwConfig({ ...smartZiwConfig, smart_ziw_llm_provider: value === 'environment' ? 'deepseek' : 'lightllm' }); }}
+                                className="flex flex-col gap-2.5"
+                            >
+                                <Label htmlFor="llm-source-environment" className="flex cursor-pointer items-start gap-3 rounded-lg border bg-card p-3 hover:bg-secondary/50">
+                                    <RadioGroupItem value="environment" id="llm-source-environment" className="mt-0.5" />
+                                    <span className="flex flex-col gap-0.5">
+                                        <span className="text-sm font-medium text-foreground">Environment (.env)</span>
+                                        <span className="text-sm text-muted-foreground">Use the DeepSeek settings from the backend .env file.</span>
                                     </span>
-                                </label>
-                                <label className="llm-source-option">
-                                    <input type="radio" name="llm-source" checked={llmSource === 'lightllm'} onChange={() => { llmDiscoverySeq.current += 1; setLlmModelsLoading(false); setSmartZiwConfig({ ...smartZiwConfig, smart_ziw_llm_provider: 'lightllm' }); }} />
-                                    <span>
-                                        <strong>LightLLM</strong>
-                                        <em>Use your own OpenAI- or Anthropic-compatible LLM server.</em>
+                                </Label>
+                                <Label htmlFor="llm-source-lightllm" className="flex cursor-pointer items-start gap-3 rounded-lg border bg-card p-3 hover:bg-secondary/50">
+                                    <RadioGroupItem value="lightllm" id="llm-source-lightllm" className="mt-0.5" />
+                                    <span className="flex flex-col gap-0.5">
+                                        <span className="text-sm font-medium text-foreground">LightLLM</span>
+                                        <span className="text-sm text-muted-foreground">Use your own OpenAI- or Anthropic-compatible LLM server.</span>
                                     </span>
-                                </label>
-                            </div>
+                                </Label>
+                            </RadioGroup>
                         </div>
                         {llmSource === 'environment' ? (
-                            <div className="auth-field profile-field-span-2">
-                                <label className="auth-label">Environment configuration</label>
-                                <p className="llm-env-info">
+                            <div className="flex flex-col gap-1.5 sm:col-span-2">
+                                <Label className="text-sm font-medium">Environment configuration</Label>
+                                <p className="text-sm text-muted-foreground">
                                     {llmEnvStatus.model
-                                        ? <>Using model <code>{llmEnvStatus.model}</code> from environment configuration ({llmEnvStatus.api_key_set ? 'API key set' : 'no API key set'}). To change these values, edit the .env file on the server and restart the backend.</>
+                                        ? <>Using model <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs text-foreground">{llmEnvStatus.model}</code> from environment configuration ({llmEnvStatus.api_key_set ? 'API key set' : 'no API key set'}). To change these values, edit the .env file on the server and restart the backend.</>
                                         : 'Loading environment status…'}
                                 </p>
                             </div>
                         ) : (
                             <>
-                                <div className="auth-field profile-field-span-2">
-                                    <label className="auth-label">LightLLM base URL</label>
-                                    <input className="auth-input" value={smartZiwConfig.lightllm_base_url} onChange={(e) => { llmDiscoverySeq.current += 1; setLlmModelsLoading(false); setLlmModels({ status: 'idle', models: [], detail: null }); setSmartZiwConfig({ ...smartZiwConfig, lightllm_base_url: e.target.value }); }} placeholder="http://localhost:8000/v1" />
+                                <div className="flex flex-col gap-1.5 sm:col-span-2">
+                                    <Label htmlFor="llm-base-url" className="text-sm font-medium">LightLLM base URL</Label>
+                                    <ShadcnInput id="llm-base-url" value={smartZiwConfig.lightllm_base_url} onChange={(e) => { llmDiscoverySeq.current += 1; setLlmModelsLoading(false); setLlmModels({ status: 'idle', models: [], detail: null }); setSmartZiwConfig({ ...smartZiwConfig, lightllm_base_url: e.target.value }); }} placeholder="http://localhost:8000/v1" />
                                 </div>
-                                <div className="auth-field">
-                                    <label className="auth-label">LightLLM API key</label>
-                                    <input className="auth-input" type="password" value={smartZiwConfig.lightllm_api_key} onChange={(e) => setSmartZiwConfig({ ...smartZiwConfig, lightllm_api_key: e.target.value })} placeholder="Leave blank to keep the stored key" />
+                                <div className="flex flex-col gap-1.5">
+                                    <Label htmlFor="llm-api-key" className="text-sm font-medium">LightLLM API key</Label>
+                                    <ShadcnInput id="llm-api-key" type="password" value={smartZiwConfig.lightllm_api_key} onChange={(e) => setSmartZiwConfig({ ...smartZiwConfig, lightllm_api_key: e.target.value })} placeholder="Leave blank to keep the stored key" />
                                 </div>
-                                <div className="auth-field">
-                                    <label className="auth-label">Provider (server type)</label>
-                                    <select className="auth-input" value={smartZiwConfig.lightllm_provider} onChange={(e) => { llmDiscoverySeq.current += 1; setLlmModelsLoading(false); setSmartZiwConfig({ ...smartZiwConfig, lightllm_provider: e.target.value }); }}>
-                                        <option value="openai_compatible">OpenAI-compatible</option>
-                                        <option value="anthropic_compatible">Anthropic-compatible</option>
-                                        <option value="custom">Custom (enter model manually)</option>
-                                    </select>
+                                <div className="flex flex-col gap-1.5">
+                                    <Label className="text-sm font-medium">Provider (server type)</Label>
+                                    <Select value={smartZiwConfig.lightllm_provider} onValueChange={(value) => { llmDiscoverySeq.current += 1; setLlmModelsLoading(false); setSmartZiwConfig({ ...smartZiwConfig, lightllm_provider: value }); }}>
+                                        <SelectTrigger className="w-full" aria-label="Provider (server type)"><SelectValue /></SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="openai_compatible">OpenAI-compatible</SelectItem>
+                                            <SelectItem value="anthropic_compatible">Anthropic-compatible</SelectItem>
+                                            <SelectItem value="custom">Custom (enter model manually)</SelectItem>
+                                        </SelectContent>
+                                    </Select>
                                 </div>
-                                <div className="auth-field profile-field-span-2">
-                                    <label className="auth-label">LightLLM model</label>
+                                <div className="flex flex-col gap-1.5 sm:col-span-2">
+                                    <Label className="text-sm font-medium">LightLLM model</Label>
                                     {(smartZiwConfig.lightllm_provider === 'openai_compatible' || smartZiwConfig.lightllm_provider === 'anthropic_compatible') && llmModels.status === 'ok' ? (
-                                        <select className="auth-input" value={smartZiwConfig.lightllm_model} onChange={(e) => setSmartZiwConfig({ ...smartZiwConfig, lightllm_model: e.target.value })}>
-                                            {!llmModels.models.some((m) => m.id === smartZiwConfig.lightllm_model) && smartZiwConfig.lightllm_model ? (
-                                                <option value={smartZiwConfig.lightllm_model}>{smartZiwConfig.lightllm_model} (current)</option>
-                                            ) : null}
-                                            {llmModels.models.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
-                                        </select>
+                                        <Select value={smartZiwConfig.lightllm_model} onValueChange={(value) => setSmartZiwConfig({ ...smartZiwConfig, lightllm_model: value })}>
+                                            <SelectTrigger className="w-full" aria-label="LightLLM model"><SelectValue placeholder="Select a model" /></SelectTrigger>
+                                            <SelectContent>
+                                                {!llmModels.models.some((m) => m.id === smartZiwConfig.lightllm_model) && smartZiwConfig.lightllm_model ? (
+                                                    <SelectItem value={smartZiwConfig.lightllm_model}>{smartZiwConfig.lightllm_model} (current)</SelectItem>
+                                                ) : null}
+                                                {llmModels.models.map((m) => <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>)}
+                                            </SelectContent>
+                                        </Select>
                                     ) : (
-                                        <input className="auth-input" value={smartZiwConfig.lightllm_model} onChange={(e) => setSmartZiwConfig({ ...smartZiwConfig, lightllm_model: e.target.value })} />
+                                        <ShadcnInput value={smartZiwConfig.lightllm_model} onChange={(e) => setSmartZiwConfig({ ...smartZiwConfig, lightllm_model: e.target.value })} />
                                     )}
-                                    <p className="llm-models-status">
+                                    <p className="text-sm text-muted-foreground">
                                         {llmModels.status === 'loading' ? 'Loading available models…'
                                             : llmModels.status === 'ok' ? 'Models loaded.'
                                             : llmModels.status === 'no_models' ? 'No models available from this server. You can type the model name manually.'
@@ -2803,34 +2811,41 @@ function AdminPage({ apiFetch, initialTab = 'users' }) {
                                             : llmModels.status === 'error' ? (llmModels.detail || 'Unable to connect to the LightLLM server. Check the base URL.')
                                             : ''}
                                     </p>
-                                    <button type="button" className="profile-btn" onClick={() => discoverLlmModels(smartZiwConfig.lightllm_provider, smartZiwConfig.lightllm_base_url, smartZiwConfig.lightllm_api_key)} disabled={llmModelsLoading || smartZiwConfig.lightllm_provider === 'custom' || !smartZiwConfig.lightllm_base_url.trim()}>
+                                    <ShadcnButton type="button" variant="outline" size="sm" className="w-fit" onClick={() => discoverLlmModels(smartZiwConfig.lightllm_provider, smartZiwConfig.lightllm_base_url, smartZiwConfig.lightllm_api_key)} disabled={llmModelsLoading || smartZiwConfig.lightllm_provider === 'custom' || !smartZiwConfig.lightllm_base_url.trim()}>
                                         Refresh models
-                                    </button>
+                                    </ShadcnButton>
                                 </div>
                             </>
                         )}
-                    </div>
-                    <details className="llm-advanced">
-                        <summary className="llm-advanced-summary">Advanced settings</summary>
-                        <div className="profile-settings-grid">
-                            <div className="auth-field">
-                                <label className="auth-label">Temperature</label>
-                                <input className="auth-input" type="number" min="0" max="2" step="0.1" value={smartZiwConfig.llm_temperature ?? 0.1} onChange={(e) => { const value = parseFloat(e.target.value); setSmartZiwConfig({ ...smartZiwConfig, llm_temperature: Number.isFinite(value) ? value : 0.1 }); }} />
-                                <p className="llm-models-status">Controls response randomness. Default 0.1. Some models (e.g. reasoning models) only accept 1.</p>
-                            </div>
-                            <div className="auth-field">
-                                <label className="auth-label">Max tokens</label>
-                                <input className="auth-input" type="number" min="1" step="1" value={smartZiwConfig.llm_max_tokens ?? 4000} onChange={(e) => { const value = parseInt(e.target.value, 10); setSmartZiwConfig({ ...smartZiwConfig, llm_max_tokens: Number.isFinite(value) ? value : 4000 }); }} />
-                                <p className="llm-models-status">Maximum tokens per response. Default 4000.</p>
-                            </div>
-                        </div>
-                    </details>
-                    <div className="profile-card-footer profile-card-footer-end">
-                        <button type="button" className="profile-btn profile-btn-primary" onClick={testAndSaveLlmConfig} disabled={savingSmartZiwConfig}>
+                        <Collapsible className="border-t pt-4 sm:col-span-2">
+                            <CollapsibleTrigger asChild>
+                                <ShadcnButton type="button" variant="ghost" size="sm" className="h-auto gap-1.5 px-2 py-1 text-sm font-semibold text-muted-foreground hover:text-foreground">
+                                    <ChevronDown className="h-4 w-4" />
+                                    Advanced settings
+                                </ShadcnButton>
+                            </CollapsibleTrigger>
+                            <CollapsibleContent>
+                                <div className="grid gap-4 pt-4 sm:grid-cols-2">
+                                    <div className="flex flex-col gap-1.5">
+                                        <Label htmlFor="llm-temperature" className="text-sm font-medium">Temperature</Label>
+                                        <ShadcnInput id="llm-temperature" type="number" min="0" max="2" step="0.1" value={smartZiwConfig.llm_temperature ?? 0.1} onChange={(e) => { const value = parseFloat(e.target.value); setSmartZiwConfig({ ...smartZiwConfig, llm_temperature: Number.isFinite(value) ? value : 0.1 }); }} />
+                                        <p className="text-sm text-muted-foreground">Controls response randomness. Default 0.1. Some models (e.g. reasoning models) only accept 1.</p>
+                                    </div>
+                                    <div className="flex flex-col gap-1.5">
+                                        <Label htmlFor="llm-max-tokens" className="text-sm font-medium">Max tokens</Label>
+                                        <ShadcnInput id="llm-max-tokens" type="number" min="1" step="1" value={smartZiwConfig.llm_max_tokens ?? 4000} onChange={(e) => { const value = parseInt(e.target.value, 10); setSmartZiwConfig({ ...smartZiwConfig, llm_max_tokens: Number.isFinite(value) ? value : 4000 }); }} />
+                                        <p className="text-sm text-muted-foreground">Maximum tokens per response. Default 4000.</p>
+                                    </div>
+                                </div>
+                            </CollapsibleContent>
+                        </Collapsible>
+                    </CardContent>
+                    <CardFooter className="justify-end border-t pt-6">
+                        <ShadcnButton type="button" onClick={testAndSaveLlmConfig} disabled={savingSmartZiwConfig}>
                             {testingLlm ? 'Testing…' : savingSmartZiwConfig ? 'Saving...' : 'Save config'}
-                        </button>
-                    </div>
-                </div>
+                        </ShadcnButton>
+                    </CardFooter>
+                </Card>
             </TabsContent>
             </Tabs>
 
