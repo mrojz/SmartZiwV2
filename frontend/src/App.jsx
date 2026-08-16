@@ -17,7 +17,7 @@ import { Table } from '@/components/application/table/table';
 import { Dropdown } from '@/components/base/dropdown/dropdown';
 import Sidebar, { Avatar, NAV_GROUPS } from './components/Sidebar';
 import AnalyticsPage from './components/AnalyticsPage';
-import { Search, Bell, RefreshCw, User, Shield, Settings, CalendarClock, LogOut, Mail, Lock, XIcon } from 'lucide-react';
+import { Search, Bell, RefreshCw, User, Shield, Settings, CalendarClock, LogOut, Mail, Lock, XIcon, Paperclip, Send } from 'lucide-react';
 import { SidebarProvider } from '@/components/ui/sidebar';
 import { CommandDialog, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { toast } from 'sonner';
@@ -32,6 +32,8 @@ import { Input as ShadcnInput } from '@/components/ui/input';
 import { Sheet, SheetClose, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
+import { Textarea } from '@/components/ui/textarea';
+import { Avatar as ShadcnAvatar, AvatarFallback } from '@/components/ui/avatar';
 
 const API = '/api';
 const APP_RELEASE_VERSION = '1.6';
@@ -1388,70 +1390,76 @@ function CommentsPanel({
                         ) : null}
                     </section>
 
-                    <section className="project-inspector-section project-inspector-discussion">
-                        <div className="project-discussion-header">
-                            <div className="project-discussion-title-row">
-                                <div>
-                                    <span className="project-discussion-title">Discussion</span>
-                                    <span className="project-discussion-meta">{comments.length} notes</span>
-                                </div>
-                                <button
-                                    type="button"
-                                    className={`chat-tool-btn ${searchOpen ? 'is-active' : ''}`}
-                                    aria-label={searchOpen ? 'Hide message search' : 'Search messages'}
-                                    onClick={() => {
-                                        if (searchOpen && !search) {
-                                            setSearchOpen(false);
-                                            return;
-                                        }
-                                        setSearchOpen((prev) => !prev);
-                                    }}
-                                >
-                                    <SearchLg className="chat-tool-icon" />
-                                </button>
+                    <section className="flex flex-col gap-3">
+                        <Separator />
+                        <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-baseline gap-2">
+                                <h3 className="text-sm font-semibold text-foreground">Discussion</h3>
+                                <span className="text-xs text-muted-foreground">{comments.length} notes</span>
                             </div>
-                            <div className={`project-discussion-search ${searchOpen ? 'is-open' : ''}`}>
-                                <input
-                                    className="chat-search-input compact"
+                            <ShadcnButton
+                                type="button"
+                                variant="ghost"
+                                size="icon-sm"
+                                className={searchOpen ? 'bg-muted text-foreground' : 'text-muted-foreground'}
+                                aria-label={searchOpen ? 'Hide message search' : 'Search messages'}
+                                onClick={() => {
+                                    if (searchOpen && !search) {
+                                        setSearchOpen(false);
+                                        return;
+                                    }
+                                    setSearchOpen((prev) => !prev);
+                                }}
+                            >
+                                <Search />
+                            </ShadcnButton>
+                        </div>
+                        {searchOpen ? (
+                            <div className="relative">
+                                <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                                <ShadcnInput
                                     type="text"
                                     name="discussionSearch"
                                     aria-label="Search discussion messages"
                                     placeholder="Search messages..."
                                     value={search}
                                     onChange={(e) => setSearch(e.target.value)}
+                                    className="h-9 pl-8"
                                 />
                             </div>
-                        </div>
+                        ) : null}
 
-                        <div className="comments-drawer-list chat-list inspector-chat-list" ref={listRef}>
-                            {!entity?.id ? <p className="auth-muted">No entity selected.</p> : null}
-                            {entity?.id && filteredComments.length === 0 ? <p className="auth-muted chat-empty">{search ? 'No messages match your search.' : 'No discussion yet. Add the first analyst note.'}</p> : null}
+                        <div className="flex flex-col gap-3 rounded-lg bg-muted/50 p-3" ref={listRef}>
+                            {!entity?.id ? <p className="text-sm text-muted-foreground">No entity selected.</p> : null}
+                            {entity?.id && filteredComments.length === 0 ? <p className="py-8 text-center text-sm text-muted-foreground">{search ? 'No messages match your search.' : 'No discussion yet. Add the first analyst note.'}</p> : null}
                             {filteredComments.map((c) => {
                                 const isMe = c.authorName === currentUserName;
                                 const ts = new Date(c.createdAt);
                                 const timeStr = ts.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
                                 const dateStr = ts.toLocaleDateString([], { month: 'short', day: 'numeric' });
                                 return (
-                                    <div key={c.id} className={`chat-bubble ${isMe ? 'chat-mine' : 'chat-theirs'}`}>
+                                    <div key={c.id} className={`flex max-w-[85%] gap-2 ${isMe ? 'self-end flex-row-reverse' : 'self-start'}`}>
                                         {!isMe ? (
-                                            <div className="chat-avatar" style={{ background: colorFromSeed(c.authorName || '') }}>
-                                                {initials(c.authorName || '', '')}
-                                            </div>
+                                            <ShadcnAvatar className="mt-0.5 size-7 shrink-0" style={{ background: colorFromSeed(c.authorName || '') }}>
+                                                <AvatarFallback className="bg-transparent text-[10px] font-bold uppercase tracking-wide text-white">
+                                                    {initials(c.authorName || '', '')}
+                                                </AvatarFallback>
+                                            </ShadcnAvatar>
                                         ) : null}
-                                        <div className="chat-content">
-                                            {!isMe ? <span className="chat-author">{c.authorName}</span> : null}
-                                            <div className="chat-body">
-                                                {c.body ? <p>{c.body}</p> : null}
+                                        <div className="flex min-w-0 flex-col gap-0.5">
+                                            {!isMe ? <span className="px-1 text-[11px] font-semibold text-muted-foreground">{c.authorName}</span> : null}
+                                            <div className={`break-words rounded-2xl px-3 py-2 text-sm leading-relaxed ${isMe ? 'rounded-tr-sm bg-primary text-primary-foreground' : 'rounded-tl-sm bg-muted text-foreground'}`}>
+                                                {c.body ? <p className="m-0">{c.body}</p> : null}
                                                 {(c.attachments || []).map((att) => (
                                                     isImageAttachment(att) ? (
                                                         <button
                                                             key={att.fileId}
                                                             type="button"
-                                                            className="chat-attachment chat-attachment-image-link"
+                                                            className="mt-1.5 block w-full overflow-hidden rounded-lg border border-black/10"
                                                             onClick={() => setPreviewAttachment({ ...att, kind: 'image' })}
                                                         >
                                                             <img
-                                                                className="chat-attachment-image"
+                                                                className="max-h-64 w-full object-cover"
                                                                 src={att.url}
                                                                 alt={att.originalName || 'attachment'}
                                                                 loading="lazy"
@@ -1461,16 +1469,16 @@ function CommentsPanel({
                                                         <button
                                                             key={att.fileId}
                                                             type="button"
-                                                            className="chat-attachment chat-attachment-pdf"
+                                                            className="mt-1.5 flex w-full items-center gap-2 rounded-lg border border-black/10 bg-card px-3 py-2 text-left"
                                                             onClick={() => setPreviewAttachment({ ...att, kind: 'pdf' })}
                                                         >
-                                                            <span className="chat-attachment-pdf-icon">PDF</span>
-                                                            <span className="chat-attachment-pdf-name">{att.originalName}</span>
+                                                            <Badge className="bg-red-600 text-white">PDF</Badge>
+                                                            <span className="min-w-0 truncate text-sm font-medium text-foreground">{att.originalName}</span>
                                                         </button>
                                                     ) : (
                                                         <a
                                                             key={att.fileId}
-                                                            className="chat-attachment"
+                                                            className="mt-1.5 flex w-full items-center gap-2 rounded-lg border border-black/10 bg-card px-3 py-2 text-sm font-medium text-foreground hover:bg-muted"
                                                             href={att.url}
                                                             target="_blank"
                                                             rel="noreferrer"
@@ -1481,7 +1489,7 @@ function CommentsPanel({
                                                     )
                                                 ))}
                                             </div>
-                                            <span className="chat-time">{dateStr}{" "}{timeStr}</span>
+                                            <span className={`px-1 text-[10px] text-muted-foreground/70 ${isMe ? 'self-end' : ''}`}>{dateStr}{" "}{timeStr}</span>
                                         </div>
                                     </div>
                                 );
@@ -1489,28 +1497,34 @@ function CommentsPanel({
                         </div>
 
                         {pendingFiles.length > 0 ? (
-                            <div className="chat-pending-files project-drawer-pending-files">
+                            <div className="flex flex-wrap gap-2 border-t pt-3">
                                 {pendingFiles.map((f) => (
-                                    <span key={f.fileId} className="chat-file-chip">
+                                    <Badge key={f.fileId} variant="secondary" className="gap-1.5 pr-1 font-normal">
                                         {f.originalName}
-                                        <button className="chat-file-remove" onClick={() => removeFile(f.fileId)} title="Remove">x</button>
-                                    </span>
+                                        <button type="button" className="inline-flex size-4 items-center justify-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground" onClick={() => removeFile(f.fileId)} title="Remove">x</button>
+                                    </Badge>
                                 ))}
                             </div>
                         ) : null}
 
-                        <div className={`project-inspector-compose ${composerFocused || body.trim() ? 'is-focused' : ''}`}>
+                        <div className="relative flex items-end gap-2 border-t pt-3">
                             <input ref={fileInputRef} type="file" name="discussionAttachments" multiple style={{ display: 'none' }} onChange={handleFileChange} />
-                            <button
+                            <ShadcnButton
                                 type="button"
-                                className="chat-tool-btn"
+                                variant="outline"
+                                size="icon"
+                                className="shrink-0"
                                 onClick={() => fileInputRef.current?.click()}
                                 disabled={uploading}
                                 title="Attach file"
-                            >+</button>
-                            <textarea
+                                aria-label="Attach file"
+                            >
+                                <Paperclip />
+                            </ShadcnButton>
+                            <Textarea
                                 ref={textAreaRef}
-                                className="chat-input project-chat-input"
+                                className="min-h-0 flex-1 resize-none px-3.5 py-2.5"
+                                style={{ fieldSizing: 'fixed' }}
                                 name="discussionMessage"
                                 aria-label="Discussion message"
                                 value={body}
@@ -1525,32 +1539,34 @@ function CommentsPanel({
                                 rows={1}
                             />
                             {mentionState.open && mentionCandidates.length ? (
-                                <div className="mention-menu">
+                                <div className="absolute bottom-full left-0 right-0 z-10 mb-2 flex flex-col gap-1 rounded-lg border bg-popover p-1 shadow-lg">
                                     {mentionCandidates.map((user, index) => (
                                         <button
                                             key={user.id}
                                             type="button"
-                                            className={`mention-menu-item ${index === mentionState.index ? 'is-active' : ''}`}
+                                            className={`flex items-center justify-between gap-3 rounded-md px-2.5 py-2 text-left ${index === mentionState.index ? 'bg-muted' : 'bg-transparent hover:bg-muted'}`}
                                             onMouseDown={(event) => {
                                                 event.preventDefault();
                                                 insertMention(user);
                                             }}
                                         >
-                                            <span className="mention-menu-name">{user.name || user.email}</span>
-                                            <span className="mention-menu-email">{user.email}</span>
+                                            <span className="text-sm font-semibold text-foreground">{user.name || user.email}</span>
+                                            <span className="text-xs text-muted-foreground">{user.email}</span>
                                         </button>
                                     ))}
                                 </div>
                             ) : null}
-                            <button
+                            <ShadcnButton
                                 type="button"
-                                className="chat-send-btn chat-send-btn-icon"
+                                size="icon"
+                                className="size-9 shrink-0 rounded-full"
                                 onClick={handleSubmit}
                                 disabled={(!body.trim() && !pendingFiles.length) || !entity?.id || uploading}
                                 title="Send"
+                                aria-label="Send message"
                             >
-                                {'>'}
-                            </button>
+                                <Send />
+                            </ShadcnButton>
                         </div>
                     </section>
                     </div>
@@ -1558,13 +1574,13 @@ function CommentsPanel({
             </SheetContent>
         </Sheet>
         {previewAttachment ? (
-            <div className="image-preview-backdrop" onClick={() => setPreviewAttachment(null)}>
-                <div className={`image-preview-dialog ${previewAttachment.kind === 'pdf' ? 'is-pdf' : ''}`} onClick={(e) => e.stopPropagation()}>
-                    <div className="image-preview-toolbar">
-                        <span className="image-preview-name">{previewAttachment.originalName || 'Attachment'}</span>
-                        <div className="image-preview-actions">
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={() => setPreviewAttachment(null)}>
+                <div className={`flex w-full flex-col overflow-hidden rounded-xl bg-card shadow-xl ${previewAttachment.kind === 'pdf' ? 'h-full max-w-4xl' : 'max-w-2xl'}`} onClick={(e) => e.stopPropagation()}>
+                    <div className="flex items-center justify-between gap-2 border-b px-4 py-2.5">
+                        <span className="min-w-0 truncate text-sm font-medium text-foreground">{previewAttachment.originalName || 'Attachment'}</span>
+                        <div className="flex shrink-0 items-center gap-1">
                             <a
-                                className="image-preview-download"
+                                className="inline-flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
                                 href={previewAttachment.url}
                                 download={previewAttachment.originalName || 'attachment'}
                                 aria-label="Download attachment"
@@ -1574,7 +1590,7 @@ function CommentsPanel({
                             </a>
                             <button
                                 type="button"
-                                className="image-preview-close"
+                                className="inline-flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
                                 onClick={() => setPreviewAttachment(null)}
                                 aria-label="Close attachment preview"
                                 title="Close"
@@ -1583,16 +1599,16 @@ function CommentsPanel({
                             </button>
                         </div>
                     </div>
-                    <div className="image-preview-body">
+                    <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto bg-muted p-4">
                         {previewAttachment.kind === 'pdf' ? (
                             <iframe
-                                className="pdf-preview-frame"
+                                className="h-full min-h-0 w-full rounded-lg border bg-white"
                                 src={previewAttachment.url}
                                 title={previewAttachment.originalName || 'PDF preview'}
                             />
                         ) : (
                             <img
-                                className="image-preview-image"
+                                className="max-h-full max-w-full object-contain"
                                 src={previewAttachment.url}
                                 alt={previewAttachment.originalName || 'attachment'}
                             />
