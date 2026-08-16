@@ -1183,7 +1183,7 @@ function CommentsPanel({
                     <div className="flex flex-col gap-4 p-5">
                     <section className="flex flex-col gap-4 rounded-lg border bg-card p-4">
                         <div className="flex flex-wrap items-center gap-2">
-                            <Badge className={projectDecision === 'Go' ? 'bg-green-700 text-white' : projectDecision === 'No Go' ? 'bg-red-700 text-white' : 'bg-amber-600 text-white'}>
+                            <Badge className={projectDecision === 'Go' ? 'bg-green-700 text-white' : projectDecision === 'No Go' ? 'bg-red-700 text-white' : 'bg-muted text-muted-foreground'}>
                                 {projectDecision || 'Pending'}
                             </Badge>
                             <Badge className={projectVerified ? 'bg-green-700 text-white' : 'bg-muted text-muted-foreground'}>
