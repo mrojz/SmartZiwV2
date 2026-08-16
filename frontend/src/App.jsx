@@ -17,7 +17,7 @@ import { Table } from '@/components/application/table/table';
 import { Dropdown } from '@/components/base/dropdown/dropdown';
 import Sidebar, { Avatar, NAV_GROUPS } from './components/Sidebar';
 import AnalyticsPage from './components/AnalyticsPage';
-import { Search, Bell, RefreshCw, User, Shield, Settings, CalendarClock, LogOut, Mail, Lock } from 'lucide-react';
+import { Search, Bell, RefreshCw, User, Shield, Settings, CalendarClock, LogOut, Mail, Lock, XIcon } from 'lucide-react';
 import { SidebarProvider } from '@/components/ui/sidebar';
 import { CommandDialog, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { toast } from 'sonner';
@@ -26,9 +26,12 @@ import { Button as ShadcnButton } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Toaster } from '@/components/ui/sonner';
-import { Card, CardContent } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Input as ShadcnInput } from '@/components/ui/input';
+import { Sheet, SheetClose, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { Separator } from '@/components/ui/separator';
 
 const API = '/api';
 const APP_RELEASE_VERSION = '1.6';
@@ -1151,55 +1154,63 @@ function CommentsPanel({
 
     return (
         <>
-        <div className="project-drawer-backdrop" onClick={onClose}>
-            <aside className="project-drawer" onClick={(e) => e.stopPropagation()}>
-                <div className="project-drawer-head">
-                    <div>
-                        <span className="project-inspector-kicker">Project inspector</span>
-                        <h2>{projectTitle}</h2>
+        <Sheet open={open} onOpenChange={(next) => { if (!next) onClose(); }}>
+            <SheetContent side="right" showCloseButton={false} className="w-full gap-0 p-0 sm:max-w-[480px]">
+                <SheetHeader className="flex flex-row items-start justify-between gap-4 border-b p-5">
+                    <div className="min-w-0">
+                        <SheetDescription className="text-xs font-medium uppercase tracking-wide">Project inspector</SheetDescription>
+                        <SheetTitle className="mt-1 text-lg leading-snug">{projectTitle}</SheetTitle>
                     </div>
-                    <div className="project-drawer-head-actions">
-                        <button
+                    <div className="flex shrink-0 items-center gap-2">
+                        <ShadcnButton
                             type="button"
-                            className="project-share-btn"
+                            variant="outline"
+                            size="sm"
                             onClick={handleCopyShareUrl}
                             disabled={!shareUrl}
                         >
                             {shareCopied ? 'Copied' : 'Copy link'}
-                        </button>
-                        <Button color="tertiary" size="sm" iconLeading={X} onClick={onClose} aria-label="Close project inspector" />
+                        </ShadcnButton>
+                        <SheetClose asChild>
+                            <ShadcnButton variant="ghost" size="icon-sm" aria-label="Close project inspector">
+                                <XIcon />
+                            </ShadcnButton>
+                        </SheetClose>
                     </div>
-                </div>
+                </SheetHeader>
 
-                <div className="project-drawer-scroll">
-                    <section className="project-inspector-section project-inspector-summary">
-                        <div className="project-inspector-badges">
-                            <span className={`drawer-chip decision-${(projectDecision || 'pending').toLowerCase().replace(/\s+/g, '-')}`}>
+                <ScrollArea className="min-h-0 flex-1">
+                    <div className="flex flex-col gap-4 p-5">
+                    <section className="flex flex-col gap-4 rounded-lg border bg-card p-4">
+                        <div className="flex flex-wrap items-center gap-2">
+                            <Badge className={projectDecision === 'Go' ? 'bg-green-700 text-white' : projectDecision === 'No Go' ? 'bg-red-700 text-white' : 'bg-amber-600 text-white'}>
                                 {projectDecision || 'Pending'}
-                            </span>
-                            <span className={`drawer-chip ai-${projectVerified ? 'yes' : 'no'}`}>
+                            </Badge>
+                            <Badge className={projectVerified ? 'bg-green-700 text-white' : 'bg-muted text-muted-foreground'}>
                                 {projectVerified ? 'Verified' : 'Not verified'}
-                            </span>
-                            {project?.source ? <span className="drawer-chip neutral">{project.source}</span> : null}
+                            </Badge>
+                            {project?.source ? <Badge variant="outline">{project.source}</Badge> : null}
                         </div>
 
                         {projectDescription ? (
-                            <div className="project-inspector-description">
-                                <h3>Description</h3>
-                                <p>{projectDescription}</p>
+                            <div className="flex flex-col gap-2 rounded-lg border bg-muted/50 p-4">
+                                <h3 className="text-sm font-semibold text-foreground">Description</h3>
+                                <p className="whitespace-pre-wrap text-sm leading-6 text-muted-foreground">{projectDescription}</p>
                             </div>
                         ) : null}
 
-                        <div className="project-inspector-collab-grid">
-                            <div className="project-inspector-votes">
+                        <div className="grid gap-4 sm:grid-cols-2">
+                            <div className="flex flex-col gap-3">
                                 <div>
-                                    <h3>Team signal</h3>
-                                    <p>Upvote or downvote the tender without changing the formal decision.</p>
+                                    <h3 className="text-sm font-semibold text-foreground">Team signal</h3>
+                                    <p className="mt-0.5 text-xs text-muted-foreground">Upvote or downvote the tender without changing the formal decision.</p>
                                 </div>
-                                <div className="project-vote-actions">
-                                    <button
+                                <div className="flex gap-2">
+                                    <ShadcnButton
                                         type="button"
-                                        className={`project-vote-btn ${currentUserVote === 'up' ? 'is-active is-up' : ''}`}
+                                        variant="outline"
+                                        size="sm"
+                                        className={`gap-1.5 ${currentUserVote === 'up' ? 'border-green-600 bg-green-50 text-green-700 hover:bg-green-50 hover:text-green-700' : ''}`}
                                         onClick={(event) => {
                                             event.preventDefault();
                                             event.stopPropagation();
@@ -1209,10 +1220,12 @@ function CommentsPanel({
                                         <VoteUpIcon />
                                         <span>Upvote</span>
                                         <strong>{voteSummary.up || 0}</strong>
-                                    </button>
-                                    <button
+                                    </ShadcnButton>
+                                    <ShadcnButton
                                         type="button"
-                                        className={`project-vote-btn ${currentUserVote === 'down' ? 'is-active is-down' : ''}`}
+                                        variant="outline"
+                                        size="sm"
+                                        className={`gap-1.5 ${currentUserVote === 'down' ? 'border-red-600 bg-red-50 text-red-700 hover:bg-red-50 hover:text-red-700' : ''}`}
                                         onClick={(event) => {
                                             event.preventDefault();
                                             event.stopPropagation();
@@ -1222,27 +1235,27 @@ function CommentsPanel({
                                         <VoteDownIcon />
                                         <span>Downvote</span>
                                         <strong>{voteSummary.down || 0}</strong>
-                                    </button>
+                                    </ShadcnButton>
                                 </div>
                             </div>
 
-                            <div className="project-inspector-assignees">
+                            <div className="flex flex-col gap-3">
                                 <div>
-                                    <h3>Working on this tender</h3>
-                                    <p>Assign teammates to coordinate review and follow-up.</p>
+                                    <h3 className="text-sm font-semibold text-foreground">Working on this tender</h3>
+                                    <p className="mt-0.5 text-xs text-muted-foreground">Assign teammates to coordinate review and follow-up.</p>
                                 </div>
-                                <div className="assignment-chip-grid">
+                                <div className="flex flex-wrap gap-2">
                                     {(availableUsers || []).map((user) => {
                                         const assigned = assignedUserIds.includes(user.id);
                                         return (
                                             <button
                                                 key={user.id}
                                                 type="button"
-                                                className={`assignment-chip ${assigned ? 'is-assigned' : ''}`}
                                                 disabled={savingAssignments}
                                                 onClick={() => toggleAssignment(user.id)}
+                                                className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${assigned ? 'border-primary/30 bg-primary/5 text-primary' : 'border-border bg-card text-muted-foreground hover:bg-muted'}`}
                                             >
-                                                <span className="assignment-chip-initials">{initials(user.name || '', user.email || '')}</span>
+                                                <span className="flex size-5 items-center justify-center rounded-full bg-muted text-[10px] font-semibold text-muted-foreground">{initials(user.name || '', user.email || '')}</span>
                                                 <span>{user.name || user.email}</span>
                                             </button>
                                         );
@@ -1251,112 +1264,124 @@ function CommentsPanel({
                             </div>
                         </div>
 
+                        <Separator />
                         {canManageDecision ? (
-                            <div className="inspector-decision-block">
+                            <div className="flex flex-col gap-3">
                                 <div>
-                                    <h3>Decision</h3>
-                                    <p>Managers can set the formal Go / No Go decision.</p>
+                                    <h3 className="text-sm font-semibold text-foreground">Decision</h3>
+                                    <p className="mt-0.5 text-xs text-muted-foreground">Managers can set the formal Go / No Go decision.</p>
                                 </div>
-                                <div className="inspector-decision-actions">
-                                    <button
+                                <div className="grid grid-cols-3 gap-2">
+                                    <ShadcnButton
                                         type="button"
-                                        className={`inspector-decision-btn ${projectDecision === 'Go' ? 'is-active is-go' : ''}`}
+                                        variant="outline"
+                                        size="sm"
+                                        className={projectDecision === 'Go' ? 'border-green-600 bg-green-50 text-green-700 hover:bg-green-50 hover:text-green-700' : ''}
                                         onClick={() => onDecisionChange(projectDecision === 'Go' ? '' : 'Go')}
                                     >
                                         Go
-                                    </button>
-                                    <button
+                                    </ShadcnButton>
+                                    <ShadcnButton
                                         type="button"
-                                        className={`inspector-decision-btn ${projectDecision === 'No Go' ? 'is-active is-nogo' : ''}`}
+                                        variant="outline"
+                                        size="sm"
+                                        className={projectDecision === 'No Go' ? 'border-red-600 bg-red-50 text-red-700 hover:bg-red-50 hover:text-red-700' : ''}
                                         onClick={() => onDecisionChange(projectDecision === 'No Go' ? '' : 'No Go')}
                                     >
                                         No Go
-                                    </button>
-                                    <button
+                                    </ShadcnButton>
+                                    <ShadcnButton
                                         type="button"
-                                        className={`inspector-decision-btn ${!projectDecision ? 'is-active' : ''}`}
+                                        variant="outline"
+                                        size="sm"
+                                        className={!projectDecision ? 'border-foreground bg-muted/60 text-foreground hover:bg-muted/60 hover:text-foreground' : ''}
                                         onClick={() => onDecisionChange('')}
                                     >
                                         Undecided
-                                    </button>
+                                    </ShadcnButton>
                                 </div>
                             </div>
                         ) : null}
 
-                        <div className="project-inspector-grid">
-                            <div><span>Project ID</span><strong>{project?.project_id || '-'}</strong></div>
-                            <div><span>Region</span><strong>{projectRegion || '-'}</strong></div>
-                            <div><span>Sponsor</span><strong>{project?.project_sponsor || '-'}</strong></div>
-                            <div><span>Start date</span><strong>{formatDisplayDate(project?.project_start_date)}</strong></div>
-                            <div><span>Deadline</span><strong>{formatDisplayDate(effectiveDeadline)}</strong></div>
-                            <div><span>Source</span><strong>{project?.source || '-'}</strong></div>
-                            <div><span>Deadline source</span><strong>{project?.deadline_source || '-'}</strong></div>
-                            <div><span>Scraped deadline</span><strong>{formatDisplayDate(project?.scraped_deadline || project?.project_end_date)}</strong></div>
-                            <div><span>Manual deadline</span><strong>{formatDisplayDate(project?.manual_deadline)}</strong></div>
+                        <div className="grid grid-cols-2 gap-3">
+                            <div className="flex flex-col gap-1 rounded-lg bg-muted p-3"><span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Project ID</span><strong className="text-sm font-medium text-foreground">{project?.project_id || '-'}</strong></div>
+                            <div className="flex flex-col gap-1 rounded-lg bg-muted p-3"><span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Region</span><strong className="text-sm font-medium text-foreground">{projectRegion || '-'}</strong></div>
+                            <div className="flex flex-col gap-1 rounded-lg bg-muted p-3"><span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Sponsor</span><strong className="text-sm font-medium text-foreground">{project?.project_sponsor || '-'}</strong></div>
+                            <div className="flex flex-col gap-1 rounded-lg bg-muted p-3"><span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Start date</span><strong className="text-sm font-medium text-foreground">{formatDisplayDate(project?.project_start_date)}</strong></div>
+                            <div className="flex flex-col gap-1 rounded-lg bg-muted p-3"><span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Deadline</span><strong className="text-sm font-medium text-foreground">{formatDisplayDate(effectiveDeadline)}</strong></div>
+                            <div className="flex flex-col gap-1 rounded-lg bg-muted p-3"><span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Source</span><strong className="text-sm font-medium text-foreground">{project?.source || '-'}</strong></div>
+                            <div className="flex flex-col gap-1 rounded-lg bg-muted p-3"><span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Deadline source</span><strong className="text-sm font-medium text-foreground">{project?.deadline_source || '-'}</strong></div>
+                            <div className="flex flex-col gap-1 rounded-lg bg-muted p-3"><span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Scraped deadline</span><strong className="text-sm font-medium text-foreground">{formatDisplayDate(project?.scraped_deadline || project?.project_end_date)}</strong></div>
+                            <div className="flex flex-col gap-1 rounded-lg bg-muted p-3"><span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Manual deadline</span><strong className="text-sm font-medium text-foreground">{formatDisplayDate(project?.manual_deadline)}</strong></div>
                         </div>
 
-                        <div className="project-inspector-deadline-editor">
-                            <div>
-                                <h3>Manual deadline</h3>
-                                <p>{canEditDeadline ? 'Override the scraped deadline when analyst review requires a correction.' : 'Only admins and managers can edit the deadline.'}</p>
-                            </div>
-                            <div className="project-inspector-deadline-form">
-                                <input
+                        <div className="flex flex-col gap-2">
+                            <h3 className="text-sm font-semibold text-foreground">Manual deadline</h3>
+                            <p className="text-xs text-muted-foreground">{canEditDeadline ? 'Override the scraped deadline when analyst review requires a correction.' : 'Only admins and managers can edit the deadline.'}</p>
+                            <div className="flex items-end gap-2">
+                                <ShadcnInput
                                     type="date"
                                     name="manualDeadline"
                                     aria-label="Manual deadline"
                                     value={deadlineInput}
                                     onChange={(e) => setDeadlineInput(e.target.value)}
                                     disabled={!canEditDeadline || savingDeadline}
+                                    className="w-auto"
                                 />
-                                <button
+                                <ShadcnButton
                                     type="button"
-                                    className="profile-btn profile-btn-primary"
+                                    size="sm"
                                     onClick={handleDeadlineSave}
                                     disabled={!canEditDeadline || savingDeadline}
                                 >
                                     {savingDeadline ? 'Saving...' : 'Save deadline'}
-                                </button>
+                                </ShadcnButton>
                             </div>
                             {project?.deadline_updated_by || project?.deadline_updated_at ? (
-                                <p className="project-inspector-deadline-meta">
+                                <p className="text-xs text-muted-foreground">
                                     {project?.deadline_updated_by ? `Updated by ${project.deadline_updated_by}` : 'Deadline updated'}
                                     {project?.deadline_updated_at ? ` on ${formatDisplayDate(project.deadline_updated_at)}` : ''}
                                 </p>
                             ) : null}
                         </div>
 
-                        <div className="project-inspector-links">
-                            <h3>Links</h3>
-                            <div className="project-inspector-link-list">
-                                {project?.project_url ? <a href={project.project_url} target="_blank" rel="noreferrer">Open source listing</a> : <span>No project link</span>}
-                                {project?.document_url ? <a href={project.document_url} target="_blank" rel="noreferrer">Open document</a> : <span>No document link</span>}
+                        <div className="flex flex-col gap-3">
+                            <h3 className="text-sm font-semibold text-foreground">Links</h3>
+                            <div className="flex flex-col gap-2">
+                                {project?.project_url ? <a href={project.project_url} target="_blank" rel="noreferrer" className="flex min-h-9 items-center rounded-lg bg-muted px-3 text-sm font-medium text-foreground hover:text-primary">Open source listing</a> : <span className="flex min-h-9 items-center rounded-lg bg-muted px-3 text-sm text-muted-foreground">No project link</span>}
+                                {project?.document_url ? <a href={project.document_url} target="_blank" rel="noreferrer" className="flex min-h-9 items-center rounded-lg bg-muted px-3 text-sm font-medium text-foreground hover:text-primary">Open document</a> : <span className="flex min-h-9 items-center rounded-lg bg-muted px-3 text-sm text-muted-foreground">No document link</span>}
                             </div>
-                            <div className="project-inspector-actions">
-                                <button
-                                    type="button"
-                                    className="profile-btn profile-btn-primary"
-                                    onClick={handleSmartZiwSearch}
-                                    disabled={!project?.db_id || runningSmartZiw || project?.smart_ziw_status === 'queued' || project?.smart_ziw_status === 'running'}
-                                >
-                                    {runningSmartZiw || project?.smart_ziw_status === 'queued' || project?.smart_ziw_status === 'running' ? 'Generating...' : 'Smart-Ziw Agent'}
-                                </button>
-                                {project?.smart_ziw_status ? (
-                                    <span className={`project-smart-ziw-status is-${project.smart_ziw_status}`}>
-                                        {project?.smart_ziw_status === 'error' && project?.smart_ziw_error
-                                            ? `Last run failed: ${project.smart_ziw_error}`
-                                            : `Smart-Ziw status: ${project.smart_ziw_status}`}
-                                    </span>
-                                ) : null}
-                            </div>
+                            <Card>
+                                <CardHeader className="px-4 pb-2 pt-4">
+                                    <CardTitle className="text-sm font-semibold">Smart-Ziw Agent</CardTitle>
+                                </CardHeader>
+                                <CardContent className="flex flex-col items-start gap-2.5 px-4 pb-4">
+                                    <div className="project-inspector-actions">
+                                        <ShadcnButton
+                                            type="button"
+                                            onClick={handleSmartZiwSearch}
+                                            disabled={!project?.db_id || runningSmartZiw || project?.smart_ziw_status === 'queued' || project?.smart_ziw_status === 'running'}
+                                        >
+                                            {runningSmartZiw || project?.smart_ziw_status === 'queued' || project?.smart_ziw_status === 'running' ? 'Generating...' : 'Smart-Ziw Agent'}
+                                        </ShadcnButton>
+                                        {project?.smart_ziw_status ? (
+                                            <span className={`text-xs ${project?.smart_ziw_status === 'error' ? 'text-destructive' : project.smart_ziw_status === 'completed' ? 'text-green-600' : project.smart_ziw_status === 'queued' || project.smart_ziw_status === 'running' ? 'text-blue-600' : 'text-muted-foreground'}`}>
+                                                {project?.smart_ziw_status === 'error' && project?.smart_ziw_error
+                                                    ? `Last run failed: ${project.smart_ziw_error}`
+                                                    : `Smart-Ziw status: ${project.smart_ziw_status}`}
+                                            </span>
+                                        ) : null}
+                                    </div>
+                                </CardContent>
+                            </Card>
                         </div>
 
                         {keywords.length > 0 ? (
-                            <div className="project-inspector-keywords">
-                                <h3>Signals</h3>
-                                <div className="comments-keywords">
+                            <div className="flex flex-col gap-2">
+                                <h3 className="text-sm font-semibold text-foreground">Signals</h3>
+                                <div className="flex flex-wrap gap-1.5">
                                     {keywords.map((kw) => (
-                                        <span key={kw} className="keyword-tag">{kw}</span>
+                                        <Badge key={kw} variant="secondary" className="font-medium">{kw}</Badge>
                                     ))}
                                 </div>
                             </div>
@@ -1528,9 +1553,10 @@ function CommentsPanel({
                             </button>
                         </div>
                     </section>
-                </div>
-            </aside>
-        </div>
+                    </div>
+                </ScrollArea>
+            </SheetContent>
+        </Sheet>
         {previewAttachment ? (
             <div className="image-preview-backdrop" onClick={() => setPreviewAttachment(null)}>
                 <div className={`image-preview-dialog ${previewAttachment.kind === 'pdf' ? 'is-pdf' : ''}`} onClick={(e) => e.stopPropagation()}>
