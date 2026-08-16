@@ -9,7 +9,7 @@ import Sidebar, { Avatar, NAV_GROUPS } from './components/Sidebar';
 import AnalyticsPage from './components/AnalyticsPage';
 import { Search, Bell, RefreshCw, User, Shield, Settings, CalendarClock, LogOut, Mail, Lock, X, Paperclip, Send, ArrowUp, ArrowDown, ArrowUpDown, MoreVertical, PenLine, KeyRound, UserCheck, UserX, ChevronDown } from 'lucide-react';
 import { SidebarProvider } from '@/components/ui/sidebar';
-import { CommandDialog, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
+import { Command, CommandDialog, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button as ShadcnButton } from '@/components/ui/button';
@@ -4266,36 +4266,38 @@ export default function App() {
                 onMarkAllRead={markAllNotificationsAsRead}
             />
             <CommandDialog open={commandOpen} onOpenChange={setCommandOpen}>
-                <CommandInput placeholder="Type a command or search…" />
-                <CommandList>
-                    <CommandEmpty>No results found.</CommandEmpty>
-                    <CommandGroup heading="Navigation">
-                        {NAV_GROUPS.filter((group) => !group.adminOnly || authUser?.role === 'admin').flatMap((group) => group.items).map((item) => (
+                <Command>
+                    <CommandInput placeholder="Type a command or search…" />
+                    <CommandList>
+                        <CommandEmpty>No results found.</CommandEmpty>
+                        <CommandGroup heading="Navigation">
+                            {NAV_GROUPS.filter((group) => !group.adminOnly || authUser?.role === 'admin').flatMap((group) => group.items).map((item) => (
+                                <CommandItem
+                                    key={item.key}
+                                    onSelect={() => {
+                                        setCommandOpen(false);
+                                        navigate(item.key);
+                                    }}
+                                >
+                                    <item.icon />
+                                    <span>{item.label}</span>
+                                </CommandItem>
+                            ))}
+                        </CommandGroup>
+                        <CommandGroup heading="Search">
                             <CommandItem
-                                key={item.key}
                                 onSelect={() => {
                                     setCommandOpen(false);
-                                    navigate(item.key);
+                                    navigate('tenders');
+                                    focusTenderSearch();
                                 }}
                             >
-                                <item.icon />
-                                <span>{item.label}</span>
+                                <Search />
+                                <span>Search tenders</span>
                             </CommandItem>
-                        ))}
-                    </CommandGroup>
-                    <CommandGroup heading="Search">
-                        <CommandItem
-                            onSelect={() => {
-                                setCommandOpen(false);
-                                navigate('tenders');
-                                focusTenderSearch();
-                            }}
-                        >
-                            <Search />
-                            <span>Search tenders</span>
-                        </CommandItem>
-                    </CommandGroup>
-                </CommandList>
+                        </CommandGroup>
+                    </CommandList>
+                </Command>
             </CommandDialog>
         </div>
     );
