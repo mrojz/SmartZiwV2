@@ -15,7 +15,7 @@ import { TextArea } from '@/components/base/textarea/textarea';
 import { ModalOverlay, Modal, Dialog } from '@/components/application/modals/modal';
 import { Table } from '@/components/application/table/table';
 import { Dropdown } from '@/components/base/dropdown/dropdown';
-import Sidebar from './components/Sidebar';
+import Sidebar, { Avatar } from './components/Sidebar';
 import AnalyticsPage from './components/AnalyticsPage';
 
 const API = '/api';
@@ -1537,6 +1537,11 @@ function ProfilePage({ user, apiFetch, onUserUpdate }) {
     const [savingPassword, setSavingPassword] = useState(false);
     const name = `${firstName} ${lastName}`.trim() || 'User';
     const emailDomain = email?.split('@')[1] || 'No domain';
+    const formatDate = (iso) => {
+        if (!iso) return '—';
+        const d = new Date(iso);
+        return Number.isNaN(d.getTime()) ? '—' : d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+    };
     const passwordMismatch = Boolean(newPassword && newPassword !== confirmPassword);
 
     const saveProfile = async () => {
@@ -1576,54 +1581,81 @@ function ProfilePage({ user, apiFetch, onUserUpdate }) {
         <div className="layout-stack profile-page-v2">
             <PageHeader title="Profile settings" subtitle="Manage your personal information and account security." />
 
-            <div className="profile-layout">
-                <aside className="panel-card profile-summary-card">
-                    <div className="profile-summary-header">
-                        <div
-                            className="profile-summary-avatar"
-                            style={avatarUrl
-                                ? { backgroundImage: `url(${avatarUrl})`, backgroundSize: 'cover', backgroundPosition: 'center' }
-                                : { background: colorFromSeed(name || email) }}
-                            aria-hidden="true"
-                        >
-                            {!avatarUrl ? <span className="profile-summary-avatar-text">{initials(name, email)}</span> : null}
+            <div className="profile-page-grid">
+                <section className="panel-card profile-page-card">
+                    <div className="profile-page-identity">
+                        <div className="profile-page-avatar">
+                            <Avatar user={user} size={76} />
                         </div>
-                        <div className="profile-summary-copy">
-                            <h2 className="profile-summary-name">{name}</h2>
-                            <div className="profile-summary-secondary">
-                                <span className={`profile-summary-role-badge ${user?.role === 'admin' ? 'badge-admin' : user?.role === 'manager' ? 'badge-manager' : 'badge-user'}`}>
+                        <div className="profile-page-identity-copy">
+                            <h2 className="profile-page-name">{name}</h2>
+                            <div className="profile-page-secondary">
+                                <span className={`profile-page-role-badge ${user?.role === 'admin' ? 'badge-admin' : user?.role === 'manager' ? 'badge-manager' : 'badge-user'}`}>
                                     {user?.role === 'admin' ? 'Admin' : user?.role === 'manager' ? 'Manager' : 'User'}
                                 </span>
+                                <span className={`profile-page-status ${user?.isActive !== false ? 'is-active' : 'is-inactive'}`}>
+                                    <span className="profile-page-status-dot" />
+                                    {user?.isActive !== false ? 'Active' : 'Inactive'}
+                                </span>
                             </div>
-                            <p className="profile-summary-email">{email || 'No email address'}</p>
+                            <p className="profile-page-email">{email || 'No email address'}</p>
                         </div>
                     </div>
 
-                    <dl className="profile-summary-meta">
-                        <div className="profile-summary-meta-row">
-                            <dt className="profile-summary-meta-label">Status</dt>
-                            <dd className={`profile-summary-status ${user?.isActive !== false ? 'is-active' : 'is-inactive'}`}>
-                                <span className="profile-summary-status-dot" />
-                                {user?.isActive !== false ? 'Active' : 'Inactive'}
-                            </dd>
+                    <dl className="profile-page-meta">
+                        <div className="profile-page-meta-item">
+                            <dt className="profile-page-meta-label">Joined</dt>
+                            <dd className="profile-page-meta-value">{formatDate(user?.createdAt)}</dd>
                         </div>
-                        <div className="profile-summary-meta-row">
-                            <dt className="profile-summary-meta-label">Domain</dt>
-                            <dd className="profile-summary-meta-value">{emailDomain}</dd>
+                        <div className="profile-page-meta-item">
+                            <dt className="profile-page-meta-label">Last updated</dt>
+                            <dd className="profile-page-meta-value">{formatDate(user?.updatedAt)}</dd>
                         </div>
-                        <div className="profile-summary-meta-row">
-                            <dt className="profile-summary-meta-label">Role</dt>
-                            <dd className="profile-summary-meta-value" style={{ textTransform: 'capitalize' }}>{user?.role || 'user'}</dd>
+                        <div className="profile-page-meta-item">
+                            <dt className="profile-page-meta-label">Email domain</dt>
+                            <dd className="profile-page-meta-value">{emailDomain}</dd>
                         </div>
                     </dl>
-                </aside>
 
-                <div className="profile-content-column">
-                    <section className="panel-card profile-settings-card">
+                    <div className="profile-card-head">
+                        <div>
+                            <h3>Personal information</h3>
+                            <p className="profile-card-description">Update your account details.</p>
+                        </div>
+                    </div>
+
+                    <form
+                        onSubmit={(event) => {
+                            event.preventDefault();
+                            saveProfile();
+                        }}
+                    >
+                        <div className="profile-settings-grid">
+                            <div className="auth-field">
+                                <label className="auth-label" htmlFor="prof-firstname">First name</label>
+                                <input id="prof-firstname" name="firstName" className="auth-input" placeholder="First name" value={firstName} onChange={(e) => setFirstName(e.target.value)} />
+                            </div>
+                            <div className="auth-field">
+                                <label className="auth-label" htmlFor="prof-lastname">Last name</label>
+                                <input id="prof-lastname" name="lastName" className="auth-input" placeholder="Last name" value={lastName} onChange={(e) => setLastName(e.target.value)} />
+                            </div>
+                            <div className="auth-field profile-field-span-2">
+                                <label className="auth-label" htmlFor="prof-email">Email</label>
+                                <input id="prof-email" name="email" className="auth-input" type="email" placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} />
+                            </div>
+                        </div>
+
+                        <div className="profile-card-footer profile-card-footer-end">
+                            <button type="submit" className="profile-btn profile-btn-primary" disabled={savingProfile}>{savingProfile ? 'Saving...' : 'Save changes'}</button>
+                        </div>
+                    </form>
+                </section>
+
+                    <section className="panel-card profile-page-card">
                         <div className="profile-card-head">
                             <div>
-                                <h3>Personal information</h3>
-                                <p className="profile-card-description">Update your account details and public profile image.</p>
+                                <h3>Preferences</h3>
+                                <p className="profile-card-description">Choose how your public profile appears to others.</p>
                             </div>
                         </div>
 
@@ -1634,20 +1666,8 @@ function ProfilePage({ user, apiFetch, onUserUpdate }) {
                             }}
                         >
                             <div className="profile-settings-grid">
-                                <div className="auth-field">
-                                    <label className="auth-label" htmlFor="prof-firstname">First name</label>
-                                    <input id="prof-firstname" name="firstName" className="auth-input" placeholder="First name" value={firstName} onChange={(e) => setFirstName(e.target.value)} />
-                                </div>
-                                <div className="auth-field">
-                                    <label className="auth-label" htmlFor="prof-lastname">Last name</label>
-                                    <input id="prof-lastname" name="lastName" className="auth-input" placeholder="Last name" value={lastName} onChange={(e) => setLastName(e.target.value)} />
-                                </div>
                                 <div className="auth-field profile-field-span-2">
-                                    <label className="auth-label" htmlFor="prof-email">Email</label>
-                                    <input id="prof-email" name="email" className="auth-input" type="email" placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} />
-                                </div>
-                                <div className="auth-field profile-field-span-2">
-                                    <label className="auth-label" htmlFor="prof-avatar">Avatar URL</label>
+                                    <label className="auth-label" htmlFor="prof-avatar">Profile photo URL</label>
                                     <input id="prof-avatar" name="avatarUrl" className="auth-input" placeholder="https://..." value={avatarUrl} onChange={(e) => setAvatarUrl(e.target.value)} />
                                     <span className="profile-field-hint">Use a direct image link to update the profile photo preview.</span>
                                 </div>
@@ -1660,7 +1680,7 @@ function ProfilePage({ user, apiFetch, onUserUpdate }) {
                         </form>
                     </section>
 
-                    <section className="panel-card profile-settings-card">
+                    <section className="panel-card profile-page-card">
                         <div className="profile-card-head">
                             <div>
                                 <h3>Security</h3>
@@ -1705,7 +1725,6 @@ function ProfilePage({ user, apiFetch, onUserUpdate }) {
                             </div>
                         </form>
                     </section>
-                </div>
             </div>
 
             {msg ? <p className="profile-success-msg">{msg}</p> : null}

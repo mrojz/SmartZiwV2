@@ -60,7 +60,7 @@ function colorFromSeed(seed = '') {
     return `hsl(${hash} 45% 46%)`;
 }
 
-function Avatar({ user, size = 34 }) {
+export function Avatar({ user, size = 34 }) {
     if (user?.avatarUrl) {
         return (
             <img
