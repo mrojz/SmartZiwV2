@@ -136,6 +136,7 @@ export default function ProjectTable({
   autoFilterActive,
   onClearAutoFilter,
   onDismissAutoFilterToast,
+  onStartDemo,
 }) {
   const [sortCol, setSortCol] = useState('scraped_at');
   const [sortDir, setSortDir] = useState('desc');
@@ -685,6 +686,11 @@ export default function ProjectTable({
           <div className="table-empty-inner">
             <h3>No tenders match your filters</h3>
             <p>Try adjusting your search or filters</p>
+            {onStartDemo ? (
+              <button type="button" className="table-empty-demo-btn" onClick={onStartDemo}>
+                Show me around
+              </button>
+            ) : null}
           </div>
         </div>
       ) : null}

@@ -1,6 +1,7 @@
 
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import ProjectTable from './components/ProjectTable';
+import DemoWalkthrough from './components/DemoWalkthrough';
 import SyncPanel from './components/SyncPanel';
 import ConfigPanel from './components/ConfigPanel';
 import SchedulePanel from './components/SchedulePanel';
@@ -117,6 +118,12 @@ function buildNotificationStreamUrl() {
 }
 
 const ADMIN_ROUTES = ['admin', 'users', 'smart-ziw', 'llm-config'];
+
+const DEMO_STEPS = [
+    { target: '.usb-root', title: 'Filter bar', body: 'Narrow the list by source, region, deadline, or scrape date. The list defaults to the last 7 days.' },
+    { target: '.app-table tbody tr:first-child', title: 'Tender rows', body: 'Each row is a tender. Open it to see the full analysis, discussion, and next actions.' },
+    { target: '.project-inspector-actions button', title: 'Smart-Ziw agent', body: 'Ask the agent in a tender\'s discussion with @SmartZiw, or run the full analysis from here.' },
+];
 
 function normalizeRoute(rawRoute = '') {
     const route = String(rawRoute || '').replace(/^#/, '').replace(/^\//, '');
@@ -2708,6 +2715,7 @@ export default function App() {
     const [scrapedTo, setScrapedTo] = useState('');
     const [autoFilterApplied, setAutoFilterApplied] = useState(false);
     const [showAutoFilterToast, setShowAutoFilterToast] = useState(false);
+    const [demoOpen, setDemoOpen] = useState(false);
 
     const [authUser, setAuthUser] = useState(null);
     const [availableUsers, setAvailableUsers] = useState([]);
@@ -3926,6 +3934,7 @@ export default function App() {
                                         autoFilterActive={showAutoFilterToast}
                                         onClearAutoFilter={clearAutoFilter}
                                         onDismissAutoFilterToast={() => setShowAutoFilterToast(false)}
+                                        onStartDemo={() => setDemoOpen(true)}
                                         onProjectSelect={(project, projectIndex) => {
                                             setSelectedProject(project);
                                             setSelectedProjectIndex(projectIndex);
@@ -3982,6 +3991,7 @@ export default function App() {
             />
 
             <SyncPanel open={syncOpen} onClose={() => setSyncOpen(false)} onSyncDone={handleSyncDone} onSyncStart={snapshotBeforeSync} apiFetch={apiFetch} />
+            <DemoWalkthrough open={demoOpen} onClose={() => setDemoOpen(false)} steps={DEMO_STEPS} />
             <ConfigPanel open={configOpen} onClose={() => setConfigOpen(false)} apiFetch={apiFetch} />
             <SchedulePanel open={scheduleOpen} onClose={() => setScheduleOpen(false)} apiFetch={apiFetch} />
             <ReleaseNotesModal

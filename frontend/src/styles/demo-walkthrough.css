@@ -1,0 +1,101 @@
+/* Spotlight demo walkthrough overlay, spotlight hole, and tooltip card. */
+.demo-walkthrough-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+}
+
+.demo-walkthrough-hole {
+    position: fixed;
+    border-radius: 12px;
+    /* Amber ring around the target + dim everything outside the hole. */
+    box-shadow:
+        0 0 0 3px #d97706,
+        0 0 0 9999px rgba(2, 6, 23, 0.55);
+}
+
+.demo-walkthrough-card {
+    position: fixed;
+    z-index: 1;
+    width: 340px;
+    max-width: calc(100vw - 24px);
+    background: #ffffff;
+    color: #0f172a;
+    border: 1px solid #e2e8f0;
+    border-radius: 14px;
+    padding: 18px;
+    box-shadow: 0 12px 32px rgba(2, 6, 23, 0.25);
+}
+
+.demo-walkthrough-card-centered {
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+}
+
+.demo-walkthrough-counter {
+    margin: 0 0 6px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: #d97706;
+}
+
+.demo-walkthrough-title {
+    margin: 0 0 6px;
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: #0f172a;
+}
+
+.demo-walkthrough-body {
+    margin: 0 0 16px;
+    font-size: 0.9rem;
+    line-height: 1.5;
+    color: #334155;
+}
+
+.demo-walkthrough-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+.demo-walkthrough-btn {
+    border: 1px solid #cbd5e1;
+    background: #ffffff;
+    color: #334155;
+    border-radius: 8px;
+    padding: 7px 14px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.demo-walkthrough-btn:hover:not(:disabled) {
+    background: #f1f5f9;
+}
+
+.demo-walkthrough-btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+.demo-walkthrough-btn-skip {
+    margin-right: auto;
+    border: none;
+    background: transparent;
+    color: #64748b;
+}
+
+.demo-walkthrough-btn-next {
+    background: #d97706;
+    border-color: #d97706;
+    color: #ffffff;
+}
+
+.demo-walkthrough-btn-next:hover:not(:disabled) {
+    background: #b45309;
+    border-color: #b45309;
+}
