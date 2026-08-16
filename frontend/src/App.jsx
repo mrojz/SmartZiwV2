@@ -5,7 +5,7 @@ import DemoWalkthrough from './components/DemoWalkthrough';
 import SyncPanel from './components/SyncPanel';
 import ConfigPanel from './components/ConfigPanel';
 import SchedulePanel from './components/SchedulePanel';
-import { X, Mail01, Lock01, Edit01, Key01, UserX01, UserCheck01, SearchLg, Settings01, Clock, RefreshCw01, Bell01, User01, LogOut01, Shield01 } from '@untitledui/icons';
+import { X, Mail01, Lock01, Edit01, Key01, UserX01, UserCheck01, SearchLg } from '@untitledui/icons';
 import { Button } from '@/components/base/buttons/button';
 import { Input } from '@/components/base/input/input';
 import { InputBase } from '@/components/base/input/input';
@@ -15,12 +15,17 @@ import { TextArea } from '@/components/base/textarea/textarea';
 import { ModalOverlay, Modal, Dialog } from '@/components/application/modals/modal';
 import { Table } from '@/components/application/table/table';
 import { Dropdown } from '@/components/base/dropdown/dropdown';
-import { Tooltip, TooltipTrigger } from '@/components/base/tooltip/tooltip';
 import Sidebar, { Avatar, NAV_GROUPS } from './components/Sidebar';
 import AnalyticsPage from './components/AnalyticsPage';
-import { Search } from 'lucide-react';
+import { Search, Bell, RefreshCw, User, Shield, Settings, CalendarClock, LogOut } from 'lucide-react';
 import { SidebarProvider } from '@/components/ui/sidebar';
 import { CommandDialog, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
+import { toast } from 'sonner';
+import { Badge } from '@/components/ui/badge';
+import { Button as ShadcnButton } from '@/components/ui/button';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { Toaster } from '@/components/ui/sonner';
 
 const API = '/api';
 const APP_RELEASE_VERSION = '1.6';
@@ -791,14 +796,14 @@ function NotificationsPanel({ open, notifications, unreadCount, onClose, onOpenN
 
 function PageHeader({ title, subtitle, action, className = '' }) {
     return (
-        <div className={`layout-page-header ${className}`.trim()}>
-            <div className="layout-page-title-row">
-                <div className="layout-page-header-copy">
-                    <h1 className="layout-page-title">{title}</h1>
+        <div className={`mb-6 ${className}`.trim()}>
+            <div className="flex flex-wrap items-center justify-between gap-4">
+                <div className="min-w-0">
+                    <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
                 </div>
-                {action ? <div className="layout-page-header-action">{action}</div> : null}
+                {action ? <div className="flex items-center gap-2">{action}</div> : null}
             </div>
-            {subtitle ? <p className="layout-page-subtitle">{subtitle}</p> : null}
+            {subtitle ? <p className="mt-1.5 text-sm text-muted-foreground">{subtitle}</p> : null}
         </div>
     );
 }
@@ -3118,6 +3123,10 @@ export default function App() {
         setScrapedTo(fmt(today));
         setAutoFilterApplied(true);
         setShowAutoFilterToast(true);
+        toast('Showing tenders scraped in the last 7 days.', {
+            action: { label: 'Show all', onClick: clearAutoFilter },
+            closeButton: true,
+        });
     }, [projects, autoFilterApplied]);
 
     useEffect(() => {
@@ -3992,6 +4001,7 @@ export default function App() {
 
     return (
         <div className="layout-root">
+            <Toaster />
             <SidebarProvider open={!sidebarCollapsed} onOpenChange={(open) => setSidebarCollapsed(!open)}>
                 <Sidebar
                     user={authUser}
@@ -4013,32 +4023,52 @@ export default function App() {
                                         action={(
                                             <div className="header-actions dashboard-header-actions">
                                                 <div className="header-buttons dashboard-header-buttons">
-                                                    <Tooltip title="Notifications" placement="bottom">
-                                                        <TooltipTrigger className="header-icon-action-btn" aria-label="Notifications" onPress={() => setNotificationsOpen(true)}>
-                                                            <Bell01 aria-hidden="true" className="header-icon-action-icon" />
-                                                            {unreadNotificationCount ? <span className="header-notification-badge">{unreadNotificationCount}</span> : null}
-                                                        </TooltipTrigger>
-                                                    </Tooltip>
-                                                    <Tooltip title="Sync now" placement="bottom">
-                                                        <TooltipTrigger className="header-icon-action-btn" aria-label="Sync now" onPress={() => setSyncOpen(true)}>
-                                                            <RefreshCw01 aria-hidden="true" className="header-icon-action-icon" />
-                                                        </TooltipTrigger>
-                                                    </Tooltip>
-                                                    <Dropdown.Root>
-                                                        <Dropdown.Button className="header-avatar-btn" aria-label="Account menu">
-                                                            <Avatar user={authUser} size={32} />
-                                                        </Dropdown.Button>
-                                                        <Dropdown.Popover className="header-dropdown-menu">
-                                                            <Dropdown.Menu className="header-dropdown-menu-items" onAction={handleHeaderMenuAction}>
-                                                                <Dropdown.Item id="profile" icon={User01}>Profile</Dropdown.Item>
-                                                                {authUser.role === 'admin' ? <Dropdown.Item id="admin" icon={Shield01}>Admin</Dropdown.Item> : null}
-                                                                <Dropdown.Item id="settings" icon={Settings01}>Settings</Dropdown.Item>
-                                                                <Dropdown.Item id="schedule" icon={Clock}>Schedule</Dropdown.Item>
-                                                                <Dropdown.Separator />
-                                                                <Dropdown.Item id="logout" icon={LogOut01}>Logout</Dropdown.Item>
-                                                            </Dropdown.Menu>
-                                                        </Dropdown.Popover>
-                                                    </Dropdown.Root>
+                                                    <TooltipProvider>
+                                                        <Tooltip>
+                                                            <TooltipTrigger asChild>
+                                                                <ShadcnButton variant="ghost" size="icon" className="relative" aria-label="Notifications" onClick={() => setNotificationsOpen(true)}>
+                                                                    <Bell className="h-5 w-5" />
+                                                                    {unreadNotificationCount ? <Badge variant="destructive" className="absolute -right-1 -top-1 h-5 min-w-5 items-center justify-center rounded-full px-1 text-[10px] leading-none">{unreadNotificationCount}</Badge> : null}
+                                                                </ShadcnButton>
+                                                            </TooltipTrigger>
+                                                            <TooltipContent>Notifications</TooltipContent>
+                                                        </Tooltip>
+                                                        <Tooltip>
+                                                            <TooltipTrigger asChild>
+                                                                <ShadcnButton variant="ghost" size="icon" aria-label="Sync now" onClick={() => setSyncOpen(true)}>
+                                                                    <RefreshCw className="h-5 w-5" />
+                                                                </ShadcnButton>
+                                                            </TooltipTrigger>
+                                                            <TooltipContent>Sync now</TooltipContent>
+                                                        </Tooltip>
+                                                    </TooltipProvider>
+                                                    <DropdownMenu>
+                                                        <DropdownMenuTrigger asChild>
+                                                            <ShadcnButton variant="ghost" size="icon" className="rounded-full" aria-label="Account menu">
+                                                                <Avatar user={authUser} size={32} />
+                                                            </ShadcnButton>
+                                                        </DropdownMenuTrigger>
+                                                        <DropdownMenuContent align="end">
+                                                            <DropdownMenuItem onSelect={() => handleHeaderMenuAction('profile')}>
+                                                                <User className="mr-2 h-4 w-4" />Profile
+                                                            </DropdownMenuItem>
+                                                            {authUser.role === 'admin' ? (
+                                                                <DropdownMenuItem onSelect={() => handleHeaderMenuAction('admin')}>
+                                                                    <Shield className="mr-2 h-4 w-4" />Admin
+                                                                </DropdownMenuItem>
+                                                            ) : null}
+                                                            <DropdownMenuItem onSelect={() => handleHeaderMenuAction('settings')}>
+                                                                <Settings className="mr-2 h-4 w-4" />Settings
+                                                            </DropdownMenuItem>
+                                                            <DropdownMenuItem onSelect={() => handleHeaderMenuAction('schedule')}>
+                                                                <CalendarClock className="mr-2 h-4 w-4" />Schedule
+                                                            </DropdownMenuItem>
+                                                            <DropdownMenuSeparator />
+                                                            <DropdownMenuItem onSelect={() => handleHeaderMenuAction('logout')}>
+                                                                <LogOut className="mr-2 h-4 w-4" />Logout
+                                                            </DropdownMenuItem>
+                                                        </DropdownMenuContent>
+                                                    </DropdownMenu>
                                                 </div>
                                             </div>
                                         )}
@@ -4110,7 +4140,6 @@ export default function App() {
                                         onClearActiveProject={clearActiveProject}
                                         autoFilterActive={showAutoFilterToast}
                                         onClearAutoFilter={clearAutoFilter}
-                                        onDismissAutoFilterToast={() => setShowAutoFilterToast(false)}
                                         onStartDemo={() => setDemoOpen(true)}
                                         onProjectSelect={(project, projectIndex) => {
                                             setSelectedProject(project);

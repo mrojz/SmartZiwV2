@@ -349,7 +349,6 @@ export default function UnifiedSearchBar({
     // auto-filter
     autoFilterActive,
     onClearAutoFilter,
-    onDismissAutoFilterToast,
 }) {
     const [input, setInput] = useState('');
     const [showDrop, setShowDrop] = useState(false);
@@ -566,17 +565,6 @@ export default function UnifiedSearchBar({
 
     return (
         <div className="usb-root">
-            {/* ── Auto-filter notice ─────────────────────────────── */}
-            {autoFilterActive && (
-                <div className="usb-auto-filter-toast" role="status" aria-live="polite">
-                    <span className="usb-auto-filter-toast-content">
-                        <span className="usb-auto-filter-icon" aria-hidden="true">⏱</span>
-                        Showing tenders scraped in the last 7 days.
-                    </span>
-                    <button type="button" className="usb-auto-filter-clear" onClick={onClearAutoFilter}>Show all</button>
-                    <button type="button" className="usb-auto-filter-dismiss" onClick={onDismissAutoFilterToast} aria-label="Dismiss notice">×</button>
-                </div>
-            )}
 
             {/* ── Primary row ─────────────────────────────────────── */}
             <div className="usb-primary-row">

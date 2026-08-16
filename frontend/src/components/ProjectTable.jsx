@@ -135,7 +135,6 @@ export default function ProjectTable({
   onClearActiveProject,
   autoFilterActive,
   onClearAutoFilter,
-  onDismissAutoFilterToast,
   onStartDemo,
 }) {
   const [sortCol, setSortCol] = useState('scraped_at');
@@ -462,7 +461,6 @@ export default function ProjectTable({
           allProjects={allProjects}
           autoFilterActive={autoFilterActive}
           onClearAutoFilter={onClearAutoFilter}
-          onDismissAutoFilterToast={onDismissAutoFilterToast}
         />
       </div>
 
