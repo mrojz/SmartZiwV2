@@ -1,7 +1,10 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
+import { ArrowDown, ArrowUp, ArrowUpDown } from 'lucide-react';
 import ContextMenu from './ContextMenu';
 import UnifiedSearchBar from './UnifiedSearchBar';
-import { Table } from '@/components/application/table/table';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 
 const ROWS_PER_PAGE_OPTIONS = [25, 50, 100];
 
@@ -258,9 +261,11 @@ export default function ProjectTable({
   const startItem = sorted.length === 0 ? 0 : page * rowsPerPage + 1;
   const endItem = Math.min((page + 1) * rowsPerPage, sorted.length);
 
-  const sortDescriptor = sortCol
-    ? { column: sortCol, direction: sortDir === 'asc' ? 'ascending' : 'descending' }
-    : undefined;
+  const handleSortClick = (key) => {
+    if (sortCol !== key) handleSortChange({ column: key, direction: 'ascending' });
+    else handleSortChange({ column: key, direction: sortDir === 'asc' ? 'descending' : 'ascending' });
+  };
+
   const tableBodyKey = useMemo(() => {
     const selectedKey = Array.from(selectedRowIds).sort().join('|');
     return `${page}:${rowsPerPage}:${selectedKey}:${focusedRowIndex ?? ''}:${activeProjectId ?? ''}`;
@@ -420,297 +425,322 @@ export default function ProjectTable({
 
 
   return (
-    <div className="table-wrapper table-surface table-workspace" tabIndex={0} onKeyDown={handleTableKeyDown}>
-      <div className="table-toolbar table-toolbar-card">
-        <UnifiedSearchBar
-          chips={chips}
-          onChipsChange={onChipsChange}
-          freeText={freeText}
-          onFreeTextChange={onFreeTextChange}
-          source={source}
-          onSourceChange={onSourceChange}
-          sources={sources}
-          region={region}
-          onRegionChange={onRegionChange}
-          regions={regions}
-          continent={continent}
-          onContinentChange={onContinentChange}
-          continents={continents}
-          verified={verified}
-          onVerifiedChange={onVerifiedChange}
-          decision={decision}
-          onDecisionChange={onDecisionChangeFilter}
-          deadlineFrom={deadlineFrom}
-          deadlineTo={deadlineTo}
-          onDeadlineFromChange={onDeadlineFromChange}
-          onDeadlineToChange={onDeadlineToChange}
-          scrapedFrom={scrapedFrom}
-          scrapedTo={scrapedTo}
-          onScrapedFromChange={onScrapedFromChange}
-          onScrapedToChange={onScrapedToChange}
-          expiringSoonOnly={expiringSoonOnly}
-          expiringSoonDays={expiringSoonDays}
-          onToggleExpiringSoon={onToggleExpiringSoon}
-          onExpiringSoonDaysChange={onExpiringSoonDaysChange}
-          savedSearches={savedSearches}
-          onSaveCurrentSearch={onSaveCurrentSearch}
-          onApplySavedSearch={onApplySavedSearch}
-          onDeleteSavedSearch={onDeleteSavedSearch}
-          resultCount={projects.length}
-          onClearAll={onClearFilters}
-          allProjects={allProjects}
-          autoFilterActive={autoFilterActive}
-          onClearAutoFilter={onClearAutoFilter}
-        />
-      </div>
+    <div className="space-y-4" tabIndex={0} onKeyDown={handleTableKeyDown}>
+      <UnifiedSearchBar
+        chips={chips}
+        onChipsChange={onChipsChange}
+        freeText={freeText}
+        onFreeTextChange={onFreeTextChange}
+        source={source}
+        onSourceChange={onSourceChange}
+        sources={sources}
+        region={region}
+        onRegionChange={onRegionChange}
+        regions={regions}
+        continent={continent}
+        onContinentChange={onContinentChange}
+        continents={continents}
+        verified={verified}
+        onVerifiedChange={onVerifiedChange}
+        decision={decision}
+        onDecisionChange={onDecisionChangeFilter}
+        deadlineFrom={deadlineFrom}
+        deadlineTo={deadlineTo}
+        onDeadlineFromChange={onDeadlineFromChange}
+        onDeadlineToChange={onDeadlineToChange}
+        scrapedFrom={scrapedFrom}
+        scrapedTo={scrapedTo}
+        onScrapedFromChange={onScrapedFromChange}
+        onScrapedToChange={onScrapedToChange}
+        expiringSoonOnly={expiringSoonOnly}
+        expiringSoonDays={expiringSoonDays}
+        onToggleExpiringSoon={onToggleExpiringSoon}
+        onExpiringSoonDaysChange={onExpiringSoonDaysChange}
+        savedSearches={savedSearches}
+        onSaveCurrentSearch={onSaveCurrentSearch}
+        onApplySavedSearch={onApplySavedSearch}
+        onDeleteSavedSearch={onDeleteSavedSearch}
+        resultCount={projects.length}
+        onClearAll={onClearFilters}
+        allProjects={allProjects}
+        autoFilterActive={autoFilterActive}
+        onClearAutoFilter={onClearAutoFilter}
+      />
 
       {selectedRowIds.size > 0 ? (
-        <div className="bulk-action-bar bulk-action-bar-sticky">
-          <div className="bulk-primary">
-            <span className="bulk-count">{selectedRowIds.size} project{selectedRowIds.size === 1 ? '' : 's'} selected</span>
-            <button className="bulk-clear" onClick={toggleSelectAll}>{allOnPageSelected ? 'Unselect visible' : 'Select visible'}</button>
-            <button className="bulk-clear" onClick={() => setSelectedRowIds(new Set())}>Clear</button>
+        <div className="sticky top-0 z-10 flex items-center justify-between gap-3 rounded-lg border bg-card px-4 py-2.5 shadow-sm">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-sm font-semibold">{selectedRowIds.size} project{selectedRowIds.size === 1 ? '' : 's'} selected</span>
+            <Button type="button" variant="ghost" size="sm" onClick={toggleSelectAll}>{allOnPageSelected ? 'Unselect visible' : 'Select visible'}</Button>
+            <Button type="button" variant="ghost" size="sm" onClick={() => setSelectedRowIds(new Set())}>Clear</Button>
           </div>
-          <div className="bulk-actions">
-            {canManageDecision ? <button className="bulk-btn go" onClick={() => handleBulkDecision('Go')}>Mark Go</button> : null}
-            {canManageDecision ? <button className="bulk-btn nogo" onClick={() => handleBulkDecision('No Go')}>Mark No Go</button> : null}
-            <button className="bulk-btn delete" onClick={() => { void handleBulkDelete(); }}>Delete</button>
+          <div className="flex items-center gap-2">
+            {canManageDecision ? <Button type="button" size="sm" className="bg-green-700 text-white hover:bg-green-800" onClick={() => handleBulkDecision('Go')}>Mark Go</Button> : null}
+            {canManageDecision ? <Button type="button" size="sm" variant="outline" className="text-red-700 hover:bg-red-50 hover:text-red-700" onClick={() => handleBulkDecision('No Go')}>Mark No Go</Button> : null}
+            <Button type="button" size="sm" variant="destructive" onClick={() => { void handleBulkDelete(); }}>Delete</Button>
           </div>
         </div>
       ) : null}
 
-      <Table aria-label="Projects table" className="app-table projects-table" sortDescriptor={sortDescriptor} onSortChange={handleSortChange}>
-        <Table.Header columns={columns}>
-          {(col) => (
-            <Table.Head id={col.key} isRowHeader={col.key === '_project'} allowsSorting={col.type !== 'none'} className={`${col.key === '_select' ? 'th-checkbox' : ''} ${col.key === '_actions' ? 'th-actions' : ''} ${col.key === '_deadline' ? 'th-has-date-filter' : ''} ${col.key === 'scraped_at' ? 'th-has-date-filter th-scraped-filter' : ''}`}>
-              <div className="th-content th-content-with-filter">
-                {col.key === '_select' ? <input ref={headerCheckboxRef} type="checkbox" name="selectVisibleRows" aria-label="Select all visible rows" checked={allOnPageSelected} aria-checked={someOnPageSelected ? 'mixed' : allOnPageSelected} className={someOnPageSelected ? 'is-indeterminate' : ''} onClick={(e) => e.stopPropagation()} onChange={toggleSelectAll} title="Select all visible rows" /> : <span>{col.label}</span>}
-              </div>
-            </Table.Head>
-          )}
-        </Table.Header>
+      <div className="overflow-hidden rounded-lg border bg-card shadow-sm">
 
-        <Table.Body key={tableBodyKey} items={pageData}>
-          {(p) => {
-            const realIndex = p?.__rowId ? (projectIndexByRowId.get(p.__rowId) ?? allProjects.indexOf(p)) : allProjects.indexOf(p);
-            const rowId = getProjectRowId(p, realIndex);
-            const isSelected = selectedRowIds.has(rowId);
-            const isVerified = p.ai_verified === 'Yes';
-            const displayName = p.project_name || p.project_description || '-';
-            const regionName = p.primary_region_name || getRegion(p.project_sponsor);
-            const sponsorLabel = formatPlaceLabel(p.project_sponsor || '-');
-            const regionLabel = regionName !== '-' ? formatPlaceLabel(regionName) : '-';
-            const rowEntityId = p.project_id || p.project_name || '';
+        <Table aria-label="Projects table" className="app-table projects-table">
+          <TableHeader>
+            <TableRow className="hover:bg-transparent">
+              {columns.map((col) => (
+                <TableHead
+                  key={col.key}
+                  className={`${col.key === '_select' ? 'th-checkbox' : ''} ${col.key === '_actions' ? 'th-actions' : ''} ${col.key === '_deadline' ? 'th-has-date-filter' : ''} ${col.key === 'scraped_at' ? 'th-has-date-filter th-scraped-filter' : ''} ${col.type !== 'none' ? 'cursor-pointer select-none' : ''}`}
+                  aria-sort={sortCol === col.key ? (sortDir === 'asc' ? 'ascending' : 'descending') : undefined}
+                  onClick={col.type !== 'none' ? () => handleSortClick(col.key) : undefined}
+                >
+                  {col.key === '_select' ? (
+                    <input ref={headerCheckboxRef} type="checkbox" name="selectVisibleRows" aria-label="Select all visible rows" checked={allOnPageSelected} aria-checked={someOnPageSelected ? 'mixed' : allOnPageSelected} className={someOnPageSelected ? 'is-indeterminate' : ''} onClick={(e) => e.stopPropagation()} onChange={toggleSelectAll} title="Select all visible rows" />
+                  ) : (
+                    <span className="inline-flex items-center gap-1.5">
+                      {col.label}
+                      {col.type !== 'none' ? (
+                        sortCol === col.key
+                          ? (sortDir === 'asc' ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />)
+                          : <ArrowUpDown className="h-3 w-3 opacity-60" />
+                      ) : null}
+                    </span>
+                  )}
+                </TableHead>
+              ))}
+            </TableRow>
+          </TableHeader>
 
-            return (
-              <Table.Row
-                id={rowId}
-                columns={columns}
-                onClick={(event) => handleRowClick(event, p, realIndex)}
-                className={`clickable-row ${p.decision === 'No Go' ? 'row-nogo' : ''} ${isSelected ? 'row-selected' : ''} ${rowEntityId && activeProjectId === rowEntityId ? 'row-active-view' : ''} ${focusedRowIndex === realIndex ? 'row-focused' : ''}`}
-              >
-                {(columnKey) => {
-                  const key = typeof columnKey === 'string' ? columnKey : (columnKey?.key || columnKey?.id || '');
+          <TableBody key={tableBodyKey}>
+            {pageData.map((p) => {
+              const realIndex = p?.__rowId ? (projectIndexByRowId.get(p.__rowId) ?? allProjects.indexOf(p)) : allProjects.indexOf(p);
+              const rowId = getProjectRowId(p, realIndex);
+              const isSelected = selectedRowIds.has(rowId);
+              const isVerified = p.ai_verified === 'Yes';
+              const displayName = p.project_name || p.project_description || '-';
+              const regionName = p.primary_region_name || getRegion(p.project_sponsor);
+              const sponsorLabel = formatPlaceLabel(p.project_sponsor || '-');
+              const regionLabel = regionName !== '-' ? formatPlaceLabel(regionName) : '-';
+              const rowEntityId = p.project_id || p.project_name || '';
 
-                  if (key === '_select') {
-                    return (
-                      <Table.Cell
-                        className="td-checkbox"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (e.target instanceof Element && e.target.closest('input')) return;
-                          toggleSelectRow(p, realIndex, e.shiftKey);
-                        }}
-                      >
-                        <input
-                          type="checkbox"
-                          name={`select-${rowId}`}
-                          aria-label={`Select ${displayName}`}
-                          checked={isSelected}
-                          aria-checked={isSelected}
-                          className={isSelected ? 'is-checked' : ''}
-                          onClick={(e) => e.stopPropagation()}
-                          onChange={(e) => toggleSelectRow(p, realIndex, e.nativeEvent.shiftKey)}
-                        />
-                      </Table.Cell>
-                    );
-                  }
+              return (
+                <TableRow
+                  key={rowId}
+                  onClick={(event) => handleRowClick(event, p, realIndex)}
+                  className={`clickable-row ${p.decision === 'No Go' ? 'row-nogo' : ''} ${isSelected ? 'row-selected' : ''} ${rowEntityId && activeProjectId === rowEntityId ? 'row-active-view' : ''} ${focusedRowIndex === realIndex ? 'row-focused' : ''}`}
+                >
+                  {columns.map((columnKey) => {
+                    const key = typeof columnKey === 'string' ? columnKey : (columnKey?.key || columnKey?.id || '');
 
-                  if (key === '_project') {
-                    const assignedUsers = p.assigned_users || [];
-                    return (
-                      <Table.Cell className="td-project">
-                        <div className="project-cell">
-                          <span className="project-cell-name" title={displayName}>{displayName}</span>
-                          <span className="project-cell-meta">
-                            <span className={`badge badge-source badge-source-sm ${sourceClass(p.source)}`}>{p.source}</span>
-                          </span>
-                          <div className="project-row-signals">
-                            {(p.comment_count || 0) > 0 ? (
-                              <span className="project-row-signal" title="Comments">
-                                <CommentSignalIcon />
-                                <span>{p.comment_count || 0}</span>
-                              </span>
-                            ) : null}
-                            {(p.comment_document_count || 0) > 0 ? (
-                              <span className="project-row-signal" title="Comment attachments">
-                                <AttachmentSignalIcon />
-                                <span>{p.comment_document_count || 0}</span>
-                              </span>
-                            ) : null}
-                            {assignedUsers.length ? (
-                              <span className="project-row-assignees" title={assignedUsers.map((user) => user.name || user.email).join(', ')}>
-                                <span className="project-row-assignees-label">Working on</span>
-                                <span className="project-row-assignee-stack">
-                                  {assignedUsers.slice(0, 3).map((user) => (
-                                    <span key={user.id} className="project-row-assignee" aria-label={user.name || user.email}>
-                                      {initials(user.name || '', user.email || '')}
-                                    </span>
-                                  ))}
-                                  {assignedUsers.length > 3 ? <span className="project-row-assignee project-row-assignee-more">+{assignedUsers.length - 3}</span> : null}
-                                </span>
-                              </span>
-                            ) : null}
-                          </div>
-                        </div>
-                      </Table.Cell>
-                    );
-                  }
-
-                  if (key === '_project_id') {
-                    return (
-                      <Table.Cell className="td-project-id">
-                        <span className="project-id-value" title={p.project_id || ''}>{p.project_id || '-'}</span>
-                      </Table.Cell>
-                    );
-                  }
-
-                  if (key === '_region') {
-                    return (
-                      <Table.Cell className="td-country td-region">
-                        <div className="country-cell">
-                          <span className="country-cell-name">{sponsorLabel}</span>
-                          {regionLabel !== '-' ? <span className="country-cell-region">{regionLabel}</span> : null}
-                        </div>
-                      </Table.Cell>
-                    );
-                  }
-
-                  if (key === '_published') {
-                    return <Table.Cell className="td-timeline">{formatDisplayDate(p.project_start_date)}</Table.Cell>;
-                  }
-
-                  if (key === '_deadline') {
-                    return <Table.Cell className="td-timeline">{formatDisplayDate(p.effective_deadline || p.manual_deadline || p.scraped_deadline || p.project_end_date)}</Table.Cell>;
-                  }
-
-                  if (key === 'matched_keywords') {
-                    return (
-                      <Table.Cell className="td-keywords">
-                        {p.matched_keywords ? (() => {
-                          const kws = p.matched_keywords.split(',').map((k) => k.trim()).filter(Boolean);
-                          const shown = kws.slice(0, 2);
-                          const remaining = kws.length - shown.length;
-                          return (
-                            <>
-                              {shown.map((kw) => <span key={kw} className="keyword-tag">{kw}</span>)}
-                              {remaining > 0 ? <span className="keyword-tag keyword-more" title={kws.slice(2).join(', ')}>+{remaining}</span> : null}
-                            </>
-                          );
-                        })() : <span className="text-muted">-</span>}
-                      </Table.Cell>
-                    );
-                  }
-
-                  if (key === '_decision') {
-                    return (
-                      <Table.Cell className="td-status">
-                        <div className="status-cell">
-                          <span className={`status-dot ${p.decision === 'Go' ? 'status-dot-positive' : p.decision === 'No Go' ? 'status-dot-negative' : isVerified ? 'status-dot-warning' : 'status-dot-neutral'}`} title={isVerified ? 'AI Verified' : 'Not Verified'} />
-                          {p.decision ? <span className={`status-badge ${p.decision === 'Go' ? 'status-go' : 'status-nogo'}`}>{p.decision}</span> : <span className="status-badge status-pending">Pending</span>}
-                        </div>
-                      </Table.Cell>
-                    );
-                  }
-
-                  if (key === '_verification') {
-                    return (
-                      <Table.Cell className="td-verification">
-                        <span className={`verification-chip ${isVerified ? 'is-verified' : 'is-unverified'}`}>{isVerified ? 'Verified' : 'Unverified'}</span>
-                      </Table.Cell>
-                    );
-                  }
-
-                  if (key === 'scraped_at') {
-                    return <Table.Cell className="td-scraped" title={p.scraped_at ? new Date(p.scraped_at).toLocaleString() : ''}>{formatDisplayDate(p.scraped_at)}</Table.Cell>;
-                  }
-
-                  return (
-                    <Table.Cell className="td-actions" onClick={(e) => e.stopPropagation()}>
-                      {p.project_url ? (
-                        <button
-                          className="context-trigger context-trigger-open"
+                    if (key === '_select') {
+                      return (
+                        <TableCell
+                          key={key}
+                          className="td-checkbox"
                           onClick={(e) => {
                             e.stopPropagation();
-                            window.open(p.project_url, '_blank');
+                            if (e.target instanceof Element && e.target.closest('input')) return;
+                            toggleSelectRow(p, realIndex, e.shiftKey);
                           }}
-                          title="Open project"
                         >
-                          {'->'}
-                        </button>
-                      ) : null}
-                      <button
-                        className="context-trigger"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          const rect = e.currentTarget.getBoundingClientRect();
-                          setContextMenu({ rect, project: p, realIndex });
-                        }}
-                        title="Actions"
-                      >
-                        ...
-                      </button>
-                    </Table.Cell>
-                  );
-                }}
-              </Table.Row>
-            );
-          }}
-        </Table.Body>
-      </Table>
+                          <input
+                            type="checkbox"
+                            name={`select-${rowId}`}
+                            aria-label={`Select ${displayName}`}
+                            checked={isSelected}
+                            aria-checked={isSelected}
+                            className={isSelected ? 'is-checked' : ''}
+                            onClick={(e) => e.stopPropagation()}
+                            onChange={(e) => toggleSelectRow(p, realIndex, e.nativeEvent.shiftKey)}
+                          />
+                        </TableCell>
+                      );
+                    }
 
-      {pageData.length === 0 ? (
-        <div className="table-empty-state">
-          <div className="table-empty-inner">
-            <h3>No tenders match your filters</h3>
-            <p>Try adjusting your search or filters</p>
+                    if (key === '_project') {
+                      const assignedUsers = p.assigned_users || [];
+                      return (
+                        <TableCell key={key} className="td-project">
+                          <div className="project-cell">
+                            <span className="project-cell-name" title={displayName}>{displayName}</span>
+                            <span className="project-cell-meta">
+                              <Badge variant="outline" className={`badge badge-source badge-source-sm ${sourceClass(p.source)}`}>{p.source}</Badge>
+                            </span>
+                            <div className="project-row-signals">
+                              {(p.comment_count || 0) > 0 ? (
+                                <span className="project-row-signal" title="Comments">
+                                  <CommentSignalIcon />
+                                  <span>{p.comment_count || 0}</span>
+                                </span>
+                              ) : null}
+                              {(p.comment_document_count || 0) > 0 ? (
+                                <span className="project-row-signal" title="Comment attachments">
+                                  <AttachmentSignalIcon />
+                                  <span>{p.comment_document_count || 0}</span>
+                                </span>
+                              ) : null}
+                              {assignedUsers.length ? (
+                                <span className="project-row-assignees" title={assignedUsers.map((user) => user.name || user.email).join(', ')}>
+                                  <span className="project-row-assignees-label">Working on</span>
+                                  <span className="project-row-assignee-stack">
+                                    {assignedUsers.slice(0, 3).map((user) => (
+                                      <span key={user.id} className="project-row-assignee" aria-label={user.name || user.email}>
+                                        {initials(user.name || '', user.email || '')}
+                                      </span>
+                                    ))}
+                                    {assignedUsers.length > 3 ? <span className="project-row-assignee project-row-assignee-more">+{assignedUsers.length - 3}</span> : null}
+                                  </span>
+                                </span>
+                              ) : null}
+                            </div>
+                          </div>
+                        </TableCell>
+                      );
+                    }
+
+                    if (key === '_project_id') {
+                      return (
+                        <TableCell key={key} className="td-project-id">
+                          <span className="project-id-value" title={p.project_id || ''}>{p.project_id || '-'}</span>
+                        </TableCell>
+                      );
+                    }
+
+                    if (key === '_region') {
+                      return (
+                        <TableCell key={key} className="td-country td-region">
+                          <div className="country-cell">
+                            <span className="country-cell-name">{sponsorLabel}</span>
+                            {regionLabel !== '-' ? <span className="country-cell-region">{regionLabel}</span> : null}
+                          </div>
+                        </TableCell>
+                      );
+                    }
+
+                    if (key === '_published') {
+                      return <TableCell key={key} className="td-timeline">{formatDisplayDate(p.project_start_date)}</TableCell>;
+                    }
+
+                    if (key === '_deadline') {
+                      return <TableCell key={key} className="td-timeline">{formatDisplayDate(p.effective_deadline || p.manual_deadline || p.scraped_deadline || p.project_end_date)}</TableCell>;
+                    }
+
+                    if (key === 'matched_keywords') {
+                      return (
+                        <TableCell key={key} className="td-keywords">
+                          {p.matched_keywords ? (() => {
+                            const kws = p.matched_keywords.split(',').map((k) => k.trim()).filter(Boolean);
+                            const shown = kws.slice(0, 2);
+                            const remaining = kws.length - shown.length;
+                            return (
+                              <>
+                                {shown.map((kw) => <Badge key={kw} variant="outline" className="m-0.5 font-medium">{kw}</Badge>)}
+                                {remaining > 0 ? <Badge variant="secondary" className="m-0.5 font-medium" title={kws.slice(2).join(', ')}>+{remaining}</Badge> : null}
+                              </>
+                            );
+                          })() : <span className="text-muted-foreground">-</span>}
+                        </TableCell>
+                      );
+                    }
+
+                    if (key === '_decision') {
+                      return (
+                        <TableCell key={key} className="td-status">
+                          <div className="flex items-center gap-2">
+                            <span
+                              className={`h-1.5 w-1.5 shrink-0 rounded-full ${p.decision === 'Go' ? 'bg-green-600' : p.decision === 'No Go' ? 'bg-red-600' : isVerified ? 'bg-amber-600' : 'bg-muted-foreground/40'}`}
+                              title={isVerified ? 'AI Verified' : 'Not Verified'}
+                            />
+                            {p.decision ? (
+                              <Badge className={p.decision === 'Go' ? 'bg-green-700 text-white' : 'bg-red-700 text-white'}>{p.decision}</Badge>
+                            ) : (
+                              <Badge className="bg-amber-600 text-white">Pending</Badge>
+                            )}
+                          </div>
+                        </TableCell>
+                      );
+                    }
+
+                    if (key === '_verification') {
+                      return (
+                        <TableCell key={key} className="td-verification">
+                          {isVerified ? (
+                            <Badge className="bg-green-700 text-white">Verified</Badge>
+                          ) : (
+                            <Badge variant="secondary">Unverified</Badge>
+                          )}
+                        </TableCell>
+                      );
+                    }
+
+                    if (key === 'scraped_at') {
+                      return <TableCell key={key} className="td-scraped" title={p.scraped_at ? new Date(p.scraped_at).toLocaleString() : ''}>{formatDisplayDate(p.scraped_at)}</TableCell>;
+                    }
+
+                    return (
+                      <TableCell key={key} className="td-actions" onClick={(e) => e.stopPropagation()}>
+                        {p.project_url ? (
+                          <button
+                            className="context-trigger context-trigger-open"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              window.open(p.project_url, '_blank');
+                            }}
+                            title="Open project"
+                          >
+                            {'->'}
+                          </button>
+                        ) : null}
+                        <button
+                          className="context-trigger"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            const rect = e.currentTarget.getBoundingClientRect();
+                            setContextMenu({ rect, project: p, realIndex });
+                          }}
+                          title="Actions"
+                        >
+                          ...
+                        </button>
+                      </TableCell>
+                    );
+                  })}
+                </TableRow>
+              );
+            })}
+          </TableBody>
+        </Table>
+
+        {pageData.length === 0 ? (
+          <div className="border-t px-6 py-16 text-center">
+            <h3 className="text-lg font-semibold">No tenders match your filters</h3>
+            <p className="mt-1 text-sm text-muted-foreground">Try adjusting your search or filters</p>
             {onStartDemo ? (
-              <button type="button" className="table-empty-demo-btn" onClick={onStartDemo}>
+              <Button type="button" variant="outline" className="mt-4" onClick={onStartDemo}>
                 Show me around
-              </button>
+              </Button>
             ) : null}
           </div>
-        </div>
-      ) : null}
+        ) : null}
 
-      {sorted.length > 0 ? (
-        <div className="pagination-bar">
-          <div className="pagination-info">Showing <strong>{startItem}-{endItem}</strong> of <strong>{sorted.length}</strong></div>
-          <div className="pagination-controls">
-            <button className="pagination-btn" disabled={page === 0} onClick={() => setPage(0)} title="First page">{'<<'}</button>
-            <button className="pagination-btn" disabled={page === 0} onClick={() => setPage(page - 1)} title="Previous page">{'<'}</button>
-            <span className="pagination-pages">Page <strong>{page + 1}</strong> of <strong>{totalPages}</strong></span>
-            <button className="pagination-btn" disabled={page >= totalPages - 1} onClick={() => setPage(page + 1)} title="Next page">{'>'}</button>
-            <button className="pagination-btn" disabled={page >= totalPages - 1} onClick={() => setPage(totalPages - 1)} title="Last page">{'>>'}</button>
+        {sorted.length > 0 ? (
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t px-4 py-3">
+            <span className="text-sm text-muted-foreground">Showing <strong className="font-semibold text-foreground">{startItem}-{endItem}</strong> of <strong className="font-semibold text-foreground">{sorted.length}</strong></span>
+            <div className="flex items-center gap-1">
+              <Button type="button" variant="outline" size="icon" className="h-8 w-8" disabled={page === 0} onClick={() => setPage(0)} title="First page">{'<<'}</Button>
+              <Button type="button" variant="outline" size="icon" className="h-8 w-8" disabled={page === 0} onClick={() => setPage(page - 1)} title="Previous page">{'<'}</Button>
+              <span className="px-2 text-sm text-muted-foreground">Page <strong className="font-semibold text-foreground">{page + 1}</strong> of <strong className="font-semibold text-foreground">{totalPages}</strong></span>
+              <Button type="button" variant="outline" size="icon" className="h-8 w-8" disabled={page >= totalPages - 1} onClick={() => setPage(page + 1)} title="Next page">{'>'}</Button>
+              <Button type="button" variant="outline" size="icon" className="h-8 w-8" disabled={page >= totalPages - 1} onClick={() => setPage(totalPages - 1)} title="Last page">{'>>'}</Button>
+            </div>
+            <label className="flex items-center gap-2 text-sm text-muted-foreground">Rows:
+              <select name="projectRowsPerPage" aria-label="Projects rows per page" value={rowsPerPage} onChange={(e) => { setRowsPerPage(Number(e.target.value)); setPage(0); }} className="h-8 rounded-md border border-input bg-background px-2 text-sm text-foreground outline-none">
+                {ROWS_PER_PAGE_OPTIONS.map((n) => <option key={n} value={n}>{n}</option>)}
+              </select>
+            </label>
           </div>
-          <div className="pagination-size">
-            <label>Rows:</label>
-            <select name="projectRowsPerPage" aria-label="Projects rows per page" value={rowsPerPage} onChange={(e) => { setRowsPerPage(Number(e.target.value)); setPage(0); }}>
-              {ROWS_PER_PAGE_OPTIONS.map((n) => <option key={n} value={n}>{n}</option>)}
-            </select>
-          </div>
-        </div>
-      ) : null}
+        ) : null}
+      </div>
 
       {contextMenu ? (
         <ContextMenu

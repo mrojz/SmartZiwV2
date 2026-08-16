@@ -1,5 +1,12 @@
 import { useState, useRef, useEffect, useMemo, useCallback, useLayoutEffect } from 'react';
 import { createPortal } from 'react-dom';
+import { Search, X, ChevronDown, Check, Bookmark } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
+import { Command, CommandEmpty, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 
 /* ─── Structured chip parser (field:value tokens) ─────────────────── */
 const CHIP_FIELDS = new Set(['source', 'region', 'continent', 'country', 'keyword', 'ai', 'decision', 'id']);
@@ -30,16 +37,16 @@ function parseChipTokens(raw) {
 function SuggestionDrop({ suggestions, selectedIndex, onSelect, onHover, style, dropRef }) {
     if (!suggestions.length) return null;
     return createPortal(
-        <div className="usb-suggestion-drop" ref={dropRef} style={style}>
+        <div className="z-50 overflow-y-auto rounded-md border bg-popover text-popover-foreground shadow-md" ref={dropRef} style={style}>
             {suggestions.map((s, i) => (
                 <div
                     key={`${s.type}-${s.label}-${i}`}
-                    className={`usb-suggestion-item${i === selectedIndex ? ' is-selected' : ''}`}
+                    className={`flex cursor-default items-center justify-between gap-3 px-3 py-2 text-sm select-none${i === selectedIndex ? ' bg-accent text-accent-foreground' : ''}`}
                     onMouseDown={(e) => { e.preventDefault(); onSelect(s); }}
                     onMouseEnter={() => onHover(i)}
                 >
-                    <span className={`usb-sug-label${s.type === 'column' ? ' is-field' : ''}`}>{s.label}</span>
-                    <span className="usb-sug-desc">{s.desc}</span>
+                    <span className={s.type === 'column' ? 'font-semibold text-primary' : 'font-medium'}>{s.label}</span>
+                    <span className="text-xs text-muted-foreground">{s.desc}</span>
                 </div>
             ))}
         </div>,
@@ -51,95 +58,65 @@ function SuggestionDrop({ suggestions, selectedIndex, onSelect, onHover, style, 
 function FilterPopover({ label, options, value, onChange, searchable = true }) {
     const [open, setOpen] = useState(false);
     const [query, setQuery] = useState('');
-    const triggerRef = useRef(null);
-    const popRef = useRef(null);
-    const [pos, setPos] = useState({ top: 0, left: 0 });
 
     const filtered = useMemo(() => {
         if (!query.trim()) return options;
         return options.filter((o) => String(o.label || o).toLowerCase().includes(query.toLowerCase()));
     }, [options, query]);
 
-    useLayoutEffect(() => {
-        if (!open || !triggerRef.current) return;
-        const rect = triggerRef.current.getBoundingClientRect();
-        setPos({ top: rect.bottom + 6, left: rect.left });
-    }, [open]);
-
-    useEffect(() => {
-        if (!open) return;
-        const handler = (e) => {
-            if (!triggerRef.current?.contains(e.target) && !popRef.current?.contains(e.target)) {
-                setOpen(false);
-                setQuery('');
-            }
-        };
-        document.addEventListener('mousedown', handler);
-        return () => document.removeEventListener('mousedown', handler);
-    }, [open]);
-
     const isActive = Boolean(value);
     const currentLabel = value ? (options.find((o) => (o.value ?? o) === value)?.label ?? value) : null;
 
     return (
-        <div className="usb-filter-wrap">
-            <button
-                type="button"
-                ref={triggerRef}
-                className={`usb-filter-trigger${isActive ? ' is-active' : ''}`}
-                onClick={() => { setOpen((prev) => !prev); setQuery(''); }}
-                aria-pressed={isActive}
-            >
-                <span>{currentLabel ? `${label}: ${currentLabel}` : label}</span>
-                {isActive && (
-                    <span
-                        className="usb-filter-clear"
-                        role="button"
-                        aria-label={`Clear ${label} filter`}
-                        onMouseDown={(e) => { e.stopPropagation(); onChange(''); setOpen(false); }}
-                    >
-                        ×
-                    </span>
-                )}
-                {!isActive && <span className="usb-trigger-chevron" aria-hidden="true">▾</span>}
-            </button>
-            {open && createPortal(
-                <div className="usb-filter-popover" ref={popRef} style={{ top: pos.top, left: pos.left }}>
+        <Popover open={open} onOpenChange={(next) => { setOpen(next); if (!next) setQuery(''); }}>
+            <PopoverTrigger asChild>
+                <Button
+                    type="button"
+                    variant={isActive ? 'secondary' : 'outline'}
+                    size="sm"
+                    className="h-8 gap-1 text-sm"
+                    aria-pressed={isActive}
+                >
+                    <span className="max-w-44 truncate">{currentLabel ? `${label}: ${currentLabel}` : label}</span>
+                    {isActive ? (
+                        <span
+                            role="button"
+                            aria-label={`Clear ${label} filter`}
+                            tabIndex={-1}
+                            className="rounded-sm p-0.5 hover:bg-foreground/10"
+                            onMouseDown={(e) => { e.stopPropagation(); onChange(''); setOpen(false); setQuery(''); }}
+                        >
+                            <X className="h-3.5 w-3.5" />
+                        </span>
+                    ) : <ChevronDown className="h-3.5 w-3.5 opacity-60" />}
+                </Button>
+            </PopoverTrigger>
+            <PopoverContent align="start" className="w-60 p-0">
+                <Command>
                     {searchable && options.length > 8 && (
-                        <div className="usb-pop-search-wrap">
-                            <input
-                                className="usb-pop-search"
-                                type="text"
-                                placeholder={`Search ${label.toLowerCase()}…`}
-                                value={query}
-                                onChange={(e) => setQuery(e.target.value)}
-                                autoFocus
-                            />
-                        </div>
+                        <CommandInput placeholder={`Search ${label.toLowerCase()}…`} value={query} onValueChange={setQuery} autoFocus />
                     )}
-                    <div className="usb-pop-list">
+                    <CommandList>
+                        <CommandEmpty>No results</CommandEmpty>
                         {filtered.map((opt) => {
                             const optVal = opt.value ?? opt;
                             const optLabel = opt.label ?? opt;
                             const isSelected = value === optVal;
                             return (
-                                <button
+                                <CommandItem
                                     key={optVal}
-                                    type="button"
-                                    className={`usb-pop-option${isSelected ? ' is-selected' : ''}`}
-                                    onMouseDown={() => { onChange(isSelected ? '' : optVal); setOpen(false); setQuery(''); }}
+                                    value={optLabel}
+                                    onSelect={() => { onChange(isSelected ? '' : optVal); setOpen(false); setQuery(''); }}
                                 >
-                                    {isSelected && <span className="usb-pop-check" aria-hidden="true">✓</span>}
-                                    <span>{optLabel}</span>
-                                </button>
+                                    <Check className={`mr-2 h-4 w-4${isSelected ? '' : ' opacity-0'}`} />
+                                    <span className="truncate">{optLabel}</span>
+                                </CommandItem>
                             );
                         })}
-                        {filtered.length === 0 && <div className="usb-pop-empty">No results</div>}
-                    </div>
-                </div>,
-                document.body,
-            )}
-        </div>
+                    </CommandList>
+                </Command>
+            </PopoverContent>
+        </Popover>
     );
 }
 
@@ -148,28 +125,10 @@ function DateRangePopover({ label, from, to, onFromChange, onToChange }) {
     const [open, setOpen] = useState(false);
     const [draftFrom, setDraftFrom] = useState(from);
     const [draftTo, setDraftTo] = useState(to);
-    const triggerRef = useRef(null);
-    const popRef = useRef(null);
-    const [pos, setPos] = useState({ top: 0, left: 0 });
     const isActive = Boolean(from || to);
 
     useEffect(() => { setDraftFrom(from); }, [from]);
     useEffect(() => { setDraftTo(to); }, [to]);
-
-    useLayoutEffect(() => {
-        if (!open || !triggerRef.current) return;
-        const rect = triggerRef.current.getBoundingClientRect();
-        setPos({ top: rect.bottom + 6, left: rect.left });
-    }, [open]);
-
-    useEffect(() => {
-        if (!open) return;
-        const handler = (e) => {
-            if (!triggerRef.current?.contains(e.target) && !popRef.current?.contains(e.target)) setOpen(false);
-        };
-        document.addEventListener('mousedown', handler);
-        return () => document.removeEventListener('mousedown', handler);
-    }, [open]);
 
     const apply = () => {
         onFromChange(draftFrom);
@@ -192,39 +151,45 @@ function DateRangePopover({ label, from, to, onFromChange, onToChange }) {
         : null;
 
     return (
-        <div className="usb-filter-wrap">
-            <button
-                type="button"
-                ref={triggerRef}
-                className={`usb-filter-trigger${isActive ? ' is-active' : ''}`}
-                onClick={() => setOpen((p) => !p)}
-            >
-                <span>{activeLabel ? `${label}: ${activeLabel}` : label}</span>
-                {isActive ? (
-                    <span
-                        className="usb-filter-clear"
-                        role="button"
-                        aria-label={`Clear ${label} filter`}
-                        onMouseDown={(e) => { e.stopPropagation(); clear(); }}
-                    >×</span>
-                ) : <span className="usb-trigger-chevron" aria-hidden="true">▾</span>}
-            </button>
-            {open && createPortal(
-                <div className="usb-filter-popover usb-date-popover" ref={popRef} style={{ top: pos.top, left: pos.left }}>
-                    <div className="usb-date-grid">
-                        <label className="usb-date-label">From</label>
-                        <input className="usb-date-input" type="date" value={draftFrom} onChange={(e) => setDraftFrom(e.target.value)} />
-                        <label className="usb-date-label">To</label>
-                        <input className="usb-date-input" type="date" value={draftTo} onChange={(e) => setDraftTo(e.target.value)} />
+        <Popover open={open} onOpenChange={setOpen}>
+            <PopoverTrigger asChild>
+                <Button
+                    type="button"
+                    variant={isActive ? 'secondary' : 'outline'}
+                    size="sm"
+                    className="h-8 gap-1 text-sm"
+                >
+                    <span className="max-w-48 truncate">{activeLabel ? `${label}: ${activeLabel}` : label}</span>
+                    {isActive ? (
+                        <span
+                            role="button"
+                            aria-label={`Clear ${label} filter`}
+                            tabIndex={-1}
+                            className="rounded-sm p-0.5 hover:bg-foreground/10"
+                            onMouseDown={(e) => { e.stopPropagation(); clear(); }}
+                        >
+                            <X className="h-3.5 w-3.5" />
+                        </span>
+                    ) : <ChevronDown className="h-3.5 w-3.5 opacity-60" />}
+                </Button>
+            </PopoverTrigger>
+            <PopoverContent align="start" className="w-64">
+                <div className="grid gap-3">
+                    <div className="grid gap-1.5">
+                        <Label className="text-xs text-muted-foreground">From</Label>
+                        <Input type="date" value={draftFrom} onChange={(e) => setDraftFrom(e.target.value)} />
                     </div>
-                    <div className="usb-date-actions">
-                        <button type="button" className="usb-date-apply" onClick={apply}>Apply</button>
-                        <button type="button" className="usb-date-clear" onClick={clear}>Clear</button>
+                    <div className="grid gap-1.5">
+                        <Label className="text-xs text-muted-foreground">To</Label>
+                        <Input type="date" value={draftTo} onChange={(e) => setDraftTo(e.target.value)} />
                     </div>
-                </div>,
-                document.body,
-            )}
-        </div>
+                </div>
+                <div className="mt-3 flex gap-2">
+                    <Button type="button" size="sm" className="flex-1" onClick={apply}>Apply</Button>
+                    <Button type="button" size="sm" variant="outline" className="flex-1" onClick={clear}>Clear</Button>
+                </div>
+            </PopoverContent>
+        </Popover>
     );
 }
 
@@ -232,80 +197,55 @@ function DateRangePopover({ label, from, to, onFromChange, onToChange }) {
 function SavedSearchesPopover({ savedSearches, onSave, onApply, onDelete }) {
     const [open, setOpen] = useState(false);
     const [newName, setNewName] = useState('');
-    const triggerRef = useRef(null);
-    const popRef = useRef(null);
-    const [pos, setPos] = useState({ top: 0, left: 0 });
-
-    useLayoutEffect(() => {
-        if (!open || !triggerRef.current) return;
-        const rect = triggerRef.current.getBoundingClientRect();
-        setPos({ top: rect.bottom + 6, left: rect.right - 240 });
-    }, [open]);
-
-    useEffect(() => {
-        if (!open) return;
-        const handler = (e) => {
-            if (!triggerRef.current?.contains(e.target) && !popRef.current?.contains(e.target)) setOpen(false);
-        };
-        document.addEventListener('mousedown', handler);
-        return () => document.removeEventListener('mousedown', handler);
-    }, [open]);
 
     return (
-        <div className="usb-filter-wrap">
-            <button
-                type="button"
-                ref={triggerRef}
-                className="usb-saved-trigger"
-                onClick={() => setOpen((p) => !p)}
-                title="Saved searches"
-            >
-                <span className="usb-saved-icon" aria-hidden="true">⊛</span>
-                {savedSearches.length > 0 && <span className="usb-saved-count">{savedSearches.length}</span>}
-            </button>
-            {open && createPortal(
-                <div className="usb-filter-popover usb-saved-popover" ref={popRef} style={{ top: pos.top, left: pos.left }}>
-                    <div className="usb-saved-header">Saved searches</div>
-                    {savedSearches.length === 0 && (
-                        <div className="usb-pop-empty">No saved searches yet</div>
+        <Popover open={open} onOpenChange={setOpen}>
+            <PopoverTrigger asChild>
+                <Button type="button" variant="outline" size="sm" className="h-8 gap-1" title="Saved searches">
+                    <Bookmark className="h-3.5 w-3.5" />
+                    {savedSearches.length > 0 && (
+                        <span className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-semibold text-primary-foreground">{savedSearches.length}</span>
                     )}
-                    {savedSearches.map((item) => (
-                        <div key={item.id} className="usb-saved-item">
-                            <button
-                                type="button"
-                                className="usb-saved-name"
-                                onClick={() => { onApply(item.id); setOpen(false); }}
-                            >
-                                {item.name}
-                            </button>
-                            <button
-                                type="button"
-                                className="usb-saved-delete"
-                                onClick={() => onDelete(item.id)}
-                                aria-label={`Delete saved search ${item.name}`}
-                            >×</button>
-                        </div>
-                    ))}
-                    <div className="usb-saved-save-row">
-                        <input
-                            className="usb-saved-name-input"
-                            type="text"
-                            placeholder="Name this search…"
-                            value={newName}
-                            onChange={(e) => setNewName(e.target.value)}
-                            onKeyDown={(e) => { if (e.key === 'Enter' && newName.trim()) { onSave(newName.trim()); setNewName(''); setOpen(false); } }}
-                        />
+                </Button>
+            </PopoverTrigger>
+            <PopoverContent align="end" className="w-64">
+                <div className="text-sm font-medium">Saved searches</div>
+                {savedSearches.length === 0 && <div className="py-4 text-center text-sm text-muted-foreground">No saved searches yet</div>}
+                {savedSearches.map((item) => (
+                    <div key={item.id} className="flex items-center justify-between gap-2 text-sm">
                         <button
                             type="button"
-                            className="usb-saved-save-btn"
-                            disabled={!newName.trim()}
-                            onClick={() => { if (newName.trim()) { onSave(newName.trim()); setNewName(''); setOpen(false); } }}
-                        >Save</button>
+                            className="flex-1 truncate rounded-md px-2 py-1.5 text-left hover:bg-accent hover:text-accent-foreground"
+                            onClick={() => { onApply(item.id); setOpen(false); }}
+                        >
+                            {item.name}
+                        </button>
+                        <button
+                            type="button"
+                            className="rounded-md px-1.5 py-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                            onClick={() => onDelete(item.id)}
+                            aria-label={`Delete saved search ${item.name}`}
+                        >×</button>
                     </div>
-                </div>,
-                document.body,
-            )}
-        </div>
+                ))}
+                <div className="mt-2 flex gap-2 border-t pt-2">
+                    <Input
+                        className="h-8"
+                        type="text"
+                        placeholder="Name this search…"
+                        value={newName}
+                        onChange={(e) => setNewName(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === 'Enter' && newName.trim()) { onSave(newName.trim()); setNewName(''); setOpen(false); } }}
+                    />
+                    <Button
+                        type="button"
+                        size="sm"
+                        disabled={!newName.trim()}
+                        onClick={() => { if (newName.trim()) { onSave(newName.trim()); setNewName(''); setOpen(false); } }}
+                    >Save</Button>
+                </div>
+            </PopoverContent>
+        </Popover>
     );
 }
 
@@ -564,40 +504,44 @@ export default function UnifiedSearchBar({
     }
 
     return (
-        <div className="usb-root">
+        <div className="usb-root rounded-lg border bg-card p-4 shadow-sm">
 
             {/* ── Primary row ─────────────────────────────────────── */}
-            <div className="usb-primary-row">
+            <div className="flex flex-wrap items-center gap-2">
                 {/* Search input */}
                 <div
                     className="usb-search-area"
                     ref={inputAreaRef}
                     onClick={() => inputRef.current?.focus()}
                 >
-                    <span className="usb-search-icon" aria-hidden="true">
-                        <svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <circle cx="8.5" cy="8.5" r="5.5" />
-                            <line x1="13.5" y1="13.5" x2="18" y2="18" />
-                        </svg>
-                    </span>
+                    <Search className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
                     {chips.map((chip, i) => (
-                        <span key={`${chip.field}-${chip.value}-${i}`} className="usb-chip">
-                            <span className="usb-chip-field">{chip.field}</span>
-                            <span className="usb-chip-value">{chip.value}</span>
-                            <button className="usb-chip-remove" type="button" onClick={(e) => { e.stopPropagation(); removeChip(i); }} aria-label={`Remove ${chip.field}:${chip.value} filter`}>×</button>
-                        </span>
+                        <Badge key={`${chip.field}-${chip.value}-${i}`} variant="outline" className="h-6 shrink-0 gap-1 rounded-md px-1.5 font-normal">
+                            <span className="text-[0.62rem] font-bold uppercase tracking-wide text-primary">{chip.field}</span>
+                            <span className="text-xs font-medium text-foreground">{chip.value}</span>
+                            <button
+                                className="ml-0.5 rounded-sm text-muted-foreground hover:text-destructive"
+                                type="button"
+                                onClick={(e) => { e.stopPropagation(); removeChip(i); }}
+                                aria-label={`Remove ${chip.field}:${chip.value} filter`}
+                            >×</button>
+                        </Badge>
                     ))}
                     {freeText && (
-                        <span className="usb-chip usb-chip-free">
-                            <span className="usb-chip-value">{freeText}</span>
-                            <button className="usb-chip-remove" type="button" onClick={(e) => { e.stopPropagation(); onFreeTextChange(''); }} aria-label="Remove free text search">×</button>
-                        </span>
+                        <Badge variant="outline" className="h-6 shrink-0 gap-1 rounded-md px-1.5 font-normal">
+                            <span className="text-xs font-medium text-foreground">{freeText}</span>
+                            <button
+                                className="ml-0.5 rounded-sm text-muted-foreground hover:text-destructive"
+                                type="button"
+                                onClick={(e) => { e.stopPropagation(); onFreeTextChange(''); }}
+                                aria-label="Remove free text search"
+                            >×</button>
+                        </Badge>
                     )}
-                    <label className="visually-hidden" htmlFor={inputId}>Search projects and add structured filters</label>
-                    <input
+                    <label className="sr-only" htmlFor={inputId}>Search projects and add structured filters</label>
+                    <Input
                         id={inputId}
                         ref={inputRef}
-                        className="usb-text-input"
                         type="text"
                         name="projectSearch"
                         aria-label="Search projects"
@@ -609,24 +553,23 @@ export default function UnifiedSearchBar({
                         autoComplete="off"
                         autoCorrect="off"
                         spellCheck={false}
+                        className="h-9 flex-1 border-0 bg-transparent px-0 text-sm shadow-none focus-visible:ring-0"
                     />
                     {hasAnyFilter && (
                         <button
                             type="button"
-                            className="usb-clear-all-inline"
+                            className="shrink-0 rounded-sm p-1 text-muted-foreground hover:text-destructive"
                             onClick={onClearAll}
                             title="Clear all filters"
                             aria-label="Clear all filters"
                         >
-                            <svg width="13" height="13" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-                                <line x1="4" y1="4" x2="16" y2="16" /><line x1="16" y1="4" x2="4" y2="16" />
-                            </svg>
+                            <X className="h-3.5 w-3.5" />
                         </button>
                     )}
                 </div>
 
                 {/* Filter triggers */}
-                <div className="usb-filters-row">
+                <div className="flex flex-wrap items-center gap-1.5">
                     <FilterPopover label="Source" options={sourceOptions} value={source} onChange={onSourceChange} />
                     <FilterPopover label="Region" options={regionOptions} value={region} onChange={onRegionChange} searchable={regionOptions.length > 6} />
                     <FilterPopover label="Continent" options={continentOptions} value={continent} onChange={onContinentChange} />
@@ -641,28 +584,26 @@ export default function UnifiedSearchBar({
                     />
 
                     {/* Expiring soon toggle */}
-                    <div className="usb-filter-wrap usb-expiring-wrap">
-                        <label className={`usb-filter-trigger usb-expiring-trigger${expiringSoonOnly ? ' is-active' : ''}`}>
-                            <input
-                                type="number"
-                                className="usb-expiring-days"
-                                min={1}
-                                max={365}
-                                value={expiringSoonDays}
-                                onChange={(e) => onExpiringSoonDaysChange(e.target.value)}
-                                onClick={(e) => e.stopPropagation()}
-                                aria-label="Expiring soon days"
-                            />
-                            <span>day expiry</span>
-                            <input
-                                type="checkbox"
-                                className="usb-expiring-check"
-                                checked={expiringSoonOnly}
-                                onChange={onToggleExpiringSoon}
-                                aria-label="Expiring soon filter"
-                            />
-                        </label>
-                    </div>
+                    <label className={`flex h-8 items-center gap-1.5 rounded-md border px-2.5 text-sm transition-colors${expiringSoonOnly ? ' border-primary/40 bg-primary/5' : ' border-input bg-background'}`}>
+                        <input
+                            type="number"
+                            className="w-12 bg-transparent text-xs outline-none"
+                            min={1}
+                            max={365}
+                            value={expiringSoonDays}
+                            onChange={(e) => onExpiringSoonDaysChange(e.target.value)}
+                            onClick={(e) => e.stopPropagation()}
+                            aria-label="Expiring soon days"
+                        />
+                        <span className="text-xs text-muted-foreground">day expiry</span>
+                        <input
+                            type="checkbox"
+                            className="accent-primary"
+                            checked={expiringSoonOnly}
+                            onChange={onToggleExpiringSoon}
+                            aria-label="Expiring soon filter"
+                        />
+                    </label>
 
                     {/* Saved searches */}
                     <SavedSearchesPopover
@@ -675,31 +616,35 @@ export default function UnifiedSearchBar({
             </div>
 
             {/* ── Meta row: results count ─────────────────────────── */}
-            <div className="usb-meta-row">
-                <span className="usb-result-count">
-                    <strong>{resultCount}</strong> results
+            <div className="flex items-center justify-between gap-3 text-sm">
+                <span className="text-muted-foreground">
+                    <strong className="font-semibold text-foreground">{resultCount}</strong> results
                 </span>
-                <span className="usb-hint">Click row to inspect · Space selects · J/K moves</span>
+                <span className="hidden text-xs text-muted-foreground md:inline">Click row to inspect · Space selects · J/K moves</span>
                 {hasAnyFilter && (
-                    <button type="button" className="usb-clear-all-text" onClick={onClearAll}>
+                    <Button type="button" variant="ghost" size="sm" onClick={onClearAll}>
                         Clear all filters
-                    </button>
+                    </Button>
                 )}
             </div>
 
             {/* ── Active filter chips ─────────────────────────────── */}
             {activeFilterChips.length > 0 && (
-                <div className="usb-active-filters">
+                <div className="flex flex-wrap items-center gap-1.5">
                     {activeFilterChips.map((chip) => (
-                        <span key={chip.id} className={`usb-active-filter-chip${chip.isAuto ? ' is-auto' : ''}`}>
-                            <span>{chip.label}</span>
+                        <Badge
+                            key={chip.id}
+                            variant={chip.isAuto ? 'default' : 'outline'}
+                            className={`h-6 gap-0.5 rounded-full pr-1 font-medium${chip.isAuto ? ' bg-amber-600 text-white hover:bg-amber-600' : ''}`}
+                        >
+                            <span className="pl-1">{chip.label}</span>
                             <button
                                 type="button"
-                                className="usb-active-filter-remove"
+                                className="rounded-full p-0.5 leading-none hover:bg-foreground/15"
                                 onClick={chip.onRemove}
                                 aria-label={`Remove ${chip.label} filter`}
                             >×</button>
-                        </span>
+                        </Badge>
                     ))}
                 </div>
             )}
