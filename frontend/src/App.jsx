@@ -2278,6 +2278,24 @@ function AdminPage({ apiFetch, initialTab = 'users' }) {
                 )}
             />
 
+            <div className="stats-row admin-stats-row">
+                <div className="stat-card">
+                    <span className="stat-card-label">Total Users</span>
+                    <span className="stat-card-value">{users.length}</span>
+                    <span className="stat-card-sub">Accounts in the system</span>
+                </div>
+                <div className="stat-card">
+                    <span className="stat-card-label">Active Users</span>
+                    <span className="stat-card-value">{users.filter((u) => u.isActive).length}</span>
+                    <span className="stat-card-sub">Currently enabled</span>
+                </div>
+                <div className="stat-card">
+                    <span className="stat-card-label">Admins</span>
+                    <span className="stat-card-value">{users.filter((u) => u.role === 'admin').length}</span>
+                    <span className="stat-card-sub">Privileged accounts</span>
+                </div>
+            </div>
+
             <div className="admin-page-tabs">
                 <button type="button" className={`admin-page-tab ${adminTab === 'users' ? 'active' : ''}`} onClick={() => setAdminTab('users')}>User Management</button>
                 <button type="button" className={`admin-page-tab ${adminTab === 'release-notes' ? 'active' : ''}`} onClick={() => setAdminTab('release-notes')}>Release Notes</button>
@@ -2485,6 +2503,10 @@ function AdminPage({ apiFetch, initialTab = 'users' }) {
 
             {adminTab === 'release-notes' ? (
                 <div className="table-wrapper table-surface admin-release-surface">
+                    <div className="admin-release-head">
+                        <h3>Release Notes</h3>
+                        <p>Create new release notes or update existing versions.</p>
+                    </div>
                     {message ? <div className="admin-users-message">{message}</div> : null}
                     <div className="admin-release-layout">
                         <aside className="admin-release-list">

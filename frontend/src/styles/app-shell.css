@@ -363,29 +363,42 @@
 .admin-page-tabs {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
   padding: 4px;
   border: 1px solid var(--border-light);
-  border-radius: 10px;
-  background: var(--bg-surface);
+  border-radius: 12px;
+  background: #f8fafc;
   width: fit-content;
+  box-shadow: 0 1px 2px rgb(15 23 42 / 0.04);
 }
 
 .admin-page-tab {
-  min-height: 36px;
-  padding: 0 14px;
+  min-height: 34px;
+  padding: 0 16px;
   border: 0;
   border-radius: 8px;
-  background: transparent;
-  color: var(--text-secondary);
+  background: #ffffff;
+  color: #64748b;
   font: inherit;
+  font-size: 0.85rem;
   font-weight: 600;
   cursor: pointer;
+  transition: background 150ms ease, color 150ms ease;
+}
+
+.admin-page-tab:hover {
+  background: #f8fafc;
+  color: #334155;
 }
 
 .admin-page-tab.active {
-  background: var(--bg-muted);
-  color: var(--text-primary);
+  background: #0f172a;
+  color: #ffffff;
+}
+
+.admin-page-tab.active:hover {
+  background: #0f172a;
+  color: #ffffff;
 }
 
 .admin-release-layout {
@@ -426,7 +439,7 @@
 .admin-release-editor {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 16px;
 }
 
 .admin-release-textarea {
@@ -4117,6 +4130,57 @@ body {
   background: var(--bg-surface);
 }
 
+/* Admin metrics row (reuses dashboard .stat-card look) */
+.admin-stats-row {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-bottom: 0;
+}
+
+/* Admin users table: consistent padding + muted uppercase headers */
+.admin-users-table th {
+  padding: 13px 16px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: var(--text-muted);
+  background: var(--bg-muted);
+  border-bottom: 1px solid var(--border);
+}
+
+.admin-users-table td {
+  padding: 13px 16px;
+}
+
+/* Admin section headers (h3 pattern shared across tabs) */
+.admin-users-page .panel-card h3 {
+  margin: 0;
+  font-size: 1.15rem;
+  font-weight: 800;
+  color: var(--text-primary);
+}
+
+.admin-release-head {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 18px 20px 16px;
+  border-bottom: 1px solid var(--border-light);
+}
+
+.admin-release-head h3 {
+  margin: 0;
+  font-size: 1.15rem;
+  font-weight: 800;
+  color: var(--text-primary);
+}
+
+.admin-release-head p {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
 .admin-users-table tbody tr:nth-child(even) {
   background: color-mix(in srgb, var(--bg-zebra) 38%, white);
 }
@@ -4191,9 +4255,9 @@ body {
 }
 
 .admin-users-status-pill.status-active {
-  background: color-mix(in srgb, #22c55e 10%, white);
-  border-color: color-mix(in srgb, #16a34a 22%, var(--border-light));
-  color: #166534;
+  background: color-mix(in srgb, #15803d 10%, white);
+  border-color: color-mix(in srgb, #15803d 24%, var(--border-light));
+  color: #15803d;
 }
 
 .admin-users-status-pill.status-disabled {
