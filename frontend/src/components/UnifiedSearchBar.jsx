@@ -510,7 +510,7 @@ export default function UnifiedSearchBar({
             <div className="flex flex-wrap items-center gap-2">
                 {/* Search input */}
                 <div
-                    className="usb-search-area flex h-10 min-w-[260px] flex-1 cursor-text items-center gap-1 rounded-[10px] border-[1.5px] border-[#d6e3f4] bg-white px-2.5 transition-[border-color,box-shadow] duration-150 focus-within:border-blue-400 focus-within:shadow-[0_0_0_3px_rgba(31,123,246,0.1)]"
+                    className="usb-search-area flex h-9 min-w-[260px] flex-1 cursor-text items-center gap-1 rounded-lg border border-input bg-white px-2.5 transition-[border-color,box-shadow] duration-150 focus-within:border-primary focus-within:shadow-[0_0_0_3px_rgba(31,123,246,0.1)]"
                     ref={inputAreaRef}
                     onClick={() => inputRef.current?.focus()}
                 >

@@ -735,7 +735,7 @@ function ReleaseNotesModal({ open, releases, onClose, onOpenFull }) {
 
 function ReleaseNotesPage({ releases, onBack }) {
     return (
-        <div className="mx-auto w-full max-w-3xl px-4 py-8">
+        <div className="mx-auto w-full max-w-3xl">
             <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
                 <div>
                     <h1 className="text-2xl font-semibold tracking-tight">Release Notes</h1>
@@ -793,12 +793,12 @@ function NotificationsPanel({ open, notifications, unreadCount, onClose, onOpenN
                         <button
                             key={item.id}
                             type="button"
-                            className={`mb-2.5 w-full rounded-lg border p-3 text-left transition-colors ${item.read ? 'border-slate-200 bg-slate-50 opacity-80 hover:opacity-100' : 'border-blue-200 bg-gradient-to-b from-blue-50 to-blue-100 shadow-[0_6px_16px_rgba(31,111,235,0.08)]'} ${item.viewed ? '' : 'shadow-[inset_3px_0_0_#1f6feb]'}`}
+                            className={`mb-2.5 w-full rounded-lg border p-3 text-left transition-colors ${item.read ? 'border-border bg-slate-50 opacity-80 hover:opacity-100' : 'border-blue-200 bg-gradient-to-b from-blue-50 to-blue-100 shadow-[0_6px_16px_rgba(31,111,235,0.08)]'} ${item.viewed ? '' : 'shadow-[inset_3px_0_0_var(--color-primary)]'}`}
                             onClick={() => onOpenNotification(item)}
                         >
                             <div className="flex flex-col gap-1">
-                                <strong className={`text-[13px] ${item.read ? 'font-medium text-slate-500' : 'font-semibold text-slate-800'}`}>{item.message}</strong>
-                                <span className="text-xs text-slate-500">{formatDisplayDate(item.createdAt)}</span>
+                                <strong className={`text-sm ${item.read ? 'font-medium text-muted-foreground' : 'font-semibold text-foreground'}`}>{item.message}</strong>
+                                <span className="text-xs text-muted-foreground">{formatDisplayDate(item.createdAt)}</span>
                             </div>
                         </button>
                     )) : <p className="text-sm text-muted-foreground">No notifications yet.</p>}
@@ -1674,12 +1674,12 @@ function ProfilePage({ user, apiFetch, onUserUpdate }) {
     };
 
     return (
-        <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-4 py-8">
+        <div className="mx-auto flex w-full max-w-3xl flex-col gap-6">
             <PageHeader title="Profile settings" subtitle="Manage your personal information and account security." />
 
             <div className="flex flex-col gap-6">
                 <Card>
-                    <CardContent className="flex flex-col gap-6 p-7">
+                    <CardContent className="flex flex-col gap-6 p-6">
                         <div className="flex items-center gap-4 max-sm:flex-col max-sm:items-start">
                             <div className="shrink-0">
                                 <Avatar user={user} size={76} />
@@ -1750,7 +1750,7 @@ function ProfilePage({ user, apiFetch, onUserUpdate }) {
                 </Card>
 
                 <Card>
-                    <CardContent className="flex flex-col gap-6 p-7">
+                    <CardContent className="flex flex-col gap-6 p-6">
                         <div className="flex items-start justify-between gap-4 border-b border-slate-200 pb-4">
                             <div>
                                 <h3 className="text-lg font-bold">Preferences</h3>
@@ -1781,7 +1781,7 @@ function ProfilePage({ user, apiFetch, onUserUpdate }) {
                 </Card>
 
                 <Card>
-                    <CardContent className="flex flex-col gap-6 p-7">
+                    <CardContent className="flex flex-col gap-6 p-6">
                         <div className="flex items-start justify-between gap-4 border-b border-slate-200 pb-4">
                             <div>
                                 <h3 className="text-lg font-bold">Security</h3>
@@ -4052,73 +4052,70 @@ export default function App() {
                 />
                 <div className="flex min-w-0 flex-1 flex-col">
                 <div className="min-h-0 flex-1 overflow-auto">
-                    <div className="w-full px-5">
+                    <div className="w-full px-6 py-6">
+                        <div className="mb-6 flex items-center justify-end gap-1 border-b border-border pb-4">
+                            <TooltipProvider>
+                                <Tooltip>
+                                    <TooltipTrigger asChild>
+                                        <ShadcnButton variant="ghost" size="icon" className="relative" aria-label="Notifications" onClick={() => setNotificationsOpen(true)}>
+                                            <Bell className="h-5 w-5" />
+                                            {unreadNotificationCount ? <Badge variant="destructive" className="absolute -right-1 -top-1 h-5 min-w-5 items-center justify-center rounded-full px-1 text-[10px] leading-none">{unreadNotificationCount}</Badge> : null}
+                                        </ShadcnButton>
+                                    </TooltipTrigger>
+                                    <TooltipContent>Notifications</TooltipContent>
+                                </Tooltip>
+                                <Tooltip>
+                                    <TooltipTrigger asChild>
+                                        <ShadcnButton variant="ghost" size="icon" aria-label="Sync now" onClick={() => setSyncOpen(true)}>
+                                            <RefreshCw className="h-5 w-5" />
+                                        </ShadcnButton>
+                                    </TooltipTrigger>
+                                    <TooltipContent>Sync now</TooltipContent>
+                                </Tooltip>
+                                <Tooltip>
+                                    <TooltipTrigger asChild>
+                                        <ShadcnButton variant="ghost" size="icon" aria-label="Show me around" onClick={() => setDemoOpen(true)}>
+                                            <CircleHelp className="h-5 w-5" />
+                                        </ShadcnButton>
+                                    </TooltipTrigger>
+                                    <TooltipContent>Show me around</TooltipContent>
+                                </Tooltip>
+                            </TooltipProvider>
+                            <div className="mx-2 h-5 w-px bg-border" />
+                            <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                    <ShadcnButton variant="ghost" size="icon" className="rounded-full" aria-label="Account menu">
+                                        <Avatar user={authUser} size={32} />
+                                    </ShadcnButton>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end">
+                                    <DropdownMenuItem onSelect={() => handleHeaderMenuAction('profile')}>
+                                        <User className="mr-2 h-4 w-4" />Profile
+                                    </DropdownMenuItem>
+                                    {authUser.role === 'admin' ? (
+                                        <DropdownMenuItem onSelect={() => handleHeaderMenuAction('admin')}>
+                                            <Shield className="mr-2 h-4 w-4" />Admin
+                                        </DropdownMenuItem>
+                                    ) : null}
+                                    <DropdownMenuItem onSelect={() => handleHeaderMenuAction('settings')}>
+                                        <Settings className="mr-2 h-4 w-4" />Settings
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem onSelect={() => handleHeaderMenuAction('schedule')}>
+                                        <CalendarClock className="mr-2 h-4 w-4" />Schedule
+                                    </DropdownMenuItem>
+                                    <DropdownMenuSeparator />
+                                    <DropdownMenuItem onSelect={() => handleHeaderMenuAction('logout')}>
+                                        <LogOut className="mr-2 h-4 w-4" />Logout
+                                    </DropdownMenuItem>
+                                </DropdownMenuContent>
+                            </DropdownMenu>
+                        </div>
                         {route === 'dashboard' || route === 'tenders' || (ADMIN_ROUTES.includes(route) && authUser.role !== 'admin') ? (
                             <div className="flex flex-col gap-6">
                                 <div className="flex min-w-0 flex-1 flex-col gap-6">
                                     <PageHeader
                                         title="Procurement Watch"
                                         subtitle="Track tenders, review sources, and manage decisions."
-                                        action={(
-                                            <div className="flex items-center gap-4">
-                                                <div className="flex flex-wrap items-center justify-end gap-3">
-                                                    <TooltipProvider>
-                                                        <Tooltip>
-                                                            <TooltipTrigger asChild>
-                                                                <ShadcnButton variant="ghost" size="icon" className="relative" aria-label="Notifications" onClick={() => setNotificationsOpen(true)}>
-                                                                    <Bell className="h-5 w-5" />
-                                                                    {unreadNotificationCount ? <Badge variant="destructive" className="absolute -right-1 -top-1 h-5 min-w-5 items-center justify-center rounded-full px-1 text-[10px] leading-none">{unreadNotificationCount}</Badge> : null}
-                                                                </ShadcnButton>
-                                                            </TooltipTrigger>
-                                                            <TooltipContent>Notifications</TooltipContent>
-                                                        </Tooltip>
-                                                        <Tooltip>
-                                                            <TooltipTrigger asChild>
-                                                                <ShadcnButton variant="ghost" size="icon" aria-label="Sync now" onClick={() => setSyncOpen(true)}>
-                                                                    <RefreshCw className="h-5 w-5" />
-                                                                </ShadcnButton>
-                                                            </TooltipTrigger>
-                                                            <TooltipContent>Sync now</TooltipContent>
-                                                        </Tooltip>
-                                                        <Tooltip>
-                                                            <TooltipTrigger asChild>
-                                                                <ShadcnButton variant="ghost" size="icon" aria-label="Show me around" onClick={() => setDemoOpen(true)}>
-                                                                    <CircleHelp className="h-5 w-5" />
-                                                                </ShadcnButton>
-                                                            </TooltipTrigger>
-                                                            <TooltipContent>Show me around</TooltipContent>
-                                                        </Tooltip>
-                                                    </TooltipProvider>
-                                                    <DropdownMenu>
-                                                        <DropdownMenuTrigger asChild>
-                                                            <ShadcnButton variant="ghost" size="icon" className="rounded-full" aria-label="Account menu">
-                                                                <Avatar user={authUser} size={32} />
-                                                            </ShadcnButton>
-                                                        </DropdownMenuTrigger>
-                                                        <DropdownMenuContent align="end">
-                                                            <DropdownMenuItem onSelect={() => handleHeaderMenuAction('profile')}>
-                                                                <User className="mr-2 h-4 w-4" />Profile
-                                                            </DropdownMenuItem>
-                                                            {authUser.role === 'admin' ? (
-                                                                <DropdownMenuItem onSelect={() => handleHeaderMenuAction('admin')}>
-                                                                    <Shield className="mr-2 h-4 w-4" />Admin
-                                                                </DropdownMenuItem>
-                                                            ) : null}
-                                                            <DropdownMenuItem onSelect={() => handleHeaderMenuAction('settings')}>
-                                                                <Settings className="mr-2 h-4 w-4" />Settings
-                                                            </DropdownMenuItem>
-                                                            <DropdownMenuItem onSelect={() => handleHeaderMenuAction('schedule')}>
-                                                                <CalendarClock className="mr-2 h-4 w-4" />Schedule
-                                                            </DropdownMenuItem>
-                                                            <DropdownMenuSeparator />
-                                                            <DropdownMenuItem onSelect={() => handleHeaderMenuAction('logout')}>
-                                                                <LogOut className="mr-2 h-4 w-4" />Logout
-                                                            </DropdownMenuItem>
-                                                        </DropdownMenuContent>
-                                                    </DropdownMenu>
-                                                </div>
-                                            </div>
-                                        )}
                                     />
                                     <div className="mb-5 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
                                         <Card>

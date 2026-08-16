@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 
 export default function AnalyticsPage() {
     return (
-        <div className="mx-auto w-full max-w-3xl px-4 py-8">
+        <div className="mx-auto w-full max-w-3xl">
             <div className="mb-6">
                 <h1 className="text-2xl font-semibold tracking-tight">Analytics</h1>
                 <p className="mt-1.5 text-sm text-muted-foreground">Analytics are coming soon.</p>

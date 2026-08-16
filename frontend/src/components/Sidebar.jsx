@@ -113,9 +113,9 @@ export default function Sidebar({ user, route, onNavigate, collapsed, mobileOpen
                     <SidebarGroup key={group.label}>
                         <Collapsible defaultOpen className="group/collapsible">
                             <SidebarGroupLabel asChild>
-                                <CollapsibleTrigger className="gap-2">
+                                <CollapsibleTrigger className="gap-2 text-[11px] font-semibold uppercase tracking-wider text-sidebar-foreground/50">
                                     {group.label}
-                                    <ChevronDown className="ml-auto transition-transform group-data-[state=open]/collapsible:rotate-180" />
+                                    <ChevronDown className="ml-auto h-3.5 w-3.5 transition-transform group-data-[state=open]/collapsible:rotate-180" />
                                 </CollapsibleTrigger>
                             </SidebarGroupLabel>
                             <CollapsibleContent>
@@ -126,6 +126,7 @@ export default function Sidebar({ user, route, onNavigate, collapsed, mobileOpen
                                                 <SidebarMenuButton
                                                     isActive={route === item.key}
                                                     tooltip={item.label}
+                                                    className="data-[active=true]:bg-primary/10 data-[active=true]:text-primary data-[active=true]:hover:bg-primary/10 data-[active=true]:hover:text-primary"
                                                     onClick={() => {
                                                         onNavigate(item.key);
                                                         onCloseMobile();
@@ -143,8 +144,8 @@ export default function Sidebar({ user, route, onNavigate, collapsed, mobileOpen
                     </SidebarGroup>
                 ))}
             </SidebarContent>
-            <SidebarFooter>
-                <div className="flex items-center gap-2 px-2 py-1">
+            <SidebarFooter className="border-t border-sidebar-border">
+                <div className="flex items-center gap-2 px-2 py-2">
                     <Avatar user={user} size={34} />
                     <div className="min-w-0 flex-1 leading-tight group-data-[collapsible=icon]:hidden">
                         <p className="truncate text-sm font-medium text-sidebar-foreground">{user?.name}</p>

@@ -159,7 +159,7 @@ export default function DemoWalkthrough({ open, onClose, steps = [] }) {
             {rect ? (
                 <>
                     <div
-                        className="fixed rounded-xl shadow-[0_0_0_3px_#d97706,0_0_0_9999px_rgba(2,6,23,0.55)]"
+                        className="fixed rounded-xl shadow-[0_0_0_3px_var(--color-amber-600),0_0_0_9999px_rgba(2,6,23,0.55)]"
                         style={{ top: rect.top, left: rect.left, width: rect.width, height: rect.height }}
                         onClick={(e) => e.stopPropagation()}
                     />

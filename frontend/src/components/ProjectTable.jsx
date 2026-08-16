@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
-import { ArrowDown, ArrowUp, ArrowUpDown } from 'lucide-react';
+import { ArrowDown, ArrowUp, ArrowUpDown, SearchX } from 'lucide-react';
 import ContextMenu from './ContextMenu';
 import UnifiedSearchBar from './UnifiedSearchBar';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -64,13 +64,13 @@ function AttachmentSignalIcon() {
 
 function sourceClass(source) {
   const s = (source || '').toLowerCase();
-  if (s.includes('iadb')) return 'border-[#a7c9ff] bg-[#eaf2ff] text-[#1f5dcf]';
-  if (s.includes('world bank')) return 'border-[#bcc1ff] bg-[#eef0ff] text-[#3c3ea8]';
-  if (s.includes('global')) return 'border-[#9fe9db] bg-[#e9faf7] text-[#116a60]';
-  if (s.includes('giz')) return 'border-[#f7cfa6] bg-[#fff5ec] text-[#9b4d17]';
-  if (s.includes('development')) return 'border-[#d7b9f6] bg-[#f6efff] text-[#7333a5]';
-  if (s.includes('dgmarket')) return 'border-[#f8bfd0] bg-[#fff0f4] text-[#a0264e]';
-  if (s.includes('africa')) return 'border-[#f2dea7] bg-[#fff9ea] text-[#966018]';
+  if (s.includes('iadb')) return 'border-blue-200 bg-blue-50 text-blue-700';
+  if (s.includes('world bank')) return 'border-indigo-200 bg-indigo-50 text-indigo-700';
+  if (s.includes('global')) return 'border-teal-200 bg-teal-50 text-teal-700';
+  if (s.includes('giz')) return 'border-orange-200 bg-orange-50 text-orange-700';
+  if (s.includes('development')) return 'border-purple-200 bg-purple-50 text-purple-700';
+  if (s.includes('dgmarket')) return 'border-rose-200 bg-rose-50 text-rose-700';
+  if (s.includes('africa')) return 'border-yellow-200 bg-yellow-50 text-yellow-800';
   return '';
 }
 
@@ -490,12 +490,12 @@ export default function ProjectTable({
               {columns.map((col) => (
                 <TableHead
                   key={col.key}
-                  className={`sticky top-0 z-[2] whitespace-nowrap border-b bg-[#eef3fa] px-3.5 py-3 text-xs font-bold uppercase tracking-wider text-[#6b7f9f] ${col.key === '_select' ? 'w-10 text-center' : ''} ${col.key === '_actions' ? 'w-12 text-center' : ''} ${col.key === 'scraped_at' ? 'w-[10%] min-w-[140px]' : ''} ${col.type !== 'none' ? 'cursor-pointer select-none' : ''}`}
+                  className={`sticky top-0 z-[2] whitespace-nowrap border-b bg-muted/70 px-3.5 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground ${col.key === '_select' ? 'w-10 text-center' : ''} ${col.key === '_actions' ? 'w-12 text-center' : ''} ${col.key === 'scraped_at' ? 'w-[10%] min-w-[140px]' : ''} ${col.type !== 'none' ? 'cursor-pointer select-none' : ''}`}
                   aria-sort={sortCol === col.key ? (sortDir === 'asc' ? 'ascending' : 'descending') : undefined}
                   onClick={col.type !== 'none' ? () => handleSortClick(col.key) : undefined}
                 >
                   {col.key === '_select' ? (
-                    <input ref={headerCheckboxRef} type="checkbox" name="selectVisibleRows" aria-label="Select all visible rows" checked={allOnPageSelected} aria-checked={someOnPageSelected ? 'mixed' : allOnPageSelected} className="h-4 w-4 cursor-pointer accent-[#4f8df7]" onClick={(e) => e.stopPropagation()} onChange={toggleSelectAll} title="Select all visible rows" />
+                    <input ref={headerCheckboxRef} type="checkbox" name="selectVisibleRows" aria-label="Select all visible rows" checked={allOnPageSelected} aria-checked={someOnPageSelected ? 'mixed' : allOnPageSelected} className="h-4 w-4 cursor-pointer accent-primary" onClick={(e) => e.stopPropagation()} onChange={toggleSelectAll} title="Select all visible rows" />
                   ) : (
                     <span className="inline-flex items-center gap-1.5">
                       {col.label}
@@ -527,7 +527,7 @@ export default function ProjectTable({
                 <TableRow
                   key={rowId}
                   onClick={(event) => handleRowClick(event, p, realIndex)}
-                  className={`group cursor-pointer transition-colors ${p.decision === 'No Go' ? 'opacity-50' : ''} ${isSelected ? 'bg-blue-500/10 shadow-[inset_3px_0_0_#1f7bf6] hover:bg-blue-500/10' : ''} ${rowEntityId && activeProjectId === rowEntityId ? 'bg-blue-500/[0.06] shadow-[inset_3px_0_0_#1f7bf6] hover:bg-blue-500/[0.06]' : ''} ${!isSelected && !(rowEntityId && activeProjectId === rowEntityId) ? `even:bg-[#f8fbff] ${focusedRowIndex === realIndex ? 'shadow-[inset_0_1px_0_rgba(31,123,246,0.14),inset_0_-1px_0_rgba(31,123,246,0.14)]' : ''}` : ''}`}
+                  className={`group cursor-pointer transition-colors ${p.decision === 'No Go' ? 'opacity-50' : ''} ${isSelected ? 'bg-primary/10 shadow-[inset_3px_0_0_var(--color-primary)] hover:bg-primary/10' : ''} ${rowEntityId && activeProjectId === rowEntityId ? 'bg-primary/[0.06] shadow-[inset_3px_0_0_var(--color-primary)] hover:bg-primary/[0.06]' : ''} ${!isSelected && !(rowEntityId && activeProjectId === rowEntityId) ? `even:bg-slate-50/60 hover:bg-slate-100/70 ${focusedRowIndex === realIndex ? 'bg-primary/5' : ''}` : ''}`}
                 >
                   {columns.map((columnKey) => {
                     const key = typeof columnKey === 'string' ? columnKey : (columnKey?.key || columnKey?.id || '');
@@ -549,7 +549,7 @@ export default function ProjectTable({
                             aria-label={`Select ${displayName}`}
                             checked={isSelected}
                             aria-checked={isSelected}
-                            className="h-4 w-4 cursor-pointer accent-[#4f8df7]"
+                            className="h-4 w-4 cursor-pointer accent-primary"
                             onClick={(e) => e.stopPropagation()}
                             onChange={(e) => toggleSelectRow(p, realIndex, e.nativeEvent.shiftKey)}
                           />
@@ -562,33 +562,33 @@ export default function ProjectTable({
                       return (
                         <TableCell key={key} className="overflow-hidden">
                           <div className="flex min-w-0 flex-col gap-1">
-                            <span className="line-clamp-2 text-[0.9rem] leading-[1.35] font-semibold text-[#0d1b32] group-hover:text-[#1f7bf6]" title={displayName}>{displayName}</span>
+                            <span className="line-clamp-2 text-sm leading-[1.35] font-semibold text-foreground group-hover:text-primary" title={displayName}>{displayName}</span>
                             <span className="mt-0.5 flex flex-wrap items-center gap-1.5">
-                              <Badge variant="outline" className={`px-2 py-0.5 text-[0.64rem] ${sourceClass(p.source) || 'border-[#e4edf9] bg-white text-[#334762]'}`}>{p.source}</Badge>
+                              <Badge variant="outline" className={`px-2 py-0.5 text-[0.64rem] ${sourceClass(p.source) || 'border-border bg-card text-slate-700'}`}>{p.source}</Badge>
                             </span>
                             <div className="mt-1.5 flex flex-wrap items-center gap-2">
                               {(p.comment_count || 0) > 0 ? (
-                                <span className="inline-flex items-center gap-1.5 rounded-full border border-[#dbe3f0] bg-[#f8fbff] px-2 py-1 text-[11px] font-bold leading-none text-[#5f6f8d]" title="Comments">
+                                <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-slate-50 px-2 py-1 text-[11px] font-semibold leading-none text-muted-foreground" title="Comments">
                                   <CommentSignalIcon />
                                   <span>{p.comment_count || 0}</span>
                                 </span>
                               ) : null}
                               {(p.comment_document_count || 0) > 0 ? (
-                                <span className="inline-flex items-center gap-1.5 rounded-full border border-[#dbe3f0] bg-[#f8fbff] px-2 py-1 text-[11px] font-bold leading-none text-[#5f6f8d]" title="Comment attachments">
+                                <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-slate-50 px-2 py-1 text-[11px] font-semibold leading-none text-muted-foreground" title="Comment attachments">
                                   <AttachmentSignalIcon />
                                   <span>{p.comment_document_count || 0}</span>
                                 </span>
                               ) : null}
                               {assignedUsers.length ? (
-                                <span className="inline-flex items-center gap-2 rounded-full border border-[#dbe3f0] bg-[#f8fbff] py-1 pr-2 pl-1.5" title={assignedUsers.map((user) => user.name || user.email).join(', ')}>
-                                  <span className="text-[11px] font-bold text-[#5f6f8d]">Working on</span>
+                                <span className="inline-flex items-center gap-2 rounded-full border border-border bg-slate-50 py-1 pr-2 pl-1.5" title={assignedUsers.map((user) => user.name || user.email).join(', ')}>
+                                  <span className="text-[11px] font-semibold text-muted-foreground">Working on</span>
                                   <span className="inline-flex items-center">
                                     {assignedUsers.slice(0, 3).map((user) => (
-                                      <span key={user.id} className="-ml-1.5 inline-flex h-[22px] w-[22px] items-center justify-center rounded-full border-2 border-white bg-[#e8eef8] text-[11px] font-bold text-[#22314d] first:ml-0" aria-label={user.name || user.email}>
+                                      <span key={user.id} className="-ml-1.5 inline-flex h-[22px] w-[22px] items-center justify-center rounded-full border-2 border-card bg-muted text-[11px] font-semibold text-slate-700 first:ml-0" aria-label={user.name || user.email}>
                                         {initials(user.name || '', user.email || '')}
                                       </span>
                                     ))}
-                                    {assignedUsers.length > 3 ? <span className="-ml-1.5 inline-flex h-[22px] min-w-[22px] items-center justify-center rounded-full border-2 border-white bg-[#e8eef8] px-1.5 text-[11px] font-bold text-[#22314d] first:ml-0">+{assignedUsers.length - 3}</span> : null}
+                                    {assignedUsers.length > 3 ? <span className="-ml-1.5 inline-flex h-[22px] min-w-[22px] items-center justify-center rounded-full border-2 border-card bg-muted px-1.5 text-[11px] font-semibold text-slate-700 first:ml-0">+{assignedUsers.length - 3}</span> : null}
                                   </span>
                                 </span>
                               ) : null}
@@ -601,7 +601,7 @@ export default function ProjectTable({
                     if (key === '_project_id') {
                       return (
                         <TableCell key={key} className="overflow-hidden">
-                          <span className="inline-block max-w-full truncate font-mono text-[0.76rem] font-bold text-[#334762]" title={p.project_id || ''}>{p.project_id || '-'}</span>
+                          <span className="inline-block max-w-full truncate font-mono text-xs font-semibold text-slate-700" title={p.project_id || ''}>{p.project_id || '-'}</span>
                         </TableCell>
                       );
                     }
@@ -610,8 +610,8 @@ export default function ProjectTable({
                       return (
                         <TableCell key={key} className="overflow-hidden">
                           <div className="flex min-w-0 flex-col gap-0.5">
-                            <span className="truncate text-[0.84rem] text-[#334762]">{sponsorLabel}</span>
-                            {regionLabel !== '-' ? <span className="text-[0.72rem] font-semibold text-[#2a70ce]">{regionLabel}</span> : null}
+                            <span className="truncate text-sm text-slate-700">{sponsorLabel}</span>
+                            {regionLabel !== '-' ? <span className="text-xs font-semibold text-primary">{regionLabel}</span> : null}
                           </div>
                         </TableCell>
                       );
@@ -674,14 +674,14 @@ export default function ProjectTable({
                     }
 
                     if (key === 'scraped_at') {
-                      return <TableCell key={key} className="text-[0.82rem] whitespace-nowrap text-[#6b7f9f]" title={p.scraped_at ? new Date(p.scraped_at).toLocaleString() : ''}>{formatDisplayDate(p.scraped_at)}</TableCell>;
+                      return <TableCell key={key} className="text-sm whitespace-nowrap text-muted-foreground" title={p.scraped_at ? new Date(p.scraped_at).toLocaleString() : ''}>{formatDisplayDate(p.scraped_at)}</TableCell>;
                     }
 
                     return (
                       <TableCell key={key} className="td-actions w-12 text-right" onClick={(e) => e.stopPropagation()}>
                         {p.project_url ? (
                           <button
-                            className="context-trigger mr-1.5 inline-flex h-[30px] w-[30px] items-center justify-center rounded-md border border-transparent font-bold text-[#6b7f9f] transition-all hover:border-[#e4edf9] hover:bg-[#e9f1fb] hover:text-[#0d1b32]"
+                            className="context-trigger mr-1.5 inline-flex h-8 w-8 items-center justify-center rounded-md border border-transparent text-muted-foreground transition-all hover:border-border hover:bg-muted hover:text-foreground"
                             onClick={(e) => {
                               e.stopPropagation();
                               window.open(p.project_url, '_blank');
@@ -692,7 +692,7 @@ export default function ProjectTable({
                           </button>
                         ) : null}
                         <button
-                          className="context-trigger inline-flex h-[30px] w-[30px] items-center justify-center rounded-md border border-transparent font-bold text-[#6b7f9f] transition-all hover:border-[#e4edf9] hover:bg-[#e9f1fb] hover:text-[#0d1b32]"
+                          className="context-trigger inline-flex h-8 w-8 items-center justify-center rounded-md border border-transparent text-muted-foreground transition-all hover:border-border hover:bg-muted hover:text-foreground"
                           onClick={(e) => {
                             e.stopPropagation();
                             const rect = e.currentTarget.getBoundingClientRect();
@@ -712,11 +712,14 @@ export default function ProjectTable({
         </Table>
 
         {pageData.length === 0 ? (
-          <div className="border-t px-6 py-16 text-center">
-            <h3 className="text-lg font-semibold">No tenders match your filters</h3>
+          <div className="flex flex-col items-center border-t px-6 py-16 text-center">
+            <div className="flex size-10 items-center justify-center rounded-full bg-muted">
+              <SearchX className="h-5 w-5 text-muted-foreground" />
+            </div>
+            <h3 className="mt-4 text-base font-semibold text-foreground">No tenders match your filters</h3>
             <p className="mt-1 text-sm text-muted-foreground">Try adjusting your search or filters</p>
             {onStartDemo ? (
-              <Button type="button" variant="outline" className="mt-4" onClick={onStartDemo}>
+              <Button type="button" variant="outline" className="mt-5" onClick={onStartDemo}>
                 Show me around
               </Button>
             ) : null}
