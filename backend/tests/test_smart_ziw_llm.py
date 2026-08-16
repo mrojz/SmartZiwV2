@@ -5,6 +5,7 @@ from unittest.mock import MagicMock
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import pytest
+import requests
 
 import smart_ziw_agent as agent
 import smart_ziw_llm as sll
@@ -240,3 +241,133 @@ def test_discover_blank_base_url_no_network(monkeypatch):
     assert result["models"] == []
     assert result["detail"] == "LightLLM base URL is not set"
     assert _FakeOpenAI.instances == []
+
+# --- Anthropic-compatible provider (requests-based) ---
+
+
+def _http_response(status_code=200, payload=None):
+    resp = MagicMock()
+    resp.status_code = status_code
+    resp.json.return_value = payload if payload is not None else {}
+    return resp
+
+
+def _anthropic_config(**overrides):
+    config = {
+        "smart_ziw_llm_provider": "lightllm",
+        "lightllm_base_url": "https://api.anthropic.com/v1",
+        "lightllm_api_key": "k",
+        "lightllm_model": "claude-x",
+        "lightllm_provider": "anthropic_compatible",
+    }
+    config.update(overrides)
+    return config
+
+
+def test_anthropic_provider_routes_to_messages_endpoint(monkeypatch):
+    captured = {}
+
+    def fake_post(url, **kwargs):
+        captured["url"] = url
+        captured["kwargs"] = kwargs
+        return _http_response(200, {"content": [{"type": "text", "text": "hello anthropic"}]})
+
+    monkeypatch.setattr("smart_ziw_llm.requests.post", fake_post)
+    call = getattr(sll, "get_llm_call")(_anthropic_config(), json_mode=False)
+    result = call("sys", "user")
+    assert result == "hello anthropic"
+    assert captured["url"] == "https://api.anthropic.com/v1/messages"
+    assert captured["kwargs"]["timeout"] == 120.0
+    headers = captured["kwargs"]["headers"]
+    assert headers["x-api-key"] == "k"
+    assert headers["anthropic-version"] == "2023-06-01"
+    body = captured["kwargs"]["json"]
+    assert body["model"] == "claude-x"
+    assert body["max_tokens"] == 4000
+    assert body["temperature"] == 0.1
+    assert body["system"] == "sys"
+    assert body["messages"] == [{"role": "user", "content": "user"}]
+
+
+def test_anthropic_json_mode_uses_safe_json_loads(monkeypatch):
+    monkeypatch.setattr(
+        "smart_ziw_llm.requests.post",
+        lambda url, **kwargs: _http_response(200, {"content": [{"text": '{"ok": 1}'}]}),
+    )
+    recorded = {}
+
+    def fake_safe_json_loads(text):
+        recorded["text"] = text
+        return {"ok": 1}
+
+    monkeypatch.setattr(agent, "_safe_json_loads", fake_safe_json_loads)
+    call = getattr(sll, "get_llm_call")(_anthropic_config(), json_mode=True)
+    assert call("sys", "user") == {"ok": 1}
+    assert recorded["text"] == '{"ok": 1}'
+
+
+def test_anthropic_http_error_raises(monkeypatch):
+    monkeypatch.setattr("smart_ziw_llm.requests.post", lambda url, **kwargs: _http_response(500))
+    call = getattr(sll, "get_llm_call")(_anthropic_config(), json_mode=False)
+    with pytest.raises(RuntimeError, match="HTTP 500"):
+        call("sys", "user")
+
+
+def test_anthropic_provider_defaults_to_openai_path(monkeypatch):
+    _reset_fake_openai()
+    monkeypatch.setattr("smart_ziw_llm.OpenAI", _FakeOpenAI)
+
+    def fake_post(*args, **kwargs):
+        raise AssertionError("requests.post must not be used for the OpenAI-compatible path")
+
+    monkeypatch.setattr("smart_ziw_llm.requests.post", fake_post)
+    call = getattr(sll, "get_llm_call")(_anthropic_config(lightllm_provider="custom"), json_mode=False)
+    assert call("s", "u") == _FakeOpenAI.next_content
+    assert len(_FakeOpenAI.instances) == 1
+    assert _FakeOpenAI.instances[0].kwargs["api_key"] == "k"
+
+
+def test_discover_anthropic_models_ok(monkeypatch):
+    captured = {}
+
+    def fake_get(url, **kwargs):
+        captured["url"] = url
+        captured["headers"] = kwargs.get("headers")
+        captured["timeout"] = kwargs.get("timeout")
+        return _http_response(200, {"data": [{"id": "claude-a", "display_name": "Claude A"}, {"id": "claude-b"}]})
+
+    monkeypatch.setattr("smart_ziw_llm.requests.get", fake_get)
+    result = sll.discover_lightllm_models("anthropic_compatible", "https://api.anthropic.com/v1", "")
+    assert result == {"status": "ok", "models": [
+        {"id": "claude-a", "name": "Claude A"},
+        {"id": "claude-b", "name": "claude-b"},
+    ]}
+    assert captured["url"] == "https://api.anthropic.com/v1/models"
+    assert captured["headers"]["x-api-key"] == "EMPTY"
+    assert captured["headers"]["anthropic-version"] == "2023-06-01"
+    assert captured["timeout"] == 8.0
+
+
+def test_discover_anthropic_401_returns_auth_required(monkeypatch):
+    monkeypatch.setattr("smart_ziw_llm.requests.get", lambda url, **kwargs: _http_response(401))
+    result = sll.discover_lightllm_models("anthropic_compatible", "https://api.anthropic.com/v1", "k")
+    assert result == {"status": "auth_required", "models": []}
+    assert "k" not in str(result)
+
+
+def test_discover_anthropic_404_returns_unsupported(monkeypatch):
+    monkeypatch.setattr("smart_ziw_llm.requests.get", lambda url, **kwargs: _http_response(404))
+    result = sll.discover_lightllm_models("anthropic_compatible", "https://api.anthropic.com/v1", "k")
+    assert result == {"status": "unsupported", "models": []}
+
+
+def test_discover_anthropic_connection_error_sanitized(monkeypatch):
+    def fake_get(url, **kwargs):
+        raise requests.exceptions.ConnectionError("boom")
+
+    monkeypatch.setattr("smart_ziw_llm.requests.get", fake_get)
+    result = sll.discover_lightllm_models("anthropic_compatible", "https://api.anthropic.com/v1", "secret-key")
+    assert result["status"] == "error"
+    assert result["models"] == []
+    assert result["detail"] == "Connection to the LightLLM server failed"
+    assert "secret-key" not in str(result)

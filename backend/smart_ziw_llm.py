@@ -3,8 +3,10 @@
 Routes every Smart-Ziw LLM call to the admin-selected provider:
 "auto" (default) uses the lightllm configuration when one is present
 (base URL non-blank) and falls back to the .env DeepSeek parameters
-otherwise. LightLLM is OpenAI-compatible, so the existing openai SDK
-covers it — no new dependencies.
+otherwise. LightLLM servers are covered by two wire formats:
+"openai_compatible" via the existing openai SDK, and
+"anthropic_compatible" via requests (the Anthropic Messages API is
+not wire-compatible with OpenAI). No new dependencies.
 
 Imports of smart_ziw_agent symbols are function-level (lazy) so that
 tests monkeypatching smart_ziw_agent._call_llm keep working through
@@ -14,11 +16,13 @@ inside run() without an import cycle.
 import os
 from typing import Callable
 
+import requests
 from openai import APIConnectionError, APITimeoutError, APIStatusError, OpenAI
 
 AUTO = "auto"
 DEEPSEEK = "deepseek"
 LIGHTLLM = "lightllm"
+ANTHROPIC_COMPATIBLE = "anthropic_compatible"
 _PROVIDERS = (AUTO, DEEPSEEK, LIGHTLLM)
 _LIGHTLLM_PLACEHOLDER_KEY = "EMPTY"  # vLLM/LightLLM convention for keyless local endpoints
 
@@ -61,6 +65,39 @@ def _lightllm_call(base_url: str, api_key: str, model: str, json_mode: bool) -> 
     return call
 
 
+def _anthropic_call(base_url: str, api_key: str, model: str, json_mode: bool) -> Callable[[str, str], dict | str]:
+    """Anthropic-compatible Messages API call path (not wire-compatible with OpenAI)."""
+
+    def call(system_prompt: str, user_prompt: str):
+        headers = {
+            "x-api-key": api_key or _LIGHTLLM_PLACEHOLDER_KEY,
+            "anthropic-version": "2023-06-01",
+            "content-type": "application/json",
+        }
+        resp = requests.post(
+            f"{base_url.rstrip('/')}/messages",
+            headers=headers,
+            json={
+                "model": model,
+                "max_tokens": 4000,
+                "temperature": 0.1,
+                "system": system_prompt,
+                "messages": [{"role": "user", "content": user_prompt}],
+            },
+            timeout=120.0,
+        )
+        if not (200 <= resp.status_code < 300):
+            raise RuntimeError(f"Anthropic-compatible LLM request failed with HTTP {resp.status_code}")
+        data = resp.json()
+        content = (data.get("content") or [{}])[0].get("text") or ""
+        if not json_mode:
+            return content
+        from smart_ziw_agent import _safe_json_loads
+        return _safe_json_loads(content)
+
+    return call
+
+
 def get_llm_call(config: dict | None = None, json_mode: bool = True) -> Callable[[str, str], dict | str]:
     """Return callable(system_prompt, user_prompt) -> dict (json_mode=True) or str (False).
 
@@ -83,6 +120,14 @@ def get_llm_call(config: dict | None = None, json_mode: bool = True) -> Callable
             from smart_ziw_agent import _call_llm
             return _call_llm
         return _call_llm_text
+    provider_format = str(config.get("lightllm_provider") or "openai_compatible")
+    if provider_format == ANTHROPIC_COMPATIBLE:
+        return _anthropic_call(
+            base_url=base_url,
+            api_key=str(config.get("lightllm_api_key") or ""),
+            model=str(config.get("lightllm_model") or "default"),
+            json_mode=json_mode,
+        )
     return _lightllm_call(
         base_url=base_url,
         api_key=str(config.get("lightllm_api_key") or ""),
@@ -123,15 +168,46 @@ def _normalize_llm_models(entries) -> list[dict]:
     return models
 
 
-def discover_lightllm_models(provider: str, base_url: str, api_key: str = "") -> dict:
-    """Discover models on a LightLLM server (OpenAI-compatible).
+def _discover_anthropic_models(base_url: str, api_key: str = "") -> dict:
+    """Discover models via the Anthropic-compatible /models endpoint."""
+    if not base_url:
+        return {"status": "error", "models": [], "detail": "LightLLM base URL is not set"}
+    headers = {
+        "x-api-key": str(api_key or "").strip() or _LIGHTLLM_PLACEHOLDER_KEY,
+        "anthropic-version": "2023-06-01",
+        "content-type": "application/json",
+    }
+    try:
+        resp = requests.get(f"{base_url.rstrip('/')}/models", headers=headers, timeout=_LIGHTLLM_DISCOVERY_TIMEOUT)
+        if resp.status_code in (401, 403):
+            return {"status": "auth_required", "models": []}
+        if resp.status_code == 404:
+            return {"status": "unsupported", "models": []}
+        if resp.status_code != 200:
+            return {"status": "error", "models": [], "detail": f"The server returned HTTP {resp.status_code}"}
+        entries = resp.json().get("data") or []
+        models = _normalize_llm_models(
+            {"id": str(e.get("id") or "").strip(), "name": str(e.get("display_name") or e.get("id") or "").strip()}
+            for e in entries
+        )
+        if models:
+            return {"status": "ok", "models": models}
+        return {"status": "no_models", "models": []}
+    except Exception:
+        return {"status": "error", "models": [], "detail": "Connection to the LightLLM server failed"}
 
-    Attempts keyless discovery first; on 401/403 retries with the resolved
-    key (the provided api_key when non-blank, else the stored
-    lightllm_api_key). Returns {"status", "models", ...} with status one of
-    ok | no_models | auth_required | unsupported | error. The API key never
-    appears in the returned dict.
+
+def discover_lightllm_models(provider: str, base_url: str, api_key: str = "") -> dict:
+    """Discover models on a LightLLM server (OpenAI- or Anthropic-compatible).
+
+    The OpenAI-compatible path attempts keyless discovery first; on 401/403
+    retries with the resolved key (the provided api_key when non-blank, else
+    the stored lightllm_api_key). Returns {"status", "models", ...} with
+    status one of ok | no_models | auth_required | unsupported | error. The
+    API key never appears in the returned dict.
     """
+    if str(provider or "").strip() == ANTHROPIC_COMPATIBLE:
+        return _discover_anthropic_models(str(base_url or "").strip(), api_key)
     if str(provider or "").strip() != "openai_compatible":
         return {"status": "unsupported", "models": []}
     base_url = str(base_url or "").strip()
