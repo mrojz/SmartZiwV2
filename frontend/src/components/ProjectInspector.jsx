@@ -37,13 +37,15 @@ export default function ProjectInspector({
                     </h2>
                     <p className="mt-1 text-sm text-muted-foreground">{project.project_id || '-'}</p>
                 </div>
-                <button
-                    type="button"
-                    onClick={onOpenFullPage}
-                    className="text-sm font-medium text-primary hover:underline"
-                >
-                    Open full page
-                </button>
+                {onOpenFullPage ? (
+                    <button
+                        type="button"
+                        onClick={onOpenFullPage}
+                        className="text-sm font-medium text-primary hover:underline"
+                    >
+                        Open full page
+                    </button>
+                ) : null}
             </div>
 
             <TenderTabs activeTab={activeTab} onChange={setActiveTab} compact={compact} />

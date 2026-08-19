@@ -1,9 +1,9 @@
 import { useEffect, useState, useCallback } from 'react';
 import { ArrowLeft } from 'lucide-react';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import ProjectInspector from '../components/ProjectInspector';
 import TenderDetailSkeleton from '../components/TenderDetailSkeleton';
-import { buildTenderHash } from '../utils/tenderRouting';
 
 const API = '/api';
 
@@ -35,8 +35,11 @@ export default function TenderDetailPage({ dbId, apiFetch, authUser, availableUs
         setCommentsLoading(true);
         try {
             const res = await apiFetch(`${API}/comments?entityType=project&entityId=${encodeURIComponent(dbId)}&mine=false`);
+            if (!res.ok) throw new Error(`Failed to load comments (${res.status})`);
             const data = await res.json();
             setComments(Array.isArray(data?.comments) ? data.comments : []);
+        } catch (err) {
+            setComments([]);
         } finally {
             setCommentsLoading(false);
         }
@@ -49,22 +52,32 @@ export default function TenderDetailPage({ dbId, apiFetch, authUser, availableUs
 
     const handleDecisionChange = async (decision) => {
         if (!project) return;
-        await apiFetch(`${API}/projects/${encodeURIComponent(project.db_id)}/decision`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ decision }),
-        });
-        loadProject();
+        try {
+            const res = await apiFetch(`${API}/projects/${encodeURIComponent(project.db_id)}/decision`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ decision }),
+            });
+            if (!res.ok) throw new Error(`Failed to update decision (${res.status})`);
+            loadProject();
+        } catch (err) {
+            toast.error(err?.message || 'Failed to update decision');
+        }
     };
 
     const handleRunSmartZiw = async () => {
         if (!project) return;
-        await apiFetch(`${API}/projects/by-db-id/${encodeURIComponent(project.db_id)}/smart-ziw`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ force: false }),
-        });
-        loadProject();
+        try {
+            const res = await apiFetch(`${API}/projects/by-db-id/${encodeURIComponent(project.db_id)}/smart-ziw`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ force: false }),
+            });
+            if (!res.ok) throw new Error(`Failed to start Smart-Ziw (${res.status})`);
+            loadProject();
+        } catch (err) {
+            toast.error(err?.message || 'Failed to start Smart-Ziw');
+        }
     };
 
     const goBack = () => {
@@ -103,7 +116,7 @@ export default function TenderDetailPage({ dbId, apiFetch, authUser, availableUs
                 availableUsers={availableUsers}
                 canManageDecision={authUser?.role !== 'viewer'}
                 onDecisionChange={handleDecisionChange}
-                onOpenFullPage={() => { /* already full page */ }}
+                onOpenFullPage={null}
                 onRunSmartZiw={handleRunSmartZiw}
                 compact={false}
             />
