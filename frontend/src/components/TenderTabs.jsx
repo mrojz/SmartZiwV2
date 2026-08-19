@@ -18,6 +18,7 @@ export default function TenderTabs({ activeTab, onChange, compact = false }) {
                         key={tab.id}
                         role="tab"
                         aria-selected={isActive}
+                        aria-label={tab.label}
                         onClick={() => onChange(tab.id)}
                         className={`flex items-center gap-1.5 border-b-2 px-3 text-sm font-medium transition-colors ${
                             compact ? 'py-2' : 'py-3'
