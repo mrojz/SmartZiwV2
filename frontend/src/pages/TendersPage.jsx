@@ -13,8 +13,10 @@ import {
     SheetTitle,
 } from '@/components/ui/sheet';
 import { Textarea } from '@/components/ui/textarea';
+import { Input as ShadcnInput } from '@/components/ui/input';
+import { Separator } from '@/components/ui/separator';
 import { Avatar as ShadcnAvatar, AvatarFallback } from '@/components/ui/avatar';
-import { Paperclip, Send, X } from 'lucide-react';
+import { Paperclip, Send, X, Search, ThumbsUp, ThumbsDown } from 'lucide-react';
 import {
     getTenderIdFromHash,
     buildTenderHash,
@@ -104,6 +106,40 @@ async function prepareCommentUploadFile(file, targetBytes = COMMENT_IMAGE_UPLOAD
     return file;
 }
 
+function formatDisplayDate(value) {
+    if (!value) return '-';
+    const direct = new Date(value);
+    if (!Number.isNaN(direct.getTime())) {
+        const day = String(direct.getDate()).padStart(2, '0');
+        const month = String(direct.getMonth() + 1).padStart(2, '0');
+        const year = direct.getFullYear();
+        return `${day}/${month}/${year}`;
+    }
+    const parts = String(value).split('/');
+    if (parts.length === 3) {
+        const [month, day, year] = parts;
+        return `${String(day).padStart(2, '0')}/${String(month).padStart(2, '0')}/${year}`;
+    }
+    return value;
+}
+
+function toInputDate(value) {
+    if (!value) return '';
+    const direct = new Date(value);
+    if (!Number.isNaN(direct.getTime())) {
+        const day = String(direct.getDate()).padStart(2, '0');
+        const month = String(direct.getMonth() + 1).padStart(2, '0');
+        const year = direct.getFullYear();
+        return `${year}-${month}-${day}`;
+    }
+    const parts = String(value).split('/');
+    if (parts.length === 3) {
+        const [month, day, year] = parts;
+        return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    }
+    return '';
+}
+
 function PageHeader({ title, subtitle, action, className = '' }) {
     return (
         <div className={`mb-6 ${className}`.trim()}>
@@ -135,6 +171,14 @@ function CommentComposer({
     const [mentionState, setMentionState] = useState({ open: false, query: '', start: -1, end: -1, index: 0 });
     const [selectedMentions, setSelectedMentions] = useState([]);
     const [mentionUsers, setMentionUsers] = useState([]);
+
+    useEffect(() => {
+        setBody('');
+        setPendingFiles([]);
+        setSelectedMentions([]);
+        setMentionState({ open: false, query: '', start: -1, end: -1, index: 0 });
+        setComposerFocused(false);
+    }, [entity?.id, setBody]);
 
     useEffect(() => {
         const el = textAreaRef.current;
@@ -442,6 +486,11 @@ export default function TendersPage({
     const [comments, setComments] = useState([]);
     const [commentsLoading, setCommentsLoading] = useState(false);
     const [shareCopied, setShareCopied] = useState(false);
+    const [discussionSearch, setDiscussionSearch] = useState('');
+    const [discussionSearchOpen, setDiscussionSearchOpen] = useState(false);
+    const [deadlineInput, setDeadlineInput] = useState('');
+    const [savingDeadline, setSavingDeadline] = useState(false);
+    const [previewAttachment, setPreviewAttachment] = useState(null);
 
     // Load saved searches when the user is known.
     useEffect(() => {
@@ -474,6 +523,7 @@ export default function TendersPage({
 
     // URL-synced filters: write on every change.
     useEffect(() => {
+        if (getTenderIdFromHash(window.location.hash)) return;
         const filters = {
             q: freeText,
             source,
@@ -707,7 +757,7 @@ export default function TendersPage({
         await persistSavedSearches(next);
     }, [savedSearches, persistSavedSearches]);
 
-    const canManageDecision = authUser?.role === 'manager';
+    const canManageDecision = authUser?.role === 'manager' || authUser?.role === 'admin';
     const canEditDeadline = authUser?.role === 'admin' || authUser?.role === 'manager';
 
     const handleDecisionChange = async (index, nextDecision) => {
@@ -715,6 +765,7 @@ export default function TendersPage({
         if (index === null || index === undefined) return;
         const project = projects[index];
         if (!project) return;
+        const previousDecision = project.decision;
         setProjects((prev) => {
             const next = [...prev];
             next[index] = { ...next[index], decision: nextDecision };
@@ -723,18 +774,31 @@ export default function TendersPage({
         if (selectedProjectIndex === index) {
             setSelectedProject((prev) => (prev ? { ...prev, decision: nextDecision } : prev));
         }
-        const res = await apiFetch(
-            project?.db_id
-                ? `${API}/projects/by-db-id/${encodeURIComponent(project.db_id)}/decision`
-                : `${API}/projects/${index}/decision`,
-            {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ decision: nextDecision }),
+        try {
+            const res = await apiFetch(
+                project?.db_id
+                    ? `${API}/projects/by-db-id/${encodeURIComponent(project.db_id)}/decision`
+                    : `${API}/projects/${index}/decision`,
+                {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ decision: nextDecision }),
+                }
+            );
+            if (!res.ok) {
+                throw new Error('Failed to update project decision');
             }
-        );
-        if (!res.ok) {
-            throw new Error('Failed to update project decision');
+        } catch (error) {
+            setProjects((prev) => {
+                const next = [...prev];
+                next[index] = { ...next[index], decision: previousDecision };
+                return next;
+            });
+            if (selectedProjectIndex === index) {
+                setSelectedProject((prev) => (prev ? { ...prev, decision: previousDecision } : prev));
+            }
+            window.alert(error?.message || 'Failed to update project decision');
+            throw error;
         }
     };
 
@@ -763,6 +827,16 @@ export default function TendersPage({
         }
     };
 
+    const handleDeadlineSave = async () => {
+        if (!canEditDeadline || selectedProjectIndex === null || selectedProjectIndex === undefined) return;
+        setSavingDeadline(true);
+        try {
+            await handleDeadlineChange(selectedProjectIndex, deadlineInput || null);
+        } finally {
+            setSavingDeadline(false);
+        }
+    };
+
     const handleAssignmentsChange = async (projectDbId, nextUserIds) => {
         const res = await apiFetch(`${API}/projects/by-db-id/${encodeURIComponent(projectDbId)}/assignments`, {
             method: 'PUT',
@@ -773,6 +847,15 @@ export default function TendersPage({
         const updated = await res.json();
         setProjects((prev) => prev.map((item) => (item.db_id === updated.db_id ? { ...item, ...updated, __rowId: item.__rowId } : item)));
         setSelectedProject((prev) => (prev?.db_id === updated.db_id ? { ...prev, ...updated, __rowId: prev.__rowId } : prev));
+    };
+
+    const toggleAssignment = async (userId) => {
+        if (!selectedProject?.db_id) return;
+        const assignedUserIds = selectedProject?.assigned_user_ids || [];
+        const next = assignedUserIds.includes(userId)
+            ? assignedUserIds.filter((item) => item !== userId)
+            : [...assignedUserIds, userId];
+        await handleAssignmentsChange(selectedProject.db_id, next);
     };
 
     const handleVoteChange = async (projectDbId, nextValue) => {
@@ -982,6 +1065,15 @@ export default function TendersPage({
         });
     };
 
+    const filteredComments = useMemo(() => {
+        if (!discussionSearch) return comments;
+        const q = discussionSearch.toLowerCase();
+        return comments.filter((c) => {
+            if ((c.body || '').toLowerCase().includes(q)) return true;
+            return (c.attachments || []).some((a) => (a.originalName || '').toLowerCase().includes(q));
+        });
+    }, [comments, discussionSearch]);
+
     const selectedEntity = useMemo(() => (
         selectedProject
             ? {
@@ -1010,6 +1102,14 @@ export default function TendersPage({
                 : prev
         ));
     }, [projects, selectedProject?.db_id]);
+
+    useEffect(() => {
+        if (!selectedProject?.manual_deadline) {
+            setDeadlineInput('');
+            return;
+        }
+        setDeadlineInput(toInputDate(selectedProject.manual_deadline));
+    }, [selectedProject?.manual_deadline]);
 
     const refreshComments = useCallback(async () => {
         if (!commentsOpen || !selectedEntityId) return;
@@ -1140,6 +1240,15 @@ export default function TendersPage({
         }
     }, []);
 
+    useEffect(() => {
+        if (!commentsOpen) return undefined;
+        const onKey = (e) => {
+            if (e.key === 'Escape') clearActiveProject();
+        };
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
+    }, [commentsOpen, clearActiveProject]);
+
     const handleCopyShareUrl = async () => {
         if (!selectedProjectShareUrl) return;
         try {
@@ -1163,10 +1272,24 @@ export default function TendersPage({
         }
     };
 
-    const runSmartZiw = useCallback(async (project) => {
-        if (!project?.db_id) return;
-        await handleSmartZiwSearch(project.db_id);
-    }, [handleSmartZiwSearch]);
+    function attachmentKindFromUrl(url = '') {
+        const lower = String(url).toLowerCase();
+        if (/\.(png|jpe?g|webp|gif|bmp|svg)($|\?)/i.test(lower)) return 'image';
+        if (/\.pdf($|\?)/i.test(lower)) return 'pdf';
+        return 'other';
+    }
+
+    const handleAttachmentClick = useCallback((event) => {
+        const link = event.target.closest('a[href]');
+        if (!link) return;
+        const url = link.getAttribute('href');
+        if (!url) return;
+        const kind = attachmentKindFromUrl(url);
+        if (kind === 'other') return;
+        event.preventDefault();
+        event.stopPropagation();
+        setPreviewAttachment({ url, kind, originalName: link.textContent || url.split('/').pop() || 'attachment' });
+    }, []);
 
     return (
         <div className="flex flex-col gap-6">
@@ -1296,30 +1419,204 @@ export default function TendersPage({
                     </SheetHeader>
 
                     {selectedProject ? (
-                        <ProjectInspector
-                            project={selectedProject}
-                            comments={comments}
-                            commentsLoading={commentsLoading}
-                            authUser={authUser}
-                            availableUsers={availableUsers}
-                            canManageDecision={authUser?.role !== 'viewer'}
-                            onDecisionChange={(nextDecision) => handleDecisionChange(selectedProjectIndex, nextDecision)}
-                            onOpenFullPage={() => { window.location.hash = buildTenderHash(selectedProject.db_id); }}
-                            onRunSmartZiw={() => runSmartZiw(selectedProject)}
-                            compact
-                        />
-                    ) : null}
+                        <>
+                            <div className="border-b p-4 space-y-4 overflow-y-auto max-h-[40vh]">
+                                <div className="flex items-center justify-between gap-2">
+                                    <div className="flex items-baseline gap-2">
+                                        <h3 className="text-sm font-semibold">Discussion</h3>
+                                        <span className="text-xs text-muted-foreground">{comments.length} notes</span>
+                                    </div>
+                                    <ShadcnButton
+                                        type="button"
+                                        variant="ghost"
+                                        size="icon-sm"
+                                        className={discussionSearchOpen ? 'bg-muted text-foreground' : 'text-muted-foreground'}
+                                        aria-label={discussionSearchOpen ? 'Hide message search' : 'Search messages'}
+                                        onClick={() => {
+                                            if (discussionSearchOpen && !discussionSearch) {
+                                                setDiscussionSearchOpen(false);
+                                                return;
+                                            }
+                                            setDiscussionSearchOpen((prev) => !prev);
+                                        }}
+                                    >
+                                        <Search className="size-4" />
+                                    </ShadcnButton>
+                                </div>
+                                {discussionSearchOpen ? (
+                                    <div className="relative">
+                                        <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                                        <ShadcnInput
+                                            type="text"
+                                            name="discussionSearch"
+                                            aria-label="Search discussion messages"
+                                            placeholder="Search messages..."
+                                            value={discussionSearch}
+                                            onChange={(e) => setDiscussionSearch(e.target.value)}
+                                            className="h-9 pl-8"
+                                        />
+                                    </div>
+                                ) : null}
 
-                    {selectedProject ? (
-                        <CommentComposer
-                            entity={selectedEntity}
-                            body={commentsBody}
-                            setBody={setCommentsBody}
-                            onSubmit={submitComment}
-                            currentUser={authUser}
-                            availableUsers={availableUsers}
-                            apiFetch={apiFetch}
-                        />
+                                <Separator />
+
+                                <div className="flex flex-col gap-2">
+                                    <div>
+                                        <h3 className="text-sm font-semibold">Team signal</h3>
+                                        <p className="mt-0.5 text-xs text-muted-foreground">Upvote or downvote the tender without changing the formal decision.</p>
+                                    </div>
+                                    <div className="flex gap-2">
+                                        <ShadcnButton
+                                            type="button"
+                                            variant="outline"
+                                            size="sm"
+                                            className={`gap-1.5 ${(selectedProject?.current_user_vote || '') === 'up' ? 'border-green-600/30 bg-green-600/10 text-green-600 hover:bg-green-600/10 hover:text-green-600' : ''}`}
+                                            onClick={() => handleVoteChange(selectedProject.db_id, (selectedProject?.current_user_vote || '') === 'up' ? '' : 'up')}
+                                        >
+                                            <ThumbsUp className="size-4" />
+                                            <span>Upvote</span>
+                                            <strong>{selectedProject?.vote_summary?.up || 0}</strong>
+                                        </ShadcnButton>
+                                        <ShadcnButton
+                                            type="button"
+                                            variant="outline"
+                                            size="sm"
+                                            className={`gap-1.5 ${(selectedProject?.current_user_vote || '') === 'down' ? 'border-destructive/30 bg-destructive/10 text-destructive hover:bg-destructive/10 hover:text-destructive' : ''}`}
+                                            onClick={() => handleVoteChange(selectedProject.db_id, (selectedProject?.current_user_vote || '') === 'down' ? '' : 'down')}
+                                        >
+                                            <ThumbsDown className="size-4" />
+                                            <span>Downvote</span>
+                                            <strong>{selectedProject?.vote_summary?.down || 0}</strong>
+                                        </ShadcnButton>
+                                    </div>
+                                </div>
+
+                                <div className="flex flex-col gap-2">
+                                    <div>
+                                        <h3 className="text-sm font-semibold">Working on this tender</h3>
+                                        <p className="mt-0.5 text-xs text-muted-foreground">Assign teammates to coordinate review and follow-up.</p>
+                                    </div>
+                                    <div className="flex flex-wrap gap-2">
+                                        {(availableUsers || []).map((user) => {
+                                            const assigned = (selectedProject?.assigned_user_ids || []).includes(user.id);
+                                            return (
+                                                <button
+                                                    key={user.id}
+                                                    type="button"
+                                                    onClick={() => toggleAssignment(user.id)}
+                                                    className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${assigned ? 'border-primary/30 bg-primary/5 text-primary' : 'border-border bg-card text-muted-foreground hover:bg-muted'}`}
+                                                >
+                                                    <span className="flex size-5 items-center justify-center rounded-full bg-muted text-[10px] font-semibold text-muted-foreground">{initials(user.name || '', user.email || '')}</span>
+                                                    <span>{user.name || user.email}</span>
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+
+                                <div className="flex flex-col gap-2">
+                                    <div>
+                                        <h3 className="text-sm font-semibold">Manual deadline</h3>
+                                        <p className="text-xs text-muted-foreground">{canEditDeadline ? 'Override the scraped deadline when analyst review requires a correction.' : 'Only admins and managers can edit the deadline.'}</p>
+                                    </div>
+                                    <div className="flex items-end gap-2">
+                                        <ShadcnInput
+                                            type="date"
+                                            name="manualDeadline"
+                                            aria-label="Manual deadline"
+                                            value={deadlineInput}
+                                            onChange={(e) => setDeadlineInput(e.target.value)}
+                                            disabled={!canEditDeadline || savingDeadline}
+                                            className="w-auto"
+                                        />
+                                        <ShadcnButton
+                                            type="button"
+                                            size="sm"
+                                            onClick={handleDeadlineSave}
+                                            disabled={!canEditDeadline || savingDeadline}
+                                        >
+                                            {savingDeadline ? 'Saving...' : 'Save deadline'}
+                                        </ShadcnButton>
+                                    </div>
+                                    {selectedProject?.deadline_updated_by || selectedProject?.deadline_updated_at ? (
+                                        <p className="text-xs text-muted-foreground">
+                                            {selectedProject?.deadline_updated_by ? `Updated by ${selectedProject.deadline_updated_by}` : 'Deadline updated'}
+                                            {selectedProject?.deadline_updated_at ? ` on ${formatDisplayDate(selectedProject.deadline_updated_at)}` : ''}
+                                        </p>
+                                    ) : null}
+                                </div>
+                            </div>
+
+                            <div className="min-h-0 flex-1" onClick={handleAttachmentClick}>
+                                <ProjectInspector
+                                    project={selectedProject}
+                                    comments={filteredComments}
+                                    commentsLoading={commentsLoading}
+                                    authUser={authUser}
+                                    availableUsers={availableUsers}
+                                    canManageDecision={canManageDecision}
+                                    onDecisionChange={(nextDecision) => handleDecisionChange(selectedProjectIndex, nextDecision)}
+                                    onOpenFullPage={() => { window.location.hash = buildTenderHash(selectedProject.db_id); }}
+                                    onRunSmartZiw={() => handleSmartZiwSearch(selectedProject.db_id)}
+                                    compact
+                                />
+                            </div>
+
+                            <CommentComposer
+                                entity={selectedEntity}
+                                body={commentsBody}
+                                setBody={setCommentsBody}
+                                onSubmit={submitComment}
+                                currentUser={authUser}
+                                availableUsers={availableUsers}
+                                apiFetch={apiFetch}
+                            />
+
+                            {previewAttachment ? (
+                                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={() => setPreviewAttachment(null)}>
+                                    <div className={`flex w-full flex-col overflow-hidden rounded-xl bg-card shadow-xl ${previewAttachment.kind === 'pdf' ? 'h-full max-w-4xl' : 'max-w-2xl'}`} onClick={(e) => e.stopPropagation()}>
+                                        <div className="flex items-center justify-between gap-2 border-b px-4 py-2.5">
+                                            <span className="min-w-0 truncate text-sm font-medium text-foreground">{previewAttachment.originalName || 'Attachment'}</span>
+                                            <div className="flex shrink-0 items-center gap-1">
+                                                <a
+                                                    className="inline-flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+                                                    href={previewAttachment.url}
+                                                    download={previewAttachment.originalName || 'attachment'}
+                                                    aria-label="Download attachment"
+                                                    title="Download"
+                                                >
+                                                    ↓
+                                                </a>
+                                                <button
+                                                    type="button"
+                                                    className="inline-flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+                                                    onClick={() => setPreviewAttachment(null)}
+                                                    aria-label="Close attachment preview"
+                                                    title="Close"
+                                                >
+                                                    ×
+                                                </button>
+                                            </div>
+                                        </div>
+                                        <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto bg-muted p-4">
+                                            {previewAttachment.kind === 'pdf' ? (
+                                                <iframe
+                                                    className="h-full min-h-0 w-full rounded-lg border bg-background"
+                                                    src={previewAttachment.url}
+                                                    title={previewAttachment.originalName || 'PDF preview'}
+                                                />
+                                            ) : (
+                                                <img
+                                                    className="max-h-full max-w-full object-contain"
+                                                    src={previewAttachment.url}
+                                                    alt={previewAttachment.originalName || 'attachment'}
+                                                />
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+                            ) : null}
+                        </>
                     ) : null}
                 </SheetContent>
             </Sheet>

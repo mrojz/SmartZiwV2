@@ -2808,6 +2808,7 @@ export default function App() {
     const [newProjectIds, setNewProjectIds] = useState(new Set());
     const [projectsLoading, setProjectsLoading] = useState(false);
     const [projectsError, setProjectsError] = useState(null);
+    const [regions, setRegions] = useState({});
     const [continents, setContinents] = useState([]);
     const [demoOpen, setDemoOpen] = useState(false);
 
@@ -2823,6 +2824,9 @@ export default function App() {
     const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
     const [mobileNavOpen, setMobileNavOpen] = useState(false);
     const [commandOpen, setCommandOpen] = useState(false);
+    const [syncOpen, setSyncOpen] = useState(false);
+    const [notificationsOpen, setNotificationsOpen] = useState(false);
+    const [notifications, setNotifications] = useState([]);
     const preSyncIdsRef = useRef(new Set());
     const notificationAudioRef = useRef(null);
     const notificationStreamRef = useRef(null);
