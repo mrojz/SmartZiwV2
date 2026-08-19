@@ -16,6 +16,7 @@ export default function TenderTabs({ activeTab, onChange, compact = false }) {
                 return (
                     <button
                         key={tab.id}
+                        id={`tab-${tab.id}`}
                         role="tab"
                         aria-selected={isActive}
                         aria-label={tab.label}
