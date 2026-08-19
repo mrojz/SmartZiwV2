@@ -14,7 +14,8 @@ this factory, and so smart_ziw_agent can import this module lazily
 inside run() without an import cycle.
 """
 import os
-from typing import Callable
+from dataclasses import dataclass, field
+from typing import Any, Callable
 
 import requests
 from openai import APIConnectionError, APITimeoutError, APIStatusError, OpenAI
@@ -22,11 +23,180 @@ from openai import APIConnectionError, APITimeoutError, APIStatusError, OpenAI
 AUTO = "auto"
 DEEPSEEK = "deepseek"
 LIGHTLLM = "lightllm"
+CUSTOM = "custom"
 ANTHROPIC_COMPATIBLE = "anthropic_compatible"
 _PROVIDERS = (AUTO, DEEPSEEK, LIGHTLLM)
 _LIGHTLLM_PLACEHOLDER_KEY = "EMPTY"  # vLLM/LightLLM convention for keyless local endpoints
 _DEFAULT_LLM_TEMPERATURE = 0.1
 _DEFAULT_LLM_MAX_TOKENS = 4000
+
+
+@dataclass(frozen=True)
+class LlmProviderPreset:
+    """Preset configuration for a well-known LLM provider."""
+
+    id: str
+    name: str
+    base_url: str = ""
+    format: str = "openai"  # "openai" | "anthropic" | "env" | "auto"
+    default_model: str = "default"
+    requires_api_key: bool = False
+    hardcoded_models: list[dict] = field(default_factory=list)
+
+
+# Preset registry: well-known providers plus env/auto/custom/local fallbacks.
+# base_url values are defaults; users can override them for local/self-hosted presets.
+_LLMM_PROVIDER_PRESETS: tuple[LlmProviderPreset, ...] = (
+    LlmProviderPreset(
+        id=AUTO,
+        name="Auto (LightLLM if configured, else DeepSeek env)",
+        format="auto",
+        default_model="default",
+        requires_api_key=False,
+    ),
+    LlmProviderPreset(
+        id=DEEPSEEK,
+        name="DeepSeek (environment API key)",
+        format="env",
+        default_model="deepseek-chat",
+        requires_api_key=False,
+    ),
+    LlmProviderPreset(
+        id="openai",
+        name="OpenAI (ChatGPT)",
+        base_url="https://api.openai.com/v1",
+        format="openai",
+        default_model="gpt-4o-mini",
+        requires_api_key=True,
+    ),
+    LlmProviderPreset(
+        id="anthropic",
+        name="Anthropic (Claude)",
+        base_url="https://api.anthropic.com",
+        format="anthropic",
+        default_model="claude-3-5-sonnet-20241022",
+        requires_api_key=True,
+    ),
+    LlmProviderPreset(
+        id="gemini",
+        name="Google Gemini",
+        base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
+        format="openai",
+        default_model="gemini-1.5-flash",
+        requires_api_key=True,
+    ),
+    LlmProviderPreset(
+        id="groq",
+        name="Groq",
+        base_url="https://api.groq.com/openai/v1",
+        format="openai",
+        default_model="llama-3.1-70b-versatile",
+        requires_api_key=True,
+    ),
+    LlmProviderPreset(
+        id="together",
+        name="Together AI",
+        base_url="https://api.together.xyz/v1",
+        format="openai",
+        default_model="meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo",
+        requires_api_key=True,
+    ),
+    LlmProviderPreset(
+        id="zai",
+        name="Z.ai (GLM)",
+        base_url="https://api.z.ai/v1",
+        format="openai",
+        default_model="glm-4",
+        requires_api_key=True,
+    ),
+    LlmProviderPreset(
+        id="kimi",
+        name="Kimi",
+        base_url="https://api.moonshot.ai/v1",
+        format="openai",
+        default_model="kimi-k3",
+        requires_api_key=True,
+    ),
+    LlmProviderPreset(
+        id="openrouter",
+        name="OpenRouter",
+        base_url="https://openrouter.ai/api/v1",
+        format="openai",
+        default_model="openai/gpt-4o-mini",
+        requires_api_key=True,
+    ),
+    LlmProviderPreset(
+        id="deepseek_api",
+        name="DeepSeek (API key)",
+        base_url="https://api.deepseek.com/v1",
+        format="openai",
+        default_model="deepseek-chat",
+        requires_api_key=True,
+    ),
+    LlmProviderPreset(
+        id="local",
+        name="Local / Self-hosted",
+        base_url="http://localhost:8000/v1",
+        format="openai",
+        default_model="default",
+        requires_api_key=False,
+    ),
+    LlmProviderPreset(
+        id=CUSTOM,
+        name="Custom endpoint",
+        format="openai",
+        default_model="default",
+        requires_api_key=False,
+    ),
+)
+
+_PRESET_MAP: dict[str, LlmProviderPreset] = {p.id: p for p in _LLMM_PROVIDER_PRESETS}
+_PRESET_IDS: set[str] = set(_PRESET_MAP.keys())
+
+
+def get_llm_provider_presets() -> list[dict]:
+    """Return sanitized preset list for the admin UI."""
+    return [
+        {
+            "id": p.id,
+            "name": p.name,
+            "base_url": p.base_url,
+            "format": p.format,
+            "default_model": p.default_model,
+            "requires_api_key": p.requires_api_key,
+            "hardcoded_models": p.hardcoded_models,
+        }
+        for p in _LLMM_PROVIDER_PRESETS
+    ]
+
+
+def _resolve_preset_config(config: dict) -> dict:
+    """Merge a preset's defaults with user-supplied overrides.
+
+    Returns a dict with base_url, api_key, subscription_key, model, format, requires_api_key.
+    """
+    provider_id = str(config.get("smart_ziw_llm_provider") or AUTO)
+    preset = _PRESET_MAP.get(provider_id)
+    if not preset:
+        preset = _PRESET_MAP[AUTO]
+    user_base_url = str(config.get("lightllm_base_url") or "").strip()
+    base_url = user_base_url or preset.base_url
+    api_key = str(config.get("lightllm_api_key") or "").strip()
+    subscription_key = str(config.get("lightllm_subscription_key") or "").strip()
+    model = str(config.get("lightllm_model") or preset.default_model or "default").strip()
+    format_override = str(config.get("lightllm_provider") or "").strip()
+    if provider_id == CUSTOM and format_override in (ANTHROPIC_COMPATIBLE, "openai_compatible"):
+        fmt = "anthropic" if format_override == ANTHROPIC_COMPATIBLE else "openai"
+    else:
+        fmt = preset.format
+    return {
+        "base_url": base_url,
+        "api_key": api_key,
+        "subscription_key": subscription_key,
+        "model": model,
+        "format": fmt,
+        "requires_api_key": preset.requires_api_key,
+    }
 
 
 def _coerce_llm_params(config: dict) -> tuple:
@@ -73,8 +243,12 @@ def _lightllm_call(
     json_mode: bool,
     temperature: float = _DEFAULT_LLM_TEMPERATURE,
     max_tokens: int = _DEFAULT_LLM_MAX_TOKENS,
+    subscription_key: str = "",
 ) -> Callable[[str, str], dict | str]:
-    client = OpenAI(api_key=api_key or _LIGHTLLM_PLACEHOLDER_KEY, base_url=base_url)
+    client_kwargs = {"api_key": api_key or _LIGHTLLM_PLACEHOLDER_KEY, "base_url": base_url, "timeout": 120.0}
+    if subscription_key:
+        client_kwargs["default_headers"] = {"X-Subscription-Key": subscription_key}
+    client = OpenAI(**client_kwargs)
 
     def call(system_prompt: str, user_prompt: str):
         response = client.chat.completions.create(
@@ -102,6 +276,7 @@ def _anthropic_call(
     json_mode: bool,
     temperature: float = _DEFAULT_LLM_TEMPERATURE,
     max_tokens: int = _DEFAULT_LLM_MAX_TOKENS,
+    subscription_key: str = "",
 ) -> Callable[[str, str], dict | str]:
     """Anthropic-compatible Messages API call path (not wire-compatible with OpenAI)."""
 
@@ -111,6 +286,8 @@ def _anthropic_call(
             "anthropic-version": "2023-06-01",
             "content-type": "application/json",
         }
+        if subscription_key:
+            headers["X-Subscription-Key"] = subscription_key
         resp = requests.post(
             f"{base_url.rstrip('/')}/messages",
             headers=headers,
@@ -182,21 +359,47 @@ def _env_text_call(temperature: float, max_tokens: int) -> Callable[[str, str], 
 def get_llm_call(config: dict | None = None, json_mode: bool = True) -> Callable[[str, str], dict | str]:
     """Return callable(system_prompt, user_prompt) -> dict (json_mode=True) or str (False).
 
-    Provider resolution: "auto" (default) -> lightllm params when
-    lightllm_base_url is non-blank, else the .env DeepSeek path.
-    "deepseek" forces the env path; "lightllm" forces lightllm and
-    raises RuntimeError when the base URL is blank. Unknown provider
-    values are treated as "auto".
+    Provider resolution:
+    - "auto" (default) -> lightllm/custom when a base URL is configured, else the .env DeepSeek path.
+    - "deepseek" forces the env path.
+    - Preset ids ("openai", "groq", ...) use the preset base URL and stored API key.
+    - "lightllm" / "custom" use the user-supplied base URL and wire format.
+    Unknown provider values are treated as "auto".
     """
     config = config or {}
     provider = str(config.get("smart_ziw_llm_provider") or AUTO)
-    if provider not in _PROVIDERS:
+    if provider not in _PROVIDERS and provider not in _PRESET_IDS:
         provider = AUTO
     temperature, max_tokens = _coerce_llm_params(config)
+
+    # Preset providers (openai, groq, together, ...)
+    if provider in _PRESET_IDS and provider not in (AUTO, DEEPSEEK, LIGHTLLM, CUSTOM):
+        pc = _resolve_preset_config(config)
+        if pc["format"] == "anthropic":
+            return _anthropic_call(
+                base_url=pc["base_url"],
+                api_key=pc["api_key"],
+                model=pc["model"],
+                json_mode=json_mode,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                subscription_key=pc["subscription_key"],
+            )
+        return _lightllm_call(
+            base_url=pc["base_url"],
+            api_key=pc["api_key"],
+            model=pc["model"],
+            json_mode=json_mode,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            subscription_key=pc["subscription_key"],
+        )
+
     base_url = str(config.get("lightllm_base_url") or "").strip()
-    if provider == LIGHTLLM and not base_url:
+    subscription_key = str(config.get("lightllm_subscription_key") or "").strip()
+    if provider in (LIGHTLLM, CUSTOM) and not base_url:
         raise RuntimeError("LightLLM base URL is not configured")
-    use_lightllm = provider == LIGHTLLM or (provider == AUTO and bool(base_url))
+    use_lightllm = provider in (LIGHTLLM, CUSTOM) or (provider == AUTO and bool(base_url))
     if not use_lightllm:
         # Default params keep the original callables (identity preserved for
         # callers and tests); custom params get equivalent closures.
@@ -217,6 +420,7 @@ def get_llm_call(config: dict | None = None, json_mode: bool = True) -> Callable
             json_mode=json_mode,
             temperature=temperature,
             max_tokens=max_tokens,
+            subscription_key=subscription_key,
         )
     return _lightllm_call(
         base_url=base_url,
@@ -225,7 +429,136 @@ def get_llm_call(config: dict | None = None, json_mode: bool = True) -> Callable
         json_mode=json_mode,
         temperature=temperature,
         max_tokens=max_tokens,
+        subscription_key=subscription_key,
     )
+
+
+class _SimpleToolCall:
+    """Minimal wrapper for Anthropic-style tool_use blocks."""
+
+    def __init__(self, id: str, name: str, arguments: dict):
+        self.id = id
+        self.function = _SimpleFunction(name=name, arguments=arguments)
+
+
+class _SimpleFunction:
+    def __init__(self, name: str, arguments: dict):
+        self.name = name
+        self.arguments = arguments
+
+
+class _SimpleMessage:
+    def __init__(self, content: str, tool_calls: list | None):
+        self.content = content
+        self.tool_calls = tool_calls or []
+
+
+class _SimpleToolResponse:
+    def __init__(self, message: _SimpleMessage):
+        self.message = message
+
+
+def get_llm_tool_call(config: dict | None = None) -> Callable[[list[dict], list[dict] | None], Any]:
+    """Return callable(messages, tools) -> raw response with .message.content and .message.tool_calls.
+
+    Supports OpenAI-compatible (incl. DeepSeek / LightLLM-openai) and
+    Anthropic-compatible (LightLLM-anthropic) providers.
+    """
+    config = config or {}
+    provider = str(config.get("smart_ziw_llm_provider") or AUTO)
+    if provider not in _PROVIDERS and provider not in _PRESET_IDS:
+        provider = AUTO
+    temperature, max_tokens = _coerce_llm_params(config)
+
+    # Preset providers
+    if provider in _PRESET_IDS and provider not in (AUTO, DEEPSEEK, LIGHTLLM, CUSTOM):
+        pc = _resolve_preset_config(config)
+        base_url = pc["base_url"]
+        api_key = pc["api_key"]
+        subscription_key = pc["subscription_key"]
+        model = pc["model"]
+        fmt = pc["format"]
+    else:
+        base_url = str(config.get("lightllm_base_url") or "").strip()
+        api_key = str(config.get("lightllm_api_key") or "")
+        subscription_key = str(config.get("lightllm_subscription_key") or "")
+        model = str(config.get("lightllm_model") or "default")
+        fmt = str(config.get("lightllm_provider") or "openai_compatible")
+
+    def _openai_tool_call(messages: list[dict], tools: list[dict] | None):
+        if provider == DEEPSEEK or (provider == AUTO and not base_url):
+            from smart_ziw_agent import _deepseek_client
+            client = _deepseek_client()
+            resolved_model = os.environ.get("DEEPSEEK_MODEL", os.environ.get("DEEPSEEK_WEB_MODEL", "deepseek-chat"))
+        else:
+            resolved_model = model
+            client_kwargs = {"api_key": api_key or _LIGHTLLM_PLACEHOLDER_KEY, "base_url": base_url, "timeout": 120.0}
+            if subscription_key:
+                client_kwargs["default_headers"] = {"X-Subscription-Key": subscription_key}
+            client = OpenAI(**client_kwargs)
+        kwargs: dict = {
+            "model": resolved_model,
+            "messages": messages,
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+        }
+        if tools:
+            kwargs["tools"] = tools
+            kwargs["tool_choice"] = "auto"
+        return client.chat.completions.create(**kwargs)
+
+    def _anthropic_tool_call(messages: list[dict], tools: list[dict] | None):
+        if not base_url:
+            raise RuntimeError("LightLLM base URL is not configured")
+        headers = {
+            "x-api-key": api_key or _LIGHTLLM_PLACEHOLDER_KEY,
+            "anthropic-version": "2023-06-01",
+            "content-type": "application/json",
+        }
+        if subscription_key:
+            headers["X-Subscription-Key"] = subscription_key
+        system = ""
+        anthropic_messages = messages
+        if messages and messages[0].get("role") == "system":
+            system = messages[0].get("content", "")
+            anthropic_messages = messages[1:]
+        payload: dict = {
+            "model": model,
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+            "messages": anthropic_messages,
+        }
+        if system:
+            payload["system"] = system
+        if tools:
+            payload["tools"] = tools
+        resp = requests.post(
+            f"{base_url.rstrip('/')}/messages",
+            headers=headers,
+            json=payload,
+            timeout=120.0,
+        )
+        if not (200 <= resp.status_code < 300):
+            raise RuntimeError(f"Anthropic-compatible LLM request failed with HTTP {resp.status_code}")
+        data = resp.json()
+        content = ""
+        tool_calls = []
+        for block in data.get("content") or []:
+            block_type = block.get("type")
+            if block_type == "text":
+                content += block.get("text", "")
+            elif block_type == "tool_use":
+                tool_calls.append(_SimpleToolCall(
+                    id=block.get("id", ""),
+                    name=block.get("name", ""),
+                    arguments=block.get("input") or {},
+                ))
+        return _SimpleToolResponse(_SimpleMessage(content=content, tool_calls=tool_calls))
+
+    if fmt == ANTHROPIC_COMPATIBLE or fmt == "anthropic":
+        return _anthropic_tool_call
+    return _openai_tool_call
+
 
 _LIGHTLLM_DISCOVERY_TIMEOUT = 8.0
 
@@ -235,6 +568,15 @@ def _stored_lightllm_api_key() -> str:
     try:
         from database import get_smart_ziw_config
         return str(get_smart_ziw_config().get("lightllm_api_key") or "")
+    except Exception:
+        return ""
+
+
+def _stored_lightllm_subscription_key() -> str:
+    """Stored LightLLM subscription/secondary key from the admin config; empty on any failure."""
+    try:
+        from database import get_smart_ziw_config
+        return str(get_smart_ziw_config().get("lightllm_subscription_key") or "")
     except Exception:
         return ""
 
@@ -260,15 +602,19 @@ def _normalize_llm_models(entries) -> list[dict]:
     return models
 
 
-def _discover_anthropic_models(base_url: str, api_key: str = "") -> dict:
+def _discover_anthropic_models(base_url: str, api_key: str = "", subscription_key: str = "") -> dict:
     """Discover models via the Anthropic-compatible /models endpoint."""
     if not base_url:
         return {"status": "error", "models": [], "detail": "LightLLM base URL is not set"}
+    resolved_key = str(api_key or "").strip() or _stored_lightllm_api_key()
+    resolved_subscription_key = str(subscription_key or "").strip() or _stored_lightllm_subscription_key()
     headers = {
-        "x-api-key": str(api_key or "").strip() or _LIGHTLLM_PLACEHOLDER_KEY,
+        "x-api-key": resolved_key or _LIGHTLLM_PLACEHOLDER_KEY,
         "anthropic-version": "2023-06-01",
         "content-type": "application/json",
     }
+    if resolved_subscription_key:
+        headers["X-Subscription-Key"] = resolved_subscription_key
     try:
         resp = requests.get(f"{base_url.rstrip('/')}/models", headers=headers, timeout=_LIGHTLLM_DISCOVERY_TIMEOUT)
         if resp.status_code in (401, 403):
@@ -289,7 +635,35 @@ def _discover_anthropic_models(base_url: str, api_key: str = "") -> dict:
         return {"status": "error", "models": [], "detail": "Connection to the LightLLM server failed"}
 
 
-def discover_lightllm_models(provider: str, base_url: str, api_key: str = "") -> dict:
+def discover_models_for_preset(preset_id: str, base_url: str = "", api_key: str = "", subscription_key: str = "") -> dict:
+    """Discover models for a provider preset.
+
+    Uses the OpenAI SDK for OpenAI-compatible presets and the existing
+    Anthropic-compatible path for Anthropic. Falls back to hardcoded models
+    when discovery is unsupported. The API key never appears in the response.
+    """
+    preset = _PRESET_MAP.get(preset_id)
+    if not preset:
+        return {"status": "error", "models": [], "detail": "Unknown provider preset"}
+    if preset.format == "env":
+        return {"status": "unsupported", "models": [], "detail": "Environment provider does not support model discovery"}
+    effective_base_url = str(base_url or "").strip() or preset.base_url
+    if not effective_base_url:
+        return {"status": "error", "models": [], "detail": "Base URL is not set"}
+    effective_key = str(api_key or "").strip() or _stored_lightllm_api_key()
+    effective_subscription_key = str(subscription_key or "").strip() or _stored_lightllm_subscription_key()
+
+    if preset.format == "anthropic":
+        result = _discover_anthropic_models(effective_base_url, effective_key, effective_subscription_key)
+    else:
+        result = discover_lightllm_models("openai_compatible", effective_base_url, effective_key, effective_subscription_key)
+
+    if result.get("status") in ("unsupported", "error") and preset.hardcoded_models:
+        return {"status": "ok", "models": list(preset.hardcoded_models)}
+    return result
+
+
+def discover_lightllm_models(provider: str, base_url: str, api_key: str = "", subscription_key: str = "") -> dict:
     """Discover models on a LightLLM server (OpenAI- or Anthropic-compatible).
 
     The OpenAI-compatible path attempts keyless discovery first; on 401/403
@@ -299,19 +673,23 @@ def discover_lightllm_models(provider: str, base_url: str, api_key: str = "") ->
     API key never appears in the returned dict.
     """
     if str(provider or "").strip() == ANTHROPIC_COMPATIBLE:
-        return _discover_anthropic_models(str(base_url or "").strip(), api_key)
+        return _discover_anthropic_models(str(base_url or "").strip(), api_key, subscription_key)
     if str(provider or "").strip() != "openai_compatible":
         return {"status": "unsupported", "models": []}
     base_url = str(base_url or "").strip()
     if not base_url:
         return {"status": "error", "models": [], "detail": "LightLLM base URL is not set"}
     resolved_key = str(api_key or "").strip() or _stored_lightllm_api_key()
+    resolved_subscription_key = str(subscription_key or "").strip() or _stored_lightllm_subscription_key()
     keys = [_LIGHTLLM_PLACEHOLDER_KEY]
     if resolved_key:
         keys.append(resolved_key)
     for key in keys:
         try:
-            client = OpenAI(api_key=key, base_url=base_url, timeout=_LIGHTLLM_DISCOVERY_TIMEOUT)
+            client_kwargs = {"api_key": key, "base_url": base_url, "timeout": _LIGHTLLM_DISCOVERY_TIMEOUT}
+            if resolved_subscription_key:
+                client_kwargs["default_headers"] = {"X-Subscription-Key": resolved_subscription_key}
+            client = OpenAI(**client_kwargs)
             listing = client.models.list()
             entries = listing.data if hasattr(listing, "data") else listing
             models = _normalize_llm_models(entries)

@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
-import { ArrowDown, ArrowUp, ArrowUpDown, SearchX } from 'lucide-react';
+import { ArrowDown, ArrowUp, ArrowUpDown, SearchX, Loader2, AlertCircle } from 'lucide-react';
 import ContextMenu from './ContextMenu';
 import UnifiedSearchBar from './UnifiedSearchBar';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -48,7 +48,7 @@ function initials(name = '', email = '') {
 
 function CommentSignalIcon() {
   return (
-    <svg viewBox="0 0 20 20" aria-hidden="true" className="h-3.5 w-3.5 flex-none">
+    <svg viewBox="0 0 20 20" aria-hidden="true" className="h-4 w-4 flex-none">
       <path d="M5.5 5.5h9a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2H9.7l-3.2 2.4c-.5.4-1.2 0-.9-.7l.6-1.7H5.5a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2Z" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
@@ -56,22 +56,22 @@ function CommentSignalIcon() {
 
 function AttachmentSignalIcon() {
   return (
-    <svg viewBox="0 0 20 20" aria-hidden="true" className="h-3.5 w-3.5 flex-none">
+    <svg viewBox="0 0 20 20" aria-hidden="true" className="h-4 w-4 flex-none">
       <path d="M7.4 10.8 11.9 6.3a2.6 2.6 0 1 1 3.7 3.7l-5.8 5.8a4 4 0 1 1-5.6-5.6l6.3-6.3" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }
 
-function sourceClass(source) {
-  const s = (source || '').toLowerCase();
-  if (s.includes('iadb')) return 'border-blue-200 bg-blue-50 text-blue-700';
-  if (s.includes('world bank')) return 'border-indigo-200 bg-indigo-50 text-indigo-700';
-  if (s.includes('global')) return 'border-teal-200 bg-teal-50 text-teal-700';
-  if (s.includes('giz')) return 'border-orange-200 bg-orange-50 text-orange-700';
-  if (s.includes('development')) return 'border-purple-200 bg-purple-50 text-purple-700';
-  if (s.includes('dgmarket')) return 'border-rose-200 bg-rose-50 text-rose-700';
-  if (s.includes('africa')) return 'border-yellow-200 bg-yellow-50 text-yellow-800';
-  return '';
+function sourceStyle(source) {
+  const s = String(source || '');
+  let hash = 0;
+  for (let i = 0; i < s.length; i += 1) hash = s.charCodeAt(i) + ((hash << 5) - hash);
+  const hue = Math.abs(hash) % 360;
+  return {
+    backgroundColor: `hsl(${hue} 55% 95%)`,
+    borderColor: `hsl(${hue} 50% 84%)`,
+    color: `hsl(${hue} 55% 30%)`,
+  };
 }
 
 function getProjectBaseKey(project) {
@@ -136,9 +136,11 @@ export default function ProjectTable({
   onProjectSelect,
   activeProjectId,
   onClearActiveProject,
-  autoFilterActive,
-  onClearAutoFilter,
   onStartDemo,
+  loading,
+  error,
+  onRetry,
+  newProjectIds,
 }) {
   const [sortCol, setSortCol] = useState('scraped_at');
   const [sortDir, setSortDir] = useState('desc');
@@ -463,34 +465,32 @@ export default function ProjectTable({
         resultCount={projects.length}
         onClearAll={onClearFilters}
         allProjects={allProjects}
-        autoFilterActive={autoFilterActive}
-        onClearAutoFilter={onClearAutoFilter}
       />
 
       {selectedRowIds.size > 0 ? (
-        <div className="sticky top-0 z-10 flex items-center justify-between gap-3 rounded-lg border bg-card px-4 py-2.5 shadow-sm">
+        <div className="sticky top-0 z-10 flex items-center justify-between gap-3 rounded-lg border bg-card px-4 py-3 shadow-sm">
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-sm font-semibold">{selectedRowIds.size} project{selectedRowIds.size === 1 ? '' : 's'} selected</span>
             <Button type="button" variant="ghost" size="sm" onClick={toggleSelectAll}>{allOnPageSelected ? 'Unselect visible' : 'Select visible'}</Button>
             <Button type="button" variant="ghost" size="sm" onClick={() => setSelectedRowIds(new Set())}>Clear</Button>
           </div>
           <div className="flex items-center gap-2">
-            {canManageDecision ? <Button type="button" size="sm" className="bg-green-700 text-white hover:bg-green-800" onClick={() => handleBulkDecision('Go')}>Mark Go</Button> : null}
-            {canManageDecision ? <Button type="button" size="sm" variant="outline" className="text-red-700 hover:bg-red-50 hover:text-red-700" onClick={() => handleBulkDecision('No Go')}>Mark No Go</Button> : null}
+            {canManageDecision ? <Button type="button" size="sm" className="bg-green-600 text-primary-foreground hover:bg-green-600/90" onClick={() => handleBulkDecision('Go')}>Mark Go</Button> : null}
+            {canManageDecision ? <Button type="button" size="sm" variant="outline" className="text-destructive hover:bg-destructive/10 hover:text-destructive" onClick={() => handleBulkDecision('No Go')}>Mark No Go</Button> : null}
             <Button type="button" size="sm" variant="destructive" onClick={() => { void handleBulkDelete(); }}>Delete</Button>
           </div>
         </div>
       ) : null}
 
       <div className="overflow-hidden rounded-lg border bg-card shadow-sm">
-
+        <div className="overflow-x-auto">
         <Table aria-label="Projects table" className="app-table table-fixed">
           <TableHeader>
             <TableRow className="hover:bg-transparent">
               {columns.map((col) => (
                 <TableHead
                   key={col.key}
-                  className={`sticky top-0 z-[2] whitespace-nowrap border-b bg-muted/70 px-3.5 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground ${col.key === '_select' ? 'w-10 text-center' : ''} ${col.key === '_actions' ? 'w-12 text-center' : ''} ${col.key === 'scraped_at' ? 'w-[10%] min-w-[140px]' : ''} ${col.type !== 'none' ? 'cursor-pointer select-none' : ''}`}
+                  className={`sticky top-0 z-[2] h-12 whitespace-nowrap border-b bg-muted px-3.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground ${col.key === '_select' ? 'w-10 text-center' : ''} ${col.key === '_actions' ? 'w-12 text-center' : ''} ${col.key === '_project' ? 'w-[200px] min-w-[200px]' : ''} ${col.key === '_project_id' ? 'w-[110px] min-w-[110px]' : ''} ${col.key === '_region' ? 'w-[120px] min-w-[120px]' : ''} ${col.key === '_published' ? 'w-[140px] min-w-[140px]' : ''} ${col.key === '_deadline' ? 'w-[110px] min-w-[110px]' : ''} ${col.key === 'matched_keywords' ? 'w-[130px] min-w-[130px]' : ''} ${col.key === '_decision' ? 'w-[100px] min-w-[100px]' : ''} ${col.key === '_verification' ? 'w-[120px] min-w-[120px]' : ''} ${col.key === 'scraped_at' ? 'w-[110px] min-w-[110px]' : ''} ${col.type !== 'none' ? 'cursor-pointer select-none' : ''}`}
                   aria-sort={sortCol === col.key ? (sortDir === 'asc' ? 'ascending' : 'descending') : undefined}
                   onClick={col.type !== 'none' ? () => handleSortClick(col.key) : undefined}
                 >
@@ -501,8 +501,8 @@ export default function ProjectTable({
                       {col.label}
                       {col.type !== 'none' ? (
                         sortCol === col.key
-                          ? (sortDir === 'asc' ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />)
-                          : <ArrowUpDown className="h-3 w-3 opacity-60" />
+                          ? (sortDir === 'asc' ? <ArrowUp className="h-4 w-4" /> : <ArrowDown className="h-4 w-4" />)
+                          : <ArrowUpDown className="h-4 w-4 opacity-60" />
                       ) : null}
                     </span>
                   )}
@@ -522,12 +522,13 @@ export default function ProjectTable({
               const sponsorLabel = formatPlaceLabel(p.project_sponsor || '-');
               const regionLabel = regionName !== '-' ? formatPlaceLabel(regionName) : '-';
               const rowEntityId = p.project_id || p.project_name || '';
+              const isNew = newProjectIds?.has(`${p.project_id}__${p.project_name}`);
 
               return (
                 <TableRow
                   key={rowId}
                   onClick={(event) => handleRowClick(event, p, realIndex)}
-                  className={`group cursor-pointer transition-colors ${p.decision === 'No Go' ? 'opacity-50' : ''} ${isSelected ? 'bg-primary/10 shadow-[inset_3px_0_0_var(--color-primary)] hover:bg-primary/10' : ''} ${rowEntityId && activeProjectId === rowEntityId ? 'bg-primary/[0.06] shadow-[inset_3px_0_0_var(--color-primary)] hover:bg-primary/[0.06]' : ''} ${!isSelected && !(rowEntityId && activeProjectId === rowEntityId) ? `even:bg-slate-50/60 hover:bg-slate-100/70 ${focusedRowIndex === realIndex ? 'bg-primary/5' : ''}` : ''}`}
+                  className={`group h-12 cursor-pointer transition-colors ${p.decision === 'No Go' ? 'opacity-50' : ''} ${isSelected ? 'bg-primary/10 shadow-[inset_3px_0_0_var(--color-primary)] hover:bg-primary/10' : ''} ${rowEntityId && activeProjectId === rowEntityId ? 'bg-primary/[0.06] shadow-[inset_3px_0_0_var(--color-primary)] hover:bg-primary/[0.06]' : ''} ${isNew ? 'bg-primary/[0.08]' : ''} ${!isSelected && !(rowEntityId && activeProjectId === rowEntityId) && !isNew ? `even:bg-muted/40 hover:bg-muted/60 ${focusedRowIndex === realIndex ? 'bg-primary/5' : ''}` : ''}`}
                 >
                   {columns.map((columnKey) => {
                     const key = typeof columnKey === 'string' ? columnKey : (columnKey?.key || columnKey?.id || '');
@@ -564,31 +565,31 @@ export default function ProjectTable({
                           <div className="flex min-w-0 flex-col gap-1">
                             <span className="line-clamp-2 text-sm leading-[1.35] font-semibold text-foreground group-hover:text-primary" title={displayName}>{displayName}</span>
                             <span className="mt-0.5 flex flex-wrap items-center gap-1.5">
-                              <Badge variant="outline" className={`px-2 py-0.5 text-[0.64rem] ${sourceClass(p.source) || 'border-border bg-card text-slate-700'}`}>{p.source}</Badge>
+                              <Badge variant="outline" className="px-2 py-0.5 text-[0.64rem] border-border bg-card text-muted-foreground" style={p.source ? sourceStyle(p.source) : undefined}>{p.source}</Badge>
                             </span>
                             <div className="mt-1.5 flex flex-wrap items-center gap-2">
                               {(p.comment_count || 0) > 0 ? (
-                                <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-slate-50 px-2 py-1 text-[11px] font-semibold leading-none text-muted-foreground" title="Comments">
+                                <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-secondary px-2 py-1 text-[11px] font-semibold leading-none text-muted-foreground" title="Comments">
                                   <CommentSignalIcon />
                                   <span>{p.comment_count || 0}</span>
                                 </span>
                               ) : null}
                               {(p.comment_document_count || 0) > 0 ? (
-                                <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-slate-50 px-2 py-1 text-[11px] font-semibold leading-none text-muted-foreground" title="Comment attachments">
+                                <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-secondary px-2 py-1 text-[11px] font-semibold leading-none text-muted-foreground" title="Comment attachments">
                                   <AttachmentSignalIcon />
                                   <span>{p.comment_document_count || 0}</span>
                                 </span>
                               ) : null}
                               {assignedUsers.length ? (
-                                <span className="inline-flex items-center gap-2 rounded-full border border-border bg-slate-50 py-1 pr-2 pl-1.5" title={assignedUsers.map((user) => user.name || user.email).join(', ')}>
+                                <span className="inline-flex items-center gap-2 rounded-full border border-border bg-secondary py-1 pr-2 pl-1.5" title={assignedUsers.map((user) => user.name || user.email).join(', ')}>
                                   <span className="text-[11px] font-semibold text-muted-foreground">Working on</span>
                                   <span className="inline-flex items-center">
                                     {assignedUsers.slice(0, 3).map((user) => (
-                                      <span key={user.id} className="-ml-1.5 inline-flex h-[22px] w-[22px] items-center justify-center rounded-full border-2 border-card bg-muted text-[11px] font-semibold text-slate-700 first:ml-0" aria-label={user.name || user.email}>
+                                      <span key={user.id} className="-ml-1.5 inline-flex h-[22px] w-[22px] items-center justify-center rounded-full border-2 border-card bg-muted text-[11px] font-semibold text-foreground first:ml-0" aria-label={user.name || user.email}>
                                         {initials(user.name || '', user.email || '')}
                                       </span>
                                     ))}
-                                    {assignedUsers.length > 3 ? <span className="-ml-1.5 inline-flex h-[22px] min-w-[22px] items-center justify-center rounded-full border-2 border-card bg-muted px-1.5 text-[11px] font-semibold text-slate-700 first:ml-0">+{assignedUsers.length - 3}</span> : null}
+                                    {assignedUsers.length > 3 ? <span className="-ml-1.5 inline-flex h-[22px] min-w-[22px] items-center justify-center rounded-full border-2 border-card bg-muted px-1.5 text-[11px] font-semibold text-foreground first:ml-0">+{assignedUsers.length - 3}</span> : null}
                                   </span>
                                 </span>
                               ) : null}
@@ -601,7 +602,7 @@ export default function ProjectTable({
                     if (key === '_project_id') {
                       return (
                         <TableCell key={key} className="overflow-hidden">
-                          <span className="inline-block max-w-full truncate font-mono text-xs font-semibold text-slate-700" title={p.project_id || ''}>{p.project_id || '-'}</span>
+                          <span className="inline-block max-w-full truncate font-mono text-xs font-semibold text-foreground" title={p.project_id || ''}>{p.project_id || '-'}</span>
                         </TableCell>
                       );
                     }
@@ -610,7 +611,7 @@ export default function ProjectTable({
                       return (
                         <TableCell key={key} className="overflow-hidden">
                           <div className="flex min-w-0 flex-col gap-0.5">
-                            <span className="truncate text-sm text-slate-700">{sponsorLabel}</span>
+                            <span className="truncate text-sm text-foreground">{sponsorLabel}</span>
                             {regionLabel !== '-' ? <span className="text-xs font-semibold text-primary">{regionLabel}</span> : null}
                           </div>
                         </TableCell>
@@ -648,13 +649,13 @@ export default function ProjectTable({
                         <TableCell key={key} className="whitespace-nowrap">
                           <div className="flex items-center gap-2">
                             <span
-                              className={`h-1.5 w-1.5 shrink-0 rounded-full ${p.decision === 'Go' ? 'bg-green-600' : p.decision === 'No Go' ? 'bg-red-600' : isVerified ? 'bg-amber-600' : 'bg-muted-foreground/40'}`}
+                              className={`h-1.5 w-1.5 shrink-0 rounded-full ${p.decision === 'Go' ? 'bg-green-600' : p.decision === 'No Go' ? 'bg-destructive' : isVerified ? 'bg-amber-600' : 'bg-muted-foreground/40'}`}
                               title={isVerified ? 'AI Verified' : 'Not Verified'}
                             />
                             {p.decision ? (
-                              <Badge className={p.decision === 'Go' ? 'bg-green-700 text-white' : 'bg-red-700 text-white'}>{p.decision}</Badge>
+                              <Badge className={p.decision === 'Go' ? 'bg-green-600 text-primary-foreground hover:bg-green-600/90' : 'bg-destructive text-destructive-foreground hover:bg-destructive/90'}>{p.decision}</Badge>
                             ) : (
-                              <Badge className="bg-amber-600 text-white">Pending</Badge>
+                              <Badge className="bg-amber-600 text-primary-foreground hover:bg-amber-700">Pending</Badge>
                             )}
                           </div>
                         </TableCell>
@@ -665,7 +666,7 @@ export default function ProjectTable({
                       return (
                         <TableCell key={key} className="whitespace-nowrap">
                           {isVerified ? (
-                            <Badge className="bg-green-700 text-white">Verified</Badge>
+                            <Badge className="bg-green-600 text-primary-foreground hover:bg-green-600/90">Verified</Badge>
                           ) : (
                             <Badge variant="secondary">Unverified</Badge>
                           )}
@@ -686,6 +687,7 @@ export default function ProjectTable({
                               e.stopPropagation();
                               window.open(p.project_url, '_blank');
                             }}
+                            aria-label="Open project"
                             title="Open project"
                           >
                             {'->'}
@@ -698,6 +700,7 @@ export default function ProjectTable({
                             const rect = e.currentTarget.getBoundingClientRect();
                             setContextMenu({ rect, project: p, realIndex });
                           }}
+                          aria-label="Actions"
                           title="Actions"
                         >
                           ...
@@ -710,15 +713,36 @@ export default function ProjectTable({
             })}
           </TableBody>
         </Table>
+        </div>
 
-        {pageData.length === 0 ? (
+        {loading ? (
+          <div className="flex flex-col items-center border-t px-6 py-16 text-center">
+            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            <h3 className="mt-4 text-base font-semibold text-foreground">Loading tenders...</h3>
+          </div>
+        ) : error ? (
+          <div className="flex flex-col items-center border-t px-6 py-16 text-center">
+            <div className="flex size-10 items-center justify-center rounded-full bg-destructive/10">
+              <AlertCircle className="h-5 w-5 text-destructive" />
+            </div>
+            <h3 className="mt-4 text-base font-semibold text-foreground">Failed to load tenders</h3>
+            <p className="mt-1 max-w-md text-sm text-muted-foreground">{error}</p>
+            {onRetry ? (
+              <Button type="button" variant="outline" className="mt-5" onClick={onRetry}>Try again</Button>
+            ) : null}
+          </div>
+        ) : pageData.length === 0 ? (
           <div className="flex flex-col items-center border-t px-6 py-16 text-center">
             <div className="flex size-10 items-center justify-center rounded-full bg-muted">
-              <SearchX className="h-5 w-5 text-muted-foreground" />
+              <SearchX className="h-4 w-4 text-muted-foreground" />
             </div>
-            <h3 className="mt-4 text-base font-semibold text-foreground">No tenders match your filters</h3>
-            <p className="mt-1 text-sm text-muted-foreground">Try adjusting your search or filters</p>
-            {onStartDemo ? (
+            <h3 className="mt-4 text-base font-semibold text-foreground">
+              {allProjects.length === 0 ? 'No tenders yet' : 'No tenders match your filters'}
+            </h3>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {allProjects.length === 0 ? 'Import or sync tenders to get started' : 'Try adjusting your search or filters'}
+            </p>
+            {onStartDemo && allProjects.length === 0 ? (
               <Button type="button" variant="outline" className="mt-5" onClick={onStartDemo}>
                 Show me around
               </Button>
@@ -730,14 +754,14 @@ export default function ProjectTable({
           <div className="flex flex-wrap items-center justify-between gap-3 border-t px-4 py-3">
             <span className="text-sm text-muted-foreground">Showing <strong className="font-semibold text-foreground">{startItem}-{endItem}</strong> of <strong className="font-semibold text-foreground">{sorted.length}</strong></span>
             <div className="flex items-center gap-1">
-              <Button type="button" variant="outline" size="icon" className="h-8 w-8" disabled={page === 0} onClick={() => setPage(0)} title="First page">{'<<'}</Button>
-              <Button type="button" variant="outline" size="icon" className="h-8 w-8" disabled={page === 0} onClick={() => setPage(page - 1)} title="Previous page">{'<'}</Button>
+              <Button type="button" variant="outline" size="icon" className="h-9 w-9" disabled={page === 0} onClick={() => setPage(0)} aria-label="First page" title="First page">{'<<'}</Button>
+              <Button type="button" variant="outline" size="icon" className="h-9 w-9" disabled={page === 0} onClick={() => setPage(page - 1)} aria-label="Previous page" title="Previous page">{'<'}</Button>
               <span className="px-2 text-sm text-muted-foreground">Page <strong className="font-semibold text-foreground">{page + 1}</strong> of <strong className="font-semibold text-foreground">{totalPages}</strong></span>
-              <Button type="button" variant="outline" size="icon" className="h-8 w-8" disabled={page >= totalPages - 1} onClick={() => setPage(page + 1)} title="Next page">{'>'}</Button>
-              <Button type="button" variant="outline" size="icon" className="h-8 w-8" disabled={page >= totalPages - 1} onClick={() => setPage(totalPages - 1)} title="Last page">{'>>'}</Button>
+              <Button type="button" variant="outline" size="icon" className="h-9 w-9" disabled={page >= totalPages - 1} onClick={() => setPage(page + 1)} aria-label="Next page" title="Next page">{'>'}</Button>
+              <Button type="button" variant="outline" size="icon" className="h-9 w-9" disabled={page >= totalPages - 1} onClick={() => setPage(totalPages - 1)} aria-label="Last page" title="Last page">{'>>'}</Button>
             </div>
             <label className="flex items-center gap-2 text-sm text-muted-foreground">Rows:
-              <select name="projectRowsPerPage" aria-label="Projects rows per page" value={rowsPerPage} onChange={(e) => { setRowsPerPage(Number(e.target.value)); setPage(0); }} className="h-8 rounded-md border border-input bg-background px-2 text-sm text-foreground outline-none">
+              <select name="projectRowsPerPage" aria-label="Projects rows per page" value={rowsPerPage} onChange={(e) => { setRowsPerPage(Number(e.target.value)); setPage(0); }} className="h-9 rounded-md border border-input bg-background px-2 text-sm text-foreground outline-none">
                 {ROWS_PER_PAGE_OPTIONS.map((n) => <option key={n} value={n}>{n}</option>)}
               </select>
             </label>

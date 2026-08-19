@@ -165,7 +165,7 @@ export default function DemoWalkthrough({ open, onClose, steps = [] }) {
                     />
                     <Card
                         ref={cardRef}
-                        className="fixed z-[1] w-[340px] max-w-[calc(100vw-24px)] border-slate-200 bg-white p-4 shadow-2xl"
+                        className="fixed z-[1] w-[340px] max-w-[calc(100vw-24px)] border-border bg-card p-6 shadow-2xl"
                         style={cardPos ? { top: cardPos.top, left: cardPos.left } : { visibility: 'hidden' }}
                         onClick={(e) => e.stopPropagation()}
                     >
@@ -174,7 +174,7 @@ export default function DemoWalkthrough({ open, onClose, steps = [] }) {
                 </>
             ) : (
                 <Card
-                    className="fixed z-[1] w-[340px] max-w-[calc(100vw-24px)] border-slate-200 bg-white p-4 shadow-2xl"
+                    className="fixed z-[1] w-[340px] max-w-[calc(100vw-24px)] border-border bg-card p-6 shadow-2xl"
                     style={{ left: '50%', top: '50%', transform: 'translate(-50%, -50%)' }}
                     onClick={(e) => e.stopPropagation()}
                 >
