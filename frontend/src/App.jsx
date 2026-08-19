@@ -28,6 +28,7 @@ import {
     buildDashboardHash,
     deserializeFilters,
 } from './utils/tenderRouting';
+import { attachProjectRowIds } from './utils/projects';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { Textarea } from '@/components/ui/textarea';
@@ -417,34 +418,6 @@ function colorFromSeed(seed = '') {
     for (let i = 0; i < seed.length; i += 1) hash = (hash * 31 + seed.charCodeAt(i)) % 360;
     return `hsl(${hash} 45% 46%)`;
 }
-
-function getProjectSeedKey(project = {}) {
-    return [
-        project?.source || '',
-        project?.project_id || '',
-        project?.project_url || '',
-        project?.document_url || '',
-        project?.project_name || '',
-        project?.project_description || '',
-        project?.project_sponsor || '',
-        project?.project_end_date || '',
-    ].join('::');
-}
-
-function attachProjectRowIds(items = []) {
-    const seen = new Map();
-    return items.map((project) => {
-        if (project?.__rowId) return project;
-        const seed = getProjectSeedKey(project);
-        const occurrence = (seen.get(seed) || 0) + 1;
-        seen.set(seed, occurrence);
-        return {
-            ...project,
-            __rowId: `${seed}__${occurrence}`,
-        };
-    });
-}
-
 
 function formatDisplayDate(value) {
     if (!value) return '-';
