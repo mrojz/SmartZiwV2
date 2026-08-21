@@ -1,6 +1,7 @@
 
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import TendersPage from './pages/TendersPage';
+import TenderDetailPage from './pages/TenderDetailPage';
 import DemoWalkthrough from './components/DemoWalkthrough';
 import SyncPanel from './components/SyncPanel';
 import SettingsPage from './components/SettingsPage';
@@ -2821,6 +2822,7 @@ export default function App() {
     const [releaseNotes, setReleaseNotes] = useState(DEFAULT_RELEASE_NOTES);
 
     const [route, setRoute] = useState(normalizeRoute(window.location.hash.replace('#', '')));
+    const tenderDetailId = getTenderIdFromHash(window.location.hash);
     const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
     const [mobileNavOpen, setMobileNavOpen] = useState(false);
     const [commandOpen, setCommandOpen] = useState(false);
@@ -3379,7 +3381,15 @@ export default function App() {
                                 </DropdownMenuContent>
                             </DropdownMenu>
                         </div>
-{route === 'dashboard' ? (
+{tenderDetailId ? (
+                            <TenderDetailPage
+                                dbId={tenderDetailId}
+                                apiFetch={apiFetch}
+                                authUser={authUser}
+                                availableUsers={availableUsers}
+                            />
+                        ) : null}
+{route === 'dashboard' && !tenderDetailId ? (
                             <TendersPage
                                 apiFetch={apiFetch}
                                 authUser={authUser}

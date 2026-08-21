@@ -1375,6 +1375,11 @@ export default function TendersPage({
                     activeProjectId={selectedEntityId}
                     onClearActiveProject={clearActiveProject}
                     onStartDemo={onStartDemo}
+                    onOpenFullPage={(project) => {
+                        if (project?.db_id) {
+                            window.location.hash = buildTenderHash(project.db_id);
+                        }
+                    }}
                     onProjectSelect={(project, projectIndex) => {
                         setSelectedProject(project);
                         setSelectedProjectIndex(projectIndex);

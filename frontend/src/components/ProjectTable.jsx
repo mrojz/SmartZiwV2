@@ -141,6 +141,7 @@ export default function ProjectTable({
   error,
   onRetry,
   newProjectIds,
+  onOpenFullPage,
 }) {
   const [sortCol, setSortCol] = useState('scraped_at');
   const [sortDir, setSortDir] = useState('desc');
@@ -789,6 +790,7 @@ export default function ProjectTable({
             { divider: true }] : []),
             ...(contextMenu.project.project_url ? [{ icon: 'O', label: 'Open Project', onClick: () => window.open(contextMenu.project.project_url, '_blank') }] : []),
             ...(contextMenu.project.document_url ? [{ icon: 'D', label: 'Open Document', onClick: () => window.open(contextMenu.project.document_url, '_blank') }] : []),
+            { icon: '→', label: 'Open full page', onClick: () => onOpenFullPage?.(contextMenu.project) },
             { divider: true },
             {
               icon: 'X',
