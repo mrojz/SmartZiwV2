@@ -2,6 +2,7 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import TendersPage from './pages/TendersPage';
 import TenderDetailPage from './pages/TenderDetailPage';
+import ErrorBoundary from './components/ErrorBoundary';
 import DemoWalkthrough from './components/DemoWalkthrough';
 import SyncPanel from './components/SyncPanel';
 import SettingsPage from './components/SettingsPage';
@@ -3381,6 +3382,7 @@ export default function App() {
                                 </DropdownMenuContent>
                             </DropdownMenu>
                         </div>
+                        <ErrorBoundary>
 {tenderDetailId ? (
                             <TenderDetailPage
                                 dbId={tenderDetailId}
@@ -3407,6 +3409,7 @@ export default function App() {
                                 onStartDemo={() => setDemoOpen(true)}
                             />
                         ) : null}
+                        </ErrorBoundary>
 
                         {ADMIN_ROUTES.includes(route) && authUser.role === 'admin' ? (
                             <AdminPage
