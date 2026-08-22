@@ -109,6 +109,7 @@ def _normalize_project(doc: dict, geography: dict | None = None, geography_looku
     doc['smart_ziw_evidence'] = str(doc.get('smart_ziw_evidence') or '')
     doc['smart_ziw_confidence'] = str(doc.get('smart_ziw_confidence') or '')
     doc['smart_ziw_ai_source'] = str(doc.get('smart_ziw_ai_source') or '')
+    doc['smart_ziw_repo_path'] = str(doc.get('smart_ziw_repo_path') or '')
     return doc
 
 
@@ -322,6 +323,7 @@ def update_project_smart_ziw_state_by_db_id(project_db_id: str, updates: dict) -
         'smart_ziw_evidence',
         'smart_ziw_confidence',
         'smart_ziw_ai_source',
+        'smart_ziw_repo_path',
     }
     filtered = {k: v for k, v in updates.items() if k in allowed}
     if not filtered:

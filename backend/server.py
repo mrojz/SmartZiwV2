@@ -544,6 +544,7 @@ def _run_smart_ziw(project_db_id: str, actor_user: dict, thread_comments: list[d
             "smart_ziw_evidence": evidence,
             "smart_ziw_confidence": confidence,
             "smart_ziw_ai_source": ai_source,
+            "smart_ziw_repo_path": str(result.get("repo_path") or ""),
         })
     except Exception as exc:
         project = get_project_by_db_id(project_db_id)

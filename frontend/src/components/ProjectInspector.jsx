@@ -12,7 +12,9 @@ import {
     normalizeComment,
     colorFromSeed,
     formatDisplayDate,
+    getUnifiedStatus,
 } from '@/utils/tenderDisplay';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 
 export default function ProjectInspector({
     project,
@@ -89,7 +91,6 @@ export default function ProjectInspector({
 
 function OverviewTab({ project, canManageDecision, onDecisionChange, compact }) {
     const projectDecision = project?.decision || '';
-    const projectVerified = project?.ai_verified === 'Yes';
     const projectRegion = project?.primary_region_name || project?.region || project?.region_name || '-';
     const effectiveDeadline = project?.effective_deadline || project?.manual_deadline || project?.scraped_deadline || project?.project_end_date || '';
     const projectDescription = project?.project_description && project.project_description !== project?.project_name
@@ -99,17 +100,20 @@ function OverviewTab({ project, canManageDecision, onDecisionChange, compact }) 
         .split(',')
         .map((k) => k.trim())
         .filter(Boolean);
+    const status = getUnifiedStatus(project);
 
     return (
-        <div className={`flex flex-col gap-4 ${compact ? 'p-4' : 'p-6'}`}>
+        <div className={`flex flex-col gap-4 md:gap-6 ${compact ? 'p-4' : 'p-6'}`}>
             <section className="flex flex-col gap-4 rounded-lg border bg-card p-4">
                 <div className="flex flex-wrap items-center gap-2">
-                    <Badge className={projectDecision === 'Go' ? 'bg-green-600 text-primary-foreground hover:bg-green-600/90' : projectDecision === 'No Go' ? 'bg-destructive text-destructive-foreground hover:bg-destructive/90' : 'bg-muted text-muted-foreground'}>
-                        {projectDecision || 'Pending'}
-                    </Badge>
-                    <Badge className={projectVerified ? 'bg-green-600 text-primary-foreground hover:bg-green-600/90' : 'bg-muted text-muted-foreground'}>
-                        {projectVerified ? 'Verified' : 'Not verified'}
-                    </Badge>
+                    <Badge className={status.classes}>{status.label}</Badge>
+                    {status.source ? <Badge variant="outline">{status.source}</Badge> : null}
+                    {project.smart_ziw_research_verdict ? (
+                        <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+                            <span className={`h-1.5 w-1.5 rounded-full ${status.confidenceClasses}`} />
+                            {status.confidence || 'unknown'} confidence
+                        </span>
+                    ) : null}
                     {project?.source ? <Badge variant="outline">{project.source}</Badge> : null}
                 </div>
 
@@ -161,7 +165,7 @@ function OverviewTab({ project, canManageDecision, onDecisionChange, compact }) 
                     </>
                 ) : null}
 
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div className="flex flex-col gap-1 rounded-lg bg-muted p-3"><span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Project ID</span><strong className="text-sm font-medium text-foreground">{project?.project_id || '-'}</strong></div>
                     <div className="flex flex-col gap-1 rounded-lg bg-muted p-3"><span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Region</span><strong className="text-sm font-medium text-foreground">{projectRegion}</strong></div>
                     <div className="flex flex-col gap-1 rounded-lg bg-muted p-3"><span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Sponsor</span><strong className="text-sm font-medium text-foreground">{project?.project_sponsor || '-'}</strong></div>
@@ -335,32 +339,138 @@ function SmartZiwTab({ project, onRun, compact }) {
     };
 
     const isBusy = running || project?.smart_ziw_status === 'queued' || project?.smart_ziw_status === 'running';
+    const hasResults = project?.smart_ziw_status === 'completed' || project?.smart_ziw_research_verdict;
+    const status = getUnifiedStatus(project);
+    const nextActions = Array.isArray(project?.smart_ziw_next_actions)
+        ? project.smart_ziw_next_actions
+        : [];
+    const analysisMarkdown = project?.smart_ziw_analysis_markdown || '';
+    const evidence = project?.smart_ziw_evidence || '';
+    const folder = project?.smart_ziw_folder || '';
+    const repoPath = project?.smart_ziw_repo_path || '';
+    const resultFiles = ['README.md', 'analysis.md', 'next-actions.md', 'source.md', 'recap.md'];
 
     return (
-        <div className={`flex flex-col gap-3 ${compact ? 'p-4' : 'p-6'}`}>
+        <div className={`flex flex-col gap-4 md:gap-6 ${compact ? 'p-4' : 'p-6'}`}>
             <Card>
                 <CardHeader className="px-4 pb-2 pt-4">
                     <CardTitle className="text-sm font-semibold">Smart-Ziw Agent</CardTitle>
                 </CardHeader>
-                <CardContent className="flex flex-col items-start gap-2.5 px-4 pb-4">
-                    <div className="project-inspector-actions mt-3 flex flex-col items-start gap-2.5">
+                <CardContent className="flex flex-col items-start gap-3 px-4 pb-4">
+                    <div className="flex flex-wrap items-center gap-3">
                         <ShadcnButton
                             type="button"
                             onClick={handleClick}
                             disabled={!project?.db_id || isBusy}
                         >
-                            {isBusy ? 'Generating...' : 'Smart-Ziw Agent'}
+                            {isBusy ? 'Generating...' : 'Run Smart-Ziw'}
                         </ShadcnButton>
                         {project?.smart_ziw_status ? (
-                            <span className={`text-xs ${project?.smart_ziw_status === 'error' ? 'text-destructive' : project.smart_ziw_status === 'completed' ? 'text-green-600' : project.smart_ziw_status === 'queued' || project.smart_ziw_status === 'running' ? 'text-primary' : 'text-muted-foreground'}`}>
-                                {project?.smart_ziw_status === 'error' && project?.smart_ziw_error
-                                    ? `Last run failed: ${project.smart_ziw_error}`
-                                    : `Smart-Ziw status: ${project.smart_ziw_status}`}
-                            </span>
+                            <Badge variant={project.smart_ziw_status === 'error' ? 'destructive' : project.smart_ziw_status === 'completed' ? 'default' : 'secondary'}>
+                                {project.smart_ziw_status}
+                            </Badge>
                         ) : null}
                     </div>
+                    {project?.smart_ziw_requested_at ? (
+                        <span className="text-xs text-muted-foreground">
+                            Last requested: {formatDisplayDate(project.smart_ziw_requested_at)}
+                        </span>
+                    ) : null}
+                    {project?.smart_ziw_status === 'error' && project?.smart_ziw_error ? (
+                        <p className="text-sm text-destructive">{project.smart_ziw_error}</p>
+                    ) : null}
                 </CardContent>
             </Card>
+
+            {hasResults ? (
+                <>
+                    <Card>
+                        <CardHeader className="px-4 pb-2 pt-4">
+                            <CardTitle className="text-sm font-semibold">Verdict</CardTitle>
+                        </CardHeader>
+                        <CardContent className="flex flex-col gap-3 px-4 pb-4">
+                            <div className="flex flex-wrap items-center gap-2">
+                                <Badge className={status.classes}>{status.label}</Badge>
+                                {status.source ? <Badge variant="outline">{status.source}</Badge> : null}
+                                <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+                                    <span className={`h-1.5 w-1.5 rounded-full ${status.confidenceClasses}`} />
+                                    {status.confidence || 'unknown'} confidence
+                                </span>
+                            </div>
+                            {evidence ? <p className="text-sm text-muted-foreground">{evidence}</p> : null}
+                        </CardContent>
+                    </Card>
+
+                    {analysisMarkdown ? (
+                        <Card>
+                            <CardHeader className="px-4 pb-2 pt-4">
+                                <CardTitle className="text-sm font-semibold">AI Analysis</CardTitle>
+                            </CardHeader>
+                            <CardContent className="px-4 pb-4">
+                                <div className="max-w-full overflow-x-auto whitespace-pre-wrap text-sm leading-relaxed text-foreground">
+                                    {analysisMarkdown}
+                                </div>
+                            </CardContent>
+                        </Card>
+                    ) : null}
+
+                    {nextActions.length ? (
+                        <Card>
+                            <CardHeader className="px-4 pb-2 pt-4">
+                                <CardTitle className="text-sm font-semibold">Next Actions</CardTitle>
+                            </CardHeader>
+                            <CardContent className="px-4 pb-4">
+                                <div className="overflow-x-auto">
+                                    <Table>
+                                        <TableHeader>
+                                            <TableRow>
+                                                <TableHead>Action</TableHead>
+                                                <TableHead>Priority</TableHead>
+                                                <TableHead>Owner</TableHead>
+                                                <TableHead>Deadline</TableHead>
+                                                <TableHead>Notes</TableHead>
+                                            </TableRow>
+                                        </TableHeader>
+                                        <TableBody>
+                                            {nextActions.map((action, index) => (
+                                                <TableRow key={index}>
+                                                    <TableCell className="font-medium">{action.action || action.title || '-'}</TableCell>
+                                                    <TableCell>{action.priority || '-'}</TableCell>
+                                                    <TableCell>{action.owner || action.assignee || '-'}</TableCell>
+                                                    <TableCell>{action.deadline ? formatDisplayDate(action.deadline) : '-'}</TableCell>
+                                                    <TableCell>{action.notes || '-'}</TableCell>
+                                                </TableRow>
+                                            ))}
+                                        </TableBody>
+                                    </Table>
+                                </div>
+                            </CardContent>
+                        </Card>
+                    ) : null}
+
+                    {folder ? (
+                        <Card>
+                            <CardHeader className="px-4 pb-2 pt-4">
+                                <CardTitle className="text-sm font-semibold">Files</CardTitle>
+                            </CardHeader>
+                            <CardContent className="flex flex-col gap-2 px-4 pb-4">
+                                {resultFiles.map((file) => {
+                                    const path = [repoPath, folder, file].filter(Boolean).join('/');
+                                    return (
+                                        <a
+                                            key={file}
+                                            href={`file://${path}`}
+                                            className="text-sm font-medium text-primary hover:underline"
+                                        >
+                                            {file}
+                                        </a>
+                                    );
+                                })}
+                            </CardContent>
+                        </Card>
+                    ) : null}
+                </>
+            ) : null}
         </div>
     );
 }
