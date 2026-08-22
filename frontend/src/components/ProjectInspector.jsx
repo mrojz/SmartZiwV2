@@ -120,7 +120,7 @@ function OverviewTab({ project, canManageDecision, onDecisionChange, compact }) 
                 {projectDescription ? (
                     <div className="flex flex-col gap-2 rounded-lg border bg-muted/50 p-4">
                         <h3 className="text-sm font-semibold text-foreground">Description</h3>
-                        <p className="whitespace-pre-wrap text-sm leading-6 text-muted-foreground">{projectDescription}</p>
+                        <p className="max-w-full overflow-x-auto whitespace-pre-wrap text-sm leading-6 text-muted-foreground">{projectDescription}</p>
                     </div>
                 ) : null}
 
