@@ -5,6 +5,7 @@ import UnifiedSearchBar from './UnifiedSearchBar';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { getUnifiedStatus } from '@/utils/tenderDisplay.js';
 
 const ROWS_PER_PAGE_OPTIONS = [25, 50, 100];
 
@@ -188,8 +189,7 @@ export default function ProjectTable({
     { key: '_published', label: 'Published Date', type: 'date' },
     { key: '_deadline', label: 'Deadline', type: 'date' },
     { key: 'matched_keywords', label: 'Signals', type: 'string' },
-    { key: '_decision', label: 'Decision', type: 'string' },
-    { key: '_verification', label: 'Verification', type: 'string' },
+    { key: '_status', label: 'Status', type: 'string' },
     { key: 'scraped_at', label: 'Last scraped', type: 'date' },
     { key: '_actions', label: '', type: 'none' },
   ];
@@ -214,13 +214,12 @@ export default function ProjectTable({
         return p.project_start_date || '';
       case '_deadline':
         return p.effective_deadline || p.manual_deadline || p.scraped_deadline || p.project_end_date || '';
-      case '_decision': {
-        const dScore = p.decision === 'Go' ? 2 : p.decision === 'No Go' ? 0 : 1;
-        const vScore = p.ai_verified === 'Yes' ? 1 : 0;
-        return `${dScore}${vScore}`;
+      case '_status': {
+        const status = getUnifiedStatus(p);
+        const verdictScore = status.verdict === 'GO' ? 3 : status.verdict === 'GO-CONDITIONAL' ? 2 : status.verdict === 'NO-GO' ? 1 : 0;
+        const confidenceScore = status.confidence === 'high' ? 3 : status.confidence === 'medium' ? 2 : status.confidence === 'low' ? 1 : 0;
+        return `${verdictScore}${confidenceScore}`;
       }
-      case '_verification':
-        return p.ai_verified === 'Yes' ? 'verified' : 'unverified';
       default:
         return p[colKey] || '';
     }
@@ -491,7 +490,7 @@ export default function ProjectTable({
               {columns.map((col) => (
                 <TableHead
                   key={col.key}
-                  className={`sticky top-0 z-[2] h-12 whitespace-nowrap border-b bg-muted px-3.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground ${col.key === '_select' ? 'w-10 text-center' : ''} ${col.key === '_actions' ? 'w-12 text-center' : ''} ${col.key === '_project' ? 'w-[200px] min-w-[200px]' : ''} ${col.key === '_project_id' ? 'w-[110px] min-w-[110px]' : ''} ${col.key === '_region' ? 'w-[120px] min-w-[120px]' : ''} ${col.key === '_published' ? 'w-[140px] min-w-[140px]' : ''} ${col.key === '_deadline' ? 'w-[110px] min-w-[110px]' : ''} ${col.key === 'matched_keywords' ? 'w-[130px] min-w-[130px]' : ''} ${col.key === '_decision' ? 'w-[100px] min-w-[100px]' : ''} ${col.key === '_verification' ? 'w-[120px] min-w-[120px]' : ''} ${col.key === 'scraped_at' ? 'w-[110px] min-w-[110px]' : ''} ${col.type !== 'none' ? 'cursor-pointer select-none' : ''}`}
+                  className={`sticky top-0 z-[2] h-12 whitespace-nowrap border-b bg-muted px-3.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground ${col.key === '_select' ? 'w-10 text-center' : ''} ${col.key === '_actions' ? 'w-12 text-center' : ''} ${col.key === '_project' ? 'w-[120px] min-w-[120px] md:w-[200px] md:min-w-[200px]' : ''} ${col.key === '_project_id' ? 'w-[110px] min-w-[110px]' : ''} ${col.key === '_region' ? 'w-[120px] min-w-[120px]' : ''} ${col.key === '_published' ? 'w-[140px] min-w-[140px]' : ''} ${col.key === '_deadline' ? 'w-[110px] min-w-[110px]' : ''} ${col.key === 'matched_keywords' ? 'w-[130px] min-w-[130px]' : ''} ${col.key === '_status' ? 'w-[140px] min-w-[140px]' : ''} ${col.key === 'scraped_at' ? 'w-[110px] min-w-[110px]' : ''} ${col.type !== 'none' ? 'cursor-pointer select-none' : ''}`}
                   aria-sort={sortCol === col.key ? (sortDir === 'asc' ? 'ascending' : 'descending') : undefined}
                   onClick={col.type !== 'none' ? () => handleSortClick(col.key) : undefined}
                 >
@@ -645,32 +644,20 @@ export default function ProjectTable({
                       );
                     }
 
-                    if (key === '_decision') {
+                    if (key === '_status') {
+                      const status = getUnifiedStatus(p);
                       return (
                         <TableCell key={key} className="whitespace-nowrap">
-                          <div className="flex items-center gap-2">
-                            <span
-                              className={`h-1.5 w-1.5 shrink-0 rounded-full ${p.decision === 'Go' ? 'bg-green-600' : p.decision === 'No Go' ? 'bg-destructive' : isVerified ? 'bg-amber-600' : 'bg-muted-foreground/40'}`}
-                              title={isVerified ? 'AI Verified' : 'Not Verified'}
-                            />
-                            {p.decision ? (
-                              <Badge className={p.decision === 'Go' ? 'bg-green-600 text-primary-foreground hover:bg-green-600/90' : 'bg-destructive text-destructive-foreground hover:bg-destructive/90'}>{p.decision}</Badge>
-                            ) : (
-                              <Badge className="bg-amber-600 text-primary-foreground hover:bg-amber-700">Pending</Badge>
-                            )}
+                          <div className="flex flex-col gap-1.5">
+                            <div className="flex items-center gap-2">
+                              <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${status.confidenceClasses}`} title={`Confidence: ${status.confidence || 'unknown'}`} />
+                              <Badge className={status.classes}>{status.label}</Badge>
+                            </div>
+                            <div className="flex flex-wrap items-center gap-1">
+                              {status.source ? <Badge variant="outline" className="text-[0.64rem]">{status.source}</Badge> : null}
+                              {status.smartZiwStatus ? <Badge variant="secondary" className="text-[0.64rem]">{status.smartZiwStatus}</Badge> : null}
+                            </div>
                           </div>
-                        </TableCell>
-                      );
-                    }
-
-                    if (key === '_verification') {
-                      return (
-                        <TableCell key={key} className="whitespace-nowrap">
-                          {isVerified ? (
-                            <Badge className="bg-green-600 text-primary-foreground hover:bg-green-600/90">Verified</Badge>
-                          ) : (
-                            <Badge variant="secondary">Unverified</Badge>
-                          )}
                         </TableCell>
                       );
                     }
