@@ -11,13 +11,13 @@ import SettingsPage from './components/SettingsPage';
 import SchedulePage from './components/SchedulePage';
 import Sidebar, { Avatar, NAV_GROUPS } from './components/Sidebar';
 import AnalyticsPage from './components/AnalyticsPage';
-import { Search, Bell, RefreshCw, User, Shield, Settings, CalendarClock, LogOut, Mail, Lock, X, Paperclip, Send, ArrowUp, ArrowDown, ArrowUpDown, MoreVertical, PenLine, KeyRound, UserCheck, UserX, ChevronDown, CircleHelp, Link, Trash2 } from 'lucide-react';
+import { Search, Bell, RefreshCw, User, Shield, Settings, CalendarClock, LogOut, Mail, Lock, X, Paperclip, Send, ArrowUp, ArrowDown, ArrowUpDown, MoreVertical, PenLine, KeyRound, UserCheck, UserX, ChevronDown, CircleHelp, Link, Trash2, SunMoon } from 'lucide-react';
 import { SidebarProvider } from '@/components/ui/sidebar';
 import { Command, CommandDialog, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button as ShadcnButton } from '@/components/ui/button';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Toaster } from '@/components/ui/sonner';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
@@ -33,6 +33,8 @@ import {
     deserializeFilters,
 } from './utils/tenderRouting';
 import { attachProjectRowIds } from './utils/projects';
+import { isRequired, isEmail, matchesPassword } from './utils/validation';
+import { useTheme } from './components/ThemeProvider';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { Textarea } from '@/components/ui/textarea';
@@ -562,7 +564,7 @@ function ForcePasswordPage({ onSubmit, error }) {
         muted: 'text-muted-foreground',
         weak: 'text-destructive',
         medium: 'text-foreground',
-        strong: 'text-green-600',
+        strong: 'text-success',
     };
 
     return (
@@ -836,7 +838,6 @@ function ProfilePage({ user, apiFetch, onUserUpdate }) {
     const [currentPassword, setCurrentPassword] = useState('');
     const [newPassword, setNewPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
-    const [msg, setMsg] = useState('');
     const [savingProfile, setSavingProfile] = useState(false);
     const [savingPassword, setSavingPassword] = useState(false);
     const name = `${firstName} ${lastName}`.trim() || 'User';
@@ -849,6 +850,11 @@ function ProfilePage({ user, apiFetch, onUserUpdate }) {
     const passwordMismatch = Boolean(newPassword && newPassword !== confirmPassword);
 
     const saveProfile = async () => {
+        const emailError = isEmail(email.trim());
+        if (emailError) {
+            toast.error(emailError);
+            return;
+        }
         setSavingProfile(true);
         try {
             const res = await apiFetch('/api/auth/profile', {
@@ -857,25 +863,43 @@ function ProfilePage({ user, apiFetch, onUserUpdate }) {
                 body: JSON.stringify({ name, email, avatarUrl }),
             });
             const data = await res.json();
+            if (!res.ok) throw new Error(data.detail || 'Failed to update profile');
             onUserUpdate(data.user);
-            setMsg('Profile updated.');
+            toast.success('Profile updated.');
+        } catch (err) {
+            toast.error(err?.message || 'Failed to update profile');
         } finally {
             setSavingProfile(false);
         }
     };
 
     const savePassword = async () => {
+        if (!currentPassword) {
+            toast.error('Current password is required');
+            return;
+        }
+        const matchError = matchesPassword(newPassword, confirmPassword);
+        if (matchError) {
+            toast.error(matchError);
+            return;
+        }
         setSavingPassword(true);
         try {
-            await apiFetch('/api/auth/change-password', {
+            const res = await apiFetch('/api/auth/change-password', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ currentPassword, newPassword }),
             });
+            if (!res.ok) {
+                const data = await res.json().catch(() => ({}));
+                throw new Error(data.detail || 'Failed to update password');
+            }
             setCurrentPassword('');
             setNewPassword('');
             setConfirmPassword('');
-            setMsg('Password updated.');
+            toast.success('Password updated.');
+        } catch (err) {
+            toast.error(err?.message || 'Failed to update password');
         } finally {
             setSavingPassword(false);
         }
@@ -898,7 +922,7 @@ function ProfilePage({ user, apiFetch, onUserUpdate }) {
                                     <span className={`inline-flex min-h-7 items-center gap-1 rounded-full px-2.5 text-xs font-bold ${user?.role === 'admin' ? 'border border-primary/20 bg-primary/10 text-primary' : user?.role === 'manager' ? 'border border-primary/20 bg-primary/10 text-primary' : 'border border-border bg-secondary text-secondary-foreground'}`}>
                                         {user?.role === 'admin' ? 'Admin' : user?.role === 'manager' ? 'Manager' : 'User'}
                                     </span>
-                                    <span className={`inline-flex items-center gap-1.5 text-[13px] font-semibold ${user?.isActive !== false ? 'text-green-600' : 'text-muted-foreground'}`}>
+                                    <span className={`inline-flex items-center gap-1.5 text-[13px] font-semibold ${user?.isActive !== false ? 'text-success' : 'text-muted-foreground'}`}>
                                         <span className="size-2 rounded-full bg-current opacity-90" />
                                         {user?.isActive !== false ? 'Active' : 'Inactive'}
                                     </span>
@@ -1035,8 +1059,6 @@ function ProfilePage({ user, apiFetch, onUserUpdate }) {
                     </CardContent>
                 </Card>
             </div>
-
-            {msg ? <p className="m-0 rounded-xl border border-green-600/20 bg-green-600/10 p-3 text-sm font-bold text-green-600">{msg}</p> : null}
         </div>
     );
 }
@@ -1049,6 +1071,7 @@ function UserDrawer({ open, mode, initialUser, onClose, onSave, saving }) {
     const [avatarUrl, setAvatarUrl] = useState('');
     const [tempPassword, setTempPassword] = useState('');
     const [isActive, setIsActive] = useState(true);
+    const [errors, setErrors] = useState({});
 
     useEffect(() => {
         if (!open) return;
@@ -1060,6 +1083,7 @@ function UserDrawer({ open, mode, initialUser, onClose, onSave, saving }) {
         setAvatarUrl(initialUser?.avatarUrl || '');
         setTempPassword('');
         setIsActive(initialUser?.isActive ?? true);
+        setErrors({});
     }, [open, initialUser]);
 
     useEffect(() => {
@@ -1081,8 +1105,22 @@ function UserDrawer({ open, mode, initialUser, onClose, onSave, saving }) {
                 <form
                     onSubmit={(event) => {
                         event.preventDefault();
+                        const fullName = `${firstName} ${lastName}`.trim();
+                        const nextErrors = {};
+                        const nameError = isRequired(fullName);
+                        if (nameError) nextErrors.name = nameError;
+                        const emailError = isEmail(email.trim());
+                        if (emailError) nextErrors.email = emailError;
+                        if (mode === 'create' && tempPassword && tempPassword.length < 8) {
+                            nextErrors.password = 'Password must be at least 8 characters';
+                        }
+                        if (Object.keys(nextErrors).length) {
+                            setErrors(nextErrors);
+                            return;
+                        }
+                        setErrors({});
                         onSave({
-                            name: `${firstName} ${lastName}`.trim(),
+                            name: fullName,
                             email: email.trim(),
                             role,
                             avatarUrl,
@@ -1101,11 +1139,13 @@ function UserDrawer({ open, mode, initialUser, onClose, onSave, saving }) {
                             <Label htmlFor="ud-last">Last name</Label>
                             <ShadcnInput id="ud-last" name="lastName" placeholder="Last name" value={lastName} onChange={(e) => setLastName(e.target.value)} />
                         </div>
+                        {errors.name ? <p className="col-span-full text-xs text-destructive">{errors.name}</p> : null}
                     </div>
 
                     <div className="flex flex-col gap-2">
                         <Label htmlFor="ud-email">Email</Label>
                         <ShadcnInput id="ud-email" name="email" type="email" placeholder="user@example.com" value={email} onChange={(e) => setEmail(e.target.value)} />
+                        {errors.email ? <p className="text-xs text-destructive">{errors.email}</p> : null}
                     </div>
 
                     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -1138,6 +1178,7 @@ function UserDrawer({ open, mode, initialUser, onClose, onSave, saving }) {
                         <div className="flex flex-col gap-2">
                             <Label htmlFor="ud-pwd">Temporary password <span className="font-normal text-muted-foreground">(optional, auto-generated if empty)</span></Label>
                             <ShadcnInput id="ud-pwd" name="temporaryPassword" type="password" placeholder="Temporary password" autoComplete="new-password" value={tempPassword} onChange={(e) => setTempPassword(e.target.value)} />
+                            {errors.password ? <p className="text-xs text-destructive">{errors.password}</p> : null}
                         </div>
                     )}
 
@@ -1145,7 +1186,7 @@ function UserDrawer({ open, mode, initialUser, onClose, onSave, saving }) {
                         <ShadcnButton type="button" variant="outline" onClick={onClose}>Cancel</ShadcnButton>
                         <ShadcnButton
                             type="submit"
-                            disabled={saving || !email.trim()}
+                            disabled={saving}
                         >
                             {saving ? 'Saving...' : mode === 'create' ? 'Create User' : 'Save Changes'}
                         </ShadcnButton>
@@ -1158,7 +1199,8 @@ function UserDrawer({ open, mode, initialUser, onClose, onSave, saving }) {
 
 function ResetPasswordModal({ open, user, onClose, onReset, saving, result }) {
     const [password, setPassword] = useState('');
-    useEffect(() => { if (open) setPassword(''); }, [open]);
+    const [error, setError] = useState('');
+    useEffect(() => { if (open) { setPassword(''); setError(''); } }, [open]);
     useEffect(() => {
         if (!open) return undefined;
         setModalScrollLock(true);
@@ -1176,6 +1218,11 @@ function ResetPasswordModal({ open, user, onClose, onReset, saving, result }) {
                 <form
                     onSubmit={(event) => {
                         event.preventDefault();
+                        if (password && password.length < 8) {
+                            setError('Password must be at least 8 characters');
+                            return;
+                        }
+                        setError('');
                         onReset(password || null);
                     }}
                     className="flex flex-col gap-4"
@@ -1186,6 +1233,7 @@ function ResetPasswordModal({ open, user, onClose, onReset, saving, result }) {
                     <div className="flex flex-col gap-2">
                         <Label htmlFor="rp-pwd">New password <span className="font-normal text-muted-foreground">(leave empty to auto-generate)</span></Label>
                         <ShadcnInput id="rp-pwd" name="resetPassword" type="password" placeholder="Auto-generated if empty" autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} />
+                        {error ? <p className="text-xs text-destructive">{error}</p> : null}
                     </div>
                     {result && <p className="text-sm text-primary">{result}</p>}
                     <DialogFooter className="mt-2">
@@ -1206,7 +1254,6 @@ function AdminPage({ apiFetch, authUser, initialTab = 'users' }) {
     const [q, setQ] = useState('');
     const [roleFilter, setRoleFilter] = useState('all');
     const [statusFilter, setStatusFilter] = useState('all');
-    const [message, setMessage] = useState('');
     const [drawer, setDrawer] = useState({ open: false, mode: 'create', user: null });
     const [savingDrawer, setSavingDrawer] = useState(false);
     const [refreshingUsers, setRefreshingUsers] = useState(false);
@@ -1276,6 +1323,10 @@ function AdminPage({ apiFetch, authUser, initialTab = 'users' }) {
     const [mcpTesting, setMcpTesting] = useState(false);
     const [mcpTestResult, setMcpTestResult] = useState(null);
     const [testingLlm, setTestingLlm] = useState(false);
+    const [configErrors, setConfigErrors] = useState({});
+    const [releaseErrors, setReleaseErrors] = useState({});
+    const [skillUrlError, setSkillUrlError] = useState('');
+    const [mcpErrors, setMcpErrors] = useState({});
     const llmEnvProvider = smartZiwConfig.smart_ziw_llm_provider === 'deepseek';
     const llmDiscoverySeq = useRef(0);
     const [llmModels, setLlmModels] = useState({ status: 'idle', models: [], detail: null });
@@ -1435,6 +1486,22 @@ function AdminPage({ apiFetch, authUser, initialTab = 'users' }) {
     }, [adminTab, loadMcpServers]);
 
     const saveSmartZiwConfig = async () => {
+        const nextErrors = {};
+        if (smartZiwConfig.smart_ziw_enabled) {
+            const repoError = isRequired(smartZiwConfig.smart_ziw_repo_path);
+            if (repoError) nextErrors.smart_ziw_repo_path = repoError;
+        }
+        if (smartZiwConfig.gitlab_push_enabled) {
+            const urlError = isUrl(smartZiwConfig.gitlab_base_url);
+            if (urlError) nextErrors.gitlab_base_url = urlError;
+        }
+        const timeoutError = isNumberInRange(smartZiwConfig.smart_ziw_research_timeout_seconds, 1, undefined);
+        if (timeoutError) nextErrors.smart_ziw_research_timeout_seconds = timeoutError;
+        if (Object.keys(nextErrors).length) {
+            setConfigErrors(nextErrors);
+            return;
+        }
+        setConfigErrors({});
         setSavingSmartZiwConfig(true);
         try {
             const res = await apiFetch('/api/admin/smart-ziw-config', {
@@ -1445,9 +1512,9 @@ function AdminPage({ apiFetch, authUser, initialTab = 'users' }) {
             if (!res.ok) throw new Error('Failed to save');
             const data = await res.json();
             setSmartZiwConfig((prev) => ({ ...prev, ...data, gitlab_token: prev.gitlab_token, lightllm_api_key: '', forvis_mazars_presence_countries: data.forvis_mazars_presence_countries || prev.forvis_mazars_presence_countries }));
-            setMessage('Smart-Ziw config saved.');
+            toast.success('Smart-Ziw config saved.');
         } catch (error) {
-            setMessage(`Failed to save Smart-Ziw config: ${error?.message || 'unknown error'}`);
+            toast.error(`Failed to save Smart-Ziw config: ${error?.message || 'unknown error'}`);
         } finally {
             setSavingSmartZiwConfig(false);
         }
@@ -1473,10 +1540,25 @@ function AdminPage({ apiFetch, authUser, initialTab = 'users' }) {
     };
 
     const testAndSaveLlmConfig = async () => {
+        const nextErrors = {};
+        const preset = llmProviders.find((p) => p.id === smartZiwConfig.smart_ziw_llm_provider);
+        const needsBaseUrl = !llmEnvProvider && (smartZiwConfig.smart_ziw_llm_provider === 'local' || smartZiwConfig.smart_ziw_llm_provider === 'custom' || (preset && preset.format));
+        if (needsBaseUrl) {
+            const urlError = isUrl(smartZiwConfig.lightllm_base_url.trim() || preset?.base_url || '');
+            if (urlError) nextErrors.lightllm_base_url = urlError;
+        }
+        const tempError = isNumberInRange(smartZiwConfig.llm_temperature, 0, 2);
+        if (tempError) nextErrors.llm_temperature = tempError;
+        const tokensError = isNumberInRange(smartZiwConfig.llm_max_tokens, 1, 128000);
+        if (tokensError) nextErrors.llm_max_tokens = tokensError;
+        if (Object.keys(nextErrors).length) {
+            setConfigErrors(nextErrors);
+            return;
+        }
+        setConfigErrors({});
         setSavingSmartZiwConfig(true);
         setTestingLlm(true);
         try {
-            setMessage('Testing LLM provider connection…');
             let testOk = false;
             let detail = '';
             try {
@@ -1499,7 +1581,7 @@ function AdminPage({ apiFetch, authUser, initialTab = 'users' }) {
             if (!testOk) {
                 const proceed = window.confirm(`LLM provider test failed: ${detail}\n\nSave this configuration anyway?`);
                 if (!proceed) {
-                    setMessage('Not saved — the provider test failed. Fix the settings and try again.');
+                    toast.error('Not saved — the provider test failed. Fix the settings and try again.');
                     return;
                 }
             }
@@ -1542,7 +1624,12 @@ function AdminPage({ apiFetch, authUser, initialTab = 'users' }) {
     };
 
     const fetchSkill = async () => {
-        if (!skillUrl.trim()) return;
+        const urlError = isUrl(skillUrl.trim());
+        if (urlError) {
+            setSkillUrlError(urlError);
+            return;
+        }
+        setSkillUrlError('');
         setFetchingSkill(true);
         try {
             const res = await apiFetch('/api/admin/smart-ziw-skills/fetch', {
@@ -1628,18 +1715,22 @@ function AdminPage({ apiFetch, authUser, initialTab = 'users' }) {
     };
 
     const testMcpServer = async () => {
-        if (!mcpForm.name.trim()) {
-            toast.error('Name is required before testing.');
+        const nextErrors = {};
+        const nameError = isRequired(mcpForm.name.trim());
+        if (nameError) nextErrors.name = nameError;
+        if (mcpForm.transport === 'stdio') {
+            const commandError = isRequired(mcpForm.command.trim());
+            if (commandError) nextErrors.command = commandError;
+        }
+        if (mcpForm.transport === 'sse') {
+            const urlError = isUrl(mcpForm.url.trim());
+            if (urlError) nextErrors.url = urlError;
+        }
+        if (Object.keys(nextErrors).length) {
+            setMcpErrors(nextErrors);
             return;
         }
-        if (mcpForm.transport === 'stdio' && !mcpForm.command.trim()) {
-            toast.error('Command is required for stdio servers.');
-            return;
-        }
-        if (mcpForm.transport === 'sse' && !mcpForm.url.trim()) {
-            toast.error('URL is required for SSE servers.');
-            return;
-        }
+        setMcpErrors({});
         setMcpTesting(true);
         setMcpTestResult(null);
         try {
@@ -1666,10 +1757,22 @@ function AdminPage({ apiFetch, authUser, initialTab = 'users' }) {
     };
 
     const saveMcpServer = async () => {
-        if (!mcpForm.name.trim()) {
-            toast.error('Name is required.');
+        const nextErrors = {};
+        const nameError = isRequired(mcpForm.name.trim());
+        if (nameError) nextErrors.name = nameError;
+        if (mcpForm.transport === 'stdio') {
+            const commandError = isRequired(mcpForm.command.trim());
+            if (commandError) nextErrors.command = commandError;
+        }
+        if (mcpForm.transport === 'sse') {
+            const urlError = isUrl(mcpForm.url.trim());
+            if (urlError) nextErrors.url = urlError;
+        }
+        if (Object.keys(nextErrors).length) {
+            setMcpErrors(nextErrors);
             return;
         }
+        setMcpErrors({});
         if (!mcpTestResult || mcpTestResult.status !== 'ok') {
             toast.error('Test the server connection first — it must pass before saving.');
             return;
@@ -1936,10 +2039,16 @@ function AdminPage({ apiFetch, authUser, initialTab = 'users' }) {
             summary: releaseForm.summary.trim(),
             items: releaseForm.itemsText.split(/\r?\n/).map((item) => item.trim()).filter(Boolean),
         };
-        if (!nextNote.version || !nextNote.title) {
-            setMessage('Version and title are required for a release note.');
+        const nextErrors = {};
+        const versionError = isRequired(nextNote.version);
+        if (versionError) nextErrors.version = versionError;
+        const titleError = isRequired(nextNote.title);
+        if (titleError) nextErrors.title = titleError;
+        if (Object.keys(nextErrors).length) {
+            setReleaseErrors(nextErrors);
             return;
         }
+        setReleaseErrors({});
         const nextNotes = selectedReleaseVersion === '__new__'
             ? [nextNote, ...releaseNotes]
             : releaseNotes.map((note) => (note.version === selectedReleaseVersion ? nextNote : note));
@@ -1962,7 +2071,9 @@ function AdminPage({ apiFetch, authUser, initialTab = 'users' }) {
             if (!res.ok) throw new Error('Failed to save release notes');
             setReleaseNotes(normalized);
             setSelectedReleaseVersion(nextNote.version);
-            setMessage('Release notes saved.');
+            toast.success('Release notes saved.');
+        } catch (error) {
+            toast.error(`Failed to save release notes: ${error?.message || 'unknown error'}`);
         } finally {
             setSavingReleaseNotes(false);
         }
@@ -1981,7 +2092,9 @@ function AdminPage({ apiFetch, authUser, initialTab = 'users' }) {
             if (!res.ok) throw new Error('Failed to delete release note');
             setReleaseNotes(nextNotes);
             setSelectedReleaseVersion(nextNotes[0]?.version || '');
-            setMessage('Release note deleted.');
+            toast.success('Release note deleted.');
+        } catch (error) {
+            toast.error(`Failed to delete release note: ${error?.message || 'unknown error'}`);
         } finally {
             setSavingReleaseNotes(false);
         }
@@ -2041,13 +2154,20 @@ function AdminPage({ apiFetch, authUser, initialTab = 'users' }) {
 
             <Tabs value={adminTab} onValueChange={setAdminTab} className="w-full">
                 <TabsList variant="line" className="w-full justify-start">
-                    <TabsTrigger value="users">User Management</TabsTrigger>
-                    <TabsTrigger value="release-notes">Release Notes</TabsTrigger>
-                    <TabsTrigger value="smart-ziw">Smart-Ziw Settings</TabsTrigger>
-                    <TabsTrigger value="skills">Skills</TabsTrigger>
-                    <TabsTrigger value="mcp-servers">MCP Servers</TabsTrigger>
-                    <TabsTrigger value="llm">LLM Provider</TabsTrigger>
-                    <TabsTrigger value="system-prompts">System Prompts</TabsTrigger>
+                    {[
+                        { id: 'users', group: 'Administration', label: 'Users' },
+                        { id: 'release-notes', group: 'Content', label: 'Release Notes' },
+                        { id: 'smart-ziw', group: 'Smart-Ziw', label: 'Agent' },
+                        { id: 'skills', group: 'Smart-Ziw', label: 'Skills' },
+                        { id: 'mcp-servers', group: 'Smart-Ziw', label: 'MCP Servers' },
+                        { id: 'llm', group: 'Smart-Ziw', label: 'LLM Provider' },
+                        { id: 'system-prompts', group: 'Smart-Ziw', label: 'System Prompts' },
+                    ].map((tab) => (
+                        <TabsTrigger key={tab.id} value={tab.id}>
+                            <span className="hidden sm:inline">{tab.group} › </span>
+                            {tab.label}
+                        </TabsTrigger>
+                    ))}
                 </TabsList>
 
             <TabsContent value="users" className="mt-4">
@@ -2146,7 +2266,7 @@ function AdminPage({ apiFetch, authUser, initialTab = 'users' }) {
                                     </Badge>
                                 </TableCell>
                                 <TableCell>
-                                    <Badge variant="outline" className={u.isActive ? 'gap-1 border-green-600/25 bg-green-600/10 text-green-600' : 'gap-1 bg-secondary text-secondary-foreground'}>
+                                    <Badge variant="outline" className={u.isActive ? 'gap-1 border-success/25 bg-success/10 text-success' : 'gap-1 bg-secondary text-secondary-foreground'}>
                                         <span className="h-1.5 w-1.5 rounded-full bg-current opacity-80" />
                                         {u.isActive ? 'Active' : 'Disabled'}
                                     </Badge>
@@ -2232,7 +2352,6 @@ function AdminPage({ apiFetch, authUser, initialTab = 'users' }) {
                         <h3 className="text-base font-semibold text-foreground">Release Notes</h3>
                         <p className="text-sm text-muted-foreground">Create new release notes or update existing versions.</p>
                     </div>
-                    {message ? <div className="border-y border-border bg-primary/5 px-5 py-3 text-sm text-foreground/80">{message}</div> : null}
                     <div className="grid gap-4 p-4 md:grid-cols-[240px_1fr]">
                         <aside className="flex flex-col gap-1.5">
                             {releaseNotes.map((note) => (
@@ -2252,10 +2371,12 @@ function AdminPage({ apiFetch, authUser, initialTab = 'users' }) {
                                 <div className="flex flex-col gap-1.5">
                                     <Label htmlFor="release-version" className="text-sm font-medium">Version</Label>
                                     <ShadcnInput id="release-version" value={releaseForm.version} onChange={(e) => setReleaseForm((prev) => ({ ...prev, version: e.target.value }))} placeholder="1.3" />
+                                    {releaseErrors.version ? <p className="text-xs text-destructive">{releaseErrors.version}</p> : null}
                                 </div>
                                 <div className="flex flex-col gap-1.5">
                                     <Label htmlFor="release-title" className="text-sm font-medium">Title</Label>
                                     <ShadcnInput id="release-title" value={releaseForm.title} onChange={(e) => setReleaseForm((prev) => ({ ...prev, title: e.target.value }))} placeholder="Release title" />
+                                    {releaseErrors.title ? <p className="text-xs text-destructive">{releaseErrors.title}</p> : null}
                                 </div>
                             </div>
                             <div className="flex flex-col gap-1.5">
@@ -2283,7 +2404,6 @@ function AdminPage({ apiFetch, authUser, initialTab = 'users' }) {
                         <CardTitle>Smart-Ziw Agent</CardTitle>
                         <p className="text-sm text-muted-foreground">Configure local mirror path, web research, and optional GitLab push.</p>
                     </CardHeader>
-                    {message ? <div className="border-y border-border bg-primary/5 px-5 py-3 text-sm text-foreground/80">{message}</div> : null}
                     <CardContent className="grid gap-4 sm:grid-cols-2">
                         <div className="flex items-center justify-between rounded-lg border px-4 py-3 sm:col-span-2">
                             <Label htmlFor="smart-ziw-enabled" className="text-sm font-semibold">Enable Smart-Ziw Agent</Label>
@@ -2292,6 +2412,7 @@ function AdminPage({ apiFetch, authUser, initialTab = 'users' }) {
                         <div className="flex flex-col gap-1.5 sm:col-span-2">
                             <Label htmlFor="smart-ziw-repo-path" className="text-sm font-medium">Local repo path</Label>
                             <ShadcnInput id="smart-ziw-repo-path" value={smartZiwConfig.smart_ziw_repo_path} onChange={(e) => setSmartZiwConfig({ ...smartZiwConfig, smart_ziw_repo_path: e.target.value })} />
+                            {configErrors.smart_ziw_repo_path ? <p className="text-xs text-destructive">{configErrors.smart_ziw_repo_path}</p> : null}
                         </div>
                         <div className="flex items-center justify-between rounded-lg border px-4 py-3 sm:col-span-2">
                             <Label htmlFor="gitlab-push-enabled" className="text-sm font-semibold">Enable GitLab push</Label>
@@ -2300,6 +2421,7 @@ function AdminPage({ apiFetch, authUser, initialTab = 'users' }) {
                         <div className="flex flex-col gap-1.5 sm:col-span-2">
                             <Label htmlFor="gitlab-base-url" className="text-sm font-medium">GitLab base URL</Label>
                             <ShadcnInput id="gitlab-base-url" value={smartZiwConfig.gitlab_base_url} onChange={(e) => setSmartZiwConfig({ ...smartZiwConfig, gitlab_base_url: e.target.value })} />
+                            {configErrors.gitlab_base_url ? <p className="text-xs text-destructive">{configErrors.gitlab_base_url}</p> : null}
                         </div>
                         <div className="flex flex-col gap-1.5 sm:col-span-2">
                             <Label htmlFor="gitlab-project-path" className="text-sm font-medium">GitLab project path</Label>
@@ -2334,6 +2456,7 @@ function AdminPage({ apiFetch, authUser, initialTab = 'users' }) {
                         <div className="flex flex-col gap-1.5">
                             <Label htmlFor="research-timeout" className="text-sm font-medium">Research timeout (seconds)</Label>
                             <ShadcnInput id="research-timeout" type="number" min={1} value={smartZiwConfig.smart_ziw_research_timeout_seconds} onChange={(e) => { const value = Number(e.target.value); setSmartZiwConfig({ ...smartZiwConfig, smart_ziw_research_timeout_seconds: Number.isFinite(value) && value >= 1 ? value : 900 }) }} />
+                            {configErrors.smart_ziw_research_timeout_seconds ? <p className="text-xs text-destructive">{configErrors.smart_ziw_research_timeout_seconds}</p> : null}
                         </div>
                     </CardContent>
                     <CardFooter className="justify-end border-t pt-6">
@@ -2359,7 +2482,7 @@ function AdminPage({ apiFetch, authUser, initialTab = 'users' }) {
                                     type="url"
                                     placeholder="https://example.com/skill.json"
                                     value={skillUrl}
-                                    onChange={(e) => setSkillUrl(e.target.value)}
+                                    onChange={(e) => { setSkillUrlError(''); setSkillUrl(e.target.value); }}
                                     disabled={fetchingSkill}
                                     className="flex-1"
                                 />
@@ -2367,6 +2490,7 @@ function AdminPage({ apiFetch, authUser, initialTab = 'users' }) {
                                     {fetchingSkill ? 'Fetching...' : 'Fetch skill'}
                                 </ShadcnButton>
                             </div>
+                            {skillUrlError ? <p className="text-xs text-destructive">{skillUrlError}</p> : null}
                         </div>
 
                         {skillsLoading ? (
@@ -2444,6 +2568,7 @@ function AdminPage({ apiFetch, authUser, initialTab = 'users' }) {
                                 <div className="flex flex-col gap-1.5">
                                     <Label htmlFor="mcp-name" className="text-sm font-medium">Name</Label>
                                     <ShadcnInput id="mcp-name" value={mcpForm.name} onChange={(e) => setMcpForm({ ...mcpForm, name: e.target.value })} placeholder="My MCP server" />
+                                    {mcpErrors.name ? <p className="text-xs text-destructive">{mcpErrors.name}</p> : null}
                                 </div>
                                 <div className="flex flex-col gap-1.5">
                                     <Label className="text-sm font-medium">Transport</Label>
@@ -2460,6 +2585,7 @@ function AdminPage({ apiFetch, authUser, initialTab = 'users' }) {
                                         <div className="flex flex-col gap-1.5">
                                             <Label htmlFor="mcp-command" className="text-sm font-medium">Command</Label>
                                             <ShadcnInput id="mcp-command" value={mcpForm.command} onChange={(e) => setMcpForm({ ...mcpForm, command: e.target.value })} placeholder="npx -y @modelcontextprotocol/server-filesystem" />
+                                            {mcpErrors.command ? <p className="text-xs text-destructive">{mcpErrors.command}</p> : null}
                                         </div>
                                         <div className="flex flex-col gap-1.5">
                                             <Label htmlFor="mcp-args" className="text-sm font-medium">Arguments (one per line)</Label>
@@ -2470,6 +2596,7 @@ function AdminPage({ apiFetch, authUser, initialTab = 'users' }) {
                                     <div className="flex flex-col gap-1.5 sm:col-span-2">
                                         <Label htmlFor="mcp-url" className="text-sm font-medium">SSE URL</Label>
                                         <ShadcnInput id="mcp-url" type="url" value={mcpForm.url} onChange={(e) => setMcpForm({ ...mcpForm, url: e.target.value })} placeholder="https://mcp.example.com/sse" />
+                                        {mcpErrors.url ? <p className="text-xs text-destructive">{mcpErrors.url}</p> : null}
                                     </div>
                                 )}
                                 <div className="flex flex-col gap-1.5">
@@ -2493,9 +2620,9 @@ function AdminPage({ apiFetch, authUser, initialTab = 'users' }) {
                                     </ShadcnButton>
                                 </div>
                                 {mcpTestResult ? (
-                                    <div className={`rounded-lg border p-4 sm:col-span-2 ${mcpTestResult.status === 'ok' ? 'border-green-600/25 bg-green-600/10' : 'border-destructive/25 bg-destructive/10'}`}>
+                                    <div className={`rounded-lg border p-4 sm:col-span-2 ${mcpTestResult.status === 'ok' ? 'border-success/25 bg-success/10' : 'border-destructive/25 bg-destructive/10'}`}>
                                         <div className="flex items-center gap-2">
-                                            <Badge variant="outline" className={mcpTestResult.status === 'ok' ? 'gap-1 border-green-600/25 bg-green-600/10 text-green-600' : 'gap-1 border-destructive/25 bg-destructive/10 text-destructive'}>
+                                            <Badge variant="outline" className={mcpTestResult.status === 'ok' ? 'gap-1 border-success/25 bg-success/10 text-success' : 'gap-1 border-destructive/25 bg-destructive/10 text-destructive'}>
                                                 <span className="h-1.5 w-1.5 rounded-full bg-current opacity-80" />
                                                 {mcpTestResult.status === 'ok' ? 'Connected' : 'Failed'}
                                             </Badge>
@@ -2587,7 +2714,6 @@ function AdminPage({ apiFetch, authUser, initialTab = 'users' }) {
                         </div>
                         <p className="text-sm text-muted-foreground">Configure the LLM backend used by the Smart-Ziw agent.</p>
                     </CardHeader>
-                    {message ? <div className="border-y border-border bg-primary/5 px-5 py-3 text-sm text-foreground/80">{message}</div> : null}
                     <CardContent className="grid gap-4 sm:grid-cols-2">
                         <div className="flex flex-col gap-1.5 sm:col-span-2">
                             <Label htmlFor="llm-provider" className="text-sm font-medium">Provider</Label>
@@ -2649,6 +2775,7 @@ function AdminPage({ apiFetch, authUser, initialTab = 'users' }) {
                                     <div className="flex flex-col gap-1.5 sm:col-span-2">
                                         <Label htmlFor="llm-base-url" className="text-sm font-medium">Base URL</Label>
                                         <ShadcnInput id="llm-base-url" value={smartZiwConfig.lightllm_base_url} onChange={(e) => { llmDiscoverySeq.current += 1; setLlmModelsLoading(false); setLlmModels({ status: 'idle', models: [], detail: null }); setSmartZiwConfig({ ...smartZiwConfig, lightllm_base_url: e.target.value }); }} placeholder={smartZiwConfig.smart_ziw_llm_provider === 'local' ? 'http://localhost:8000/v1' : 'https://your-server/v1'} />
+                                        {configErrors.lightllm_base_url ? <p className="text-xs text-destructive">{configErrors.lightllm_base_url}</p> : null}
                                     </div>
                                 )}
                                 <div className="flex flex-col gap-1.5 sm:col-span-2">
@@ -2732,11 +2859,13 @@ function AdminPage({ apiFetch, authUser, initialTab = 'users' }) {
                                         <Label htmlFor="llm-temperature" className="text-sm font-medium">Temperature</Label>
                                         <ShadcnInput id="llm-temperature" type="number" min="0" max="2" step="0.1" value={smartZiwConfig.llm_temperature ?? 0.1} onChange={(e) => { const value = parseFloat(e.target.value); setSmartZiwConfig({ ...smartZiwConfig, llm_temperature: Number.isFinite(value) ? value : 0.1 }); }} />
                                         <p className="text-sm text-muted-foreground">Controls response randomness. Default 0.1. Some models (e.g. reasoning models) only accept 1.</p>
+                                        {configErrors.llm_temperature ? <p className="text-xs text-destructive">{configErrors.llm_temperature}</p> : null}
                                     </div>
                                     <div className="flex flex-col gap-1.5">
                                         <Label htmlFor="llm-max-tokens" className="text-sm font-medium">Max tokens</Label>
                                         <ShadcnInput id="llm-max-tokens" type="number" min="1" step="1" value={smartZiwConfig.llm_max_tokens ?? 4000} onChange={(e) => { const value = parseInt(e.target.value, 10); setSmartZiwConfig({ ...smartZiwConfig, llm_max_tokens: Number.isFinite(value) ? value : 4000 }); }} />
                                         <p className="text-sm text-muted-foreground">Maximum tokens per response. Default 4000.</p>
+                                        {configErrors.llm_max_tokens ? <p className="text-xs text-destructive">{configErrors.llm_max_tokens}</p> : null}
                                     </div>
                                 </div>
                             </CollapsibleContent>
@@ -2756,7 +2885,6 @@ function AdminPage({ apiFetch, authUser, initialTab = 'users' }) {
                         <CardTitle>AI Verification Prompts</CardTitle>
                         <p className="text-sm text-muted-foreground">These prompts guide the AI filter when deciding whether a scraped tender is relevant.</p>
                     </CardHeader>
-                    {message ? <div className="border-y border-border bg-primary/5 px-5 py-3 text-sm text-foreground/80">{message}</div> : null}
                     <CardContent className="grid gap-6">
                         <div className="flex flex-col gap-1.5">
                             <Label htmlFor="ai-verification-system-prompt" className="text-sm font-medium">AI verification system prompt</Label>
@@ -2857,6 +2985,7 @@ function AdminPage({ apiFetch, authUser, initialTab = 'users' }) {
 }
 
 export default function App() {
+    const { theme, setTheme, resolvedTheme } = useTheme();
     const [loading, setLoading] = useState(true);
     const [projects, setProjects] = useState([]);
     const [newProjectIds, setNewProjectIds] = useState(new Set());
@@ -3424,6 +3553,16 @@ export default function App() {
                                     <DropdownMenuItem onSelect={() => handleHeaderMenuAction('settings')}>
                                         <Settings className="mr-2 h-4 w-4" />Settings
                                     </DropdownMenuItem>
+                                    <DropdownMenuSub>
+                                        <DropdownMenuSubTrigger>
+                                            <SunMoon className="mr-2 h-4 w-4" />Appearance
+                                        </DropdownMenuSubTrigger>
+                                        <DropdownMenuSubContent>
+                                            <DropdownMenuItem onSelect={() => setTheme('light')} className={theme === 'light' ? 'bg-accent' : ''}>Light</DropdownMenuItem>
+                                            <DropdownMenuItem onSelect={() => setTheme('dark')} className={theme === 'dark' ? 'bg-accent' : ''}>Dark</DropdownMenuItem>
+                                            <DropdownMenuItem onSelect={() => setTheme('system')} className={theme === 'system' ? 'bg-accent' : ''}>System</DropdownMenuItem>
+                                        </DropdownMenuSubContent>
+                                    </DropdownMenuSub>
                                     <DropdownMenuItem onSelect={() => handleHeaderMenuAction('schedule')}>
                                         <CalendarClock className="mr-2 h-4 w-4" />Schedule
                                     </DropdownMenuItem>
@@ -3540,6 +3679,19 @@ export default function App() {
                             >
                                 <CircleHelp />
                                 <span>Show me around</span>
+                            </CommandItem>
+                        </CommandGroup>
+                        <CommandGroup heading="Preferences">
+                            <CommandItem
+                                onSelect={() => {
+                                    const order = ['light', 'dark', 'system'];
+                                    const next = order[(order.indexOf(theme) + 1) % order.length];
+                                    setTheme(next);
+                                    setCommandOpen(false);
+                                }}
+                            >
+                                <SunMoon />
+                                <span>Toggle theme ({resolvedTheme} · {theme})</span>
                             </CommandItem>
                         </CommandGroup>
                     </CommandList>

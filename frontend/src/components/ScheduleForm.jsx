@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import ClockTimePicker from './ClockTimePicker';
 import { RefreshCw, LoaderCircle, Info } from 'lucide-react';
+import { toast } from 'sonner';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -224,7 +225,6 @@ export default function ScheduleForm({ apiFetch, onBack }) {
         timezone: 1,
     });
     const [nextRun, setNextRun] = useState(null);
-    const [saveResult, setSaveResult] = useState(null);
 
     const [serverTime, setServerTime] = useState(null);
     const [serverOffset, setServerOffset] = useState(0);
@@ -317,7 +317,6 @@ export default function ScheduleForm({ apiFetch, onBack }) {
         if (!apiFetch) return;
         setLoading(true);
         setLoadError('');
-        setSaveResult(null);
         setExpandedLog(null);
 
         try {
@@ -430,7 +429,6 @@ export default function ScheduleForm({ apiFetch, onBack }) {
     const handleSave = async () => {
         if (!apiFetch) return;
         setSaving(true);
-        setSaveResult(null);
         try {
             const res = await apiFetch('/api/schedule', {
                 method: 'PUT',
@@ -440,12 +438,12 @@ export default function ScheduleForm({ apiFetch, onBack }) {
             const data = await res.json().catch(() => ({}));
             if (res.ok) {
                 setNextRun(data.next_run || null);
-                setSaveResult({ success: true, message: 'Schedule saved!' });
+                toast.success('Schedule saved!');
             } else {
-                setSaveResult({ success: false, message: data.detail || 'Failed to save' });
+                toast.error(data.detail || 'Failed to save');
             }
         } catch (err) {
-            setSaveResult({ success: false, message: 'Network error: ' + err.message });
+            toast.error('Network error: ' + err.message);
         } finally {
             setSaving(false);
         }
@@ -670,14 +668,6 @@ export default function ScheduleForm({ apiFetch, onBack }) {
                                 </div>
                             </div>
 
-                            {saveResult && (
-                                <div className={`rounded-lg border p-4 text-sm ${saveResult.success ? 'border-green-600/30 bg-green-600/10' : 'border-destructive/30 bg-destructive/5'}`}>
-                                    <span className={`font-semibold ${saveResult.success ? 'text-green-600' : 'text-destructive'}`}>
-                                        {saveResult.success ? 'Saved:' : 'Warning:'} {saveResult.message}
-                                    </span>
-                                </div>
-                            )}
-
                             <div className="flex flex-col gap-4 rounded-lg border bg-card p-6">
                                 <div className="flex flex-col gap-1">
                                     <h3 className="text-base font-semibold text-foreground">Run History</h3>
@@ -709,7 +699,7 @@ export default function ScheduleForm({ apiFetch, onBack }) {
                                                         }
                                                     }}
                                                 >
-                                                    <Badge className={log.success ? 'bg-green-600 text-primary-foreground' : 'bg-destructive text-primary-foreground'}>
+                                                    <Badge className={log.success ? 'bg-success text-success-foreground' : 'bg-destructive text-primary-foreground'}>
                                                         {log.success ? 'OK' : 'Failed'}
                                                     </Badge>
                                                     <Badge variant="outline">

@@ -321,8 +321,8 @@ export default function SyncPanel({ open, onClose, onSyncDone, onSyncStart, apiF
             )}
 
             {result && (
-              <div className={`flex flex-col gap-3 rounded-lg border p-6 ${result.success ? 'border-green-600/30 bg-green-600/10' : 'border-destructive/30 bg-destructive/5'}`}>
-                <span className={`text-sm font-semibold ${result.success ? 'text-green-600' : 'text-destructive'}`}>
+              <div className={`flex flex-col gap-3 rounded-lg border p-6 ${result.success ? 'border-success/30 bg-success/10' : 'border-destructive/30 bg-destructive/5'}`}>
+                <span className={`text-sm font-semibold ${result.success ? 'text-success' : 'text-destructive'}`}>
                   {result.success ? 'Success:' : 'Warning:'} {result.message}
                 </span>
                 {result.summary && (
@@ -335,8 +335,8 @@ export default function SyncPanel({ open, onClose, onSyncDone, onSyncStart, apiF
                     {result.summary.scrapers && (
                       <div className="mt-2 grid gap-2 sm:grid-cols-2">
                         {Object.entries(result.summary.scrapers).map(([key, s]) => (
-                          <div key={key} className={`rounded-lg border px-3 py-2 ${s.error ? 'border-destructive/30 bg-destructive/5' : 'border-green-600/20 bg-green-600/5'}`}>
-                            <span className={`text-xs font-semibold ${s.error ? 'text-destructive' : 'text-green-600'}`}>{s.error ? 'Failed' : 'OK'} {s.label}</span>
+                          <div key={key} className={`rounded-lg border px-3 py-2 ${s.error ? 'border-destructive/30 bg-destructive/5' : 'border-success/20 bg-success/5'}`}>
+                            <span className={`text-xs font-semibold ${s.error ? 'text-destructive' : 'text-success'}`}>{s.error ? 'Failed' : 'OK'} {s.label}</span>
                             <span className="block text-xs text-muted-foreground">{s.count} | {s.duration}s</span>
                           </div>
                         ))}

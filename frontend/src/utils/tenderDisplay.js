@@ -96,7 +96,7 @@ export function formatDisplayDate(value) {
 
 export function getVerdictBadgeClasses(verdict = '') {
     const v = String(verdict).toUpperCase().trim();
-    if (v === 'GO') return 'bg-green-600 text-primary-foreground hover:bg-green-600/90';
+    if (v === 'GO') return 'bg-success text-success-foreground hover:bg-success/90';
     if (v === 'NO-GO') return 'bg-destructive text-destructive-foreground hover:bg-destructive/90';
     if (v === 'GO-CONDITIONAL') return 'bg-amber-600 text-primary-foreground hover:bg-amber-700';
     return 'bg-muted text-muted-foreground';
@@ -112,7 +112,7 @@ export function getVerdictLabel(verdict = '') {
 
 export function getConfidenceClasses(confidence = '') {
     const c = String(confidence).toLowerCase().trim();
-    if (c === 'high') return 'bg-green-600';
+    if (c === 'high') return 'bg-success';
     if (c === 'medium') return 'bg-amber-600';
     if (c === 'low') return 'bg-destructive';
     return 'bg-muted-foreground/40';

@@ -134,7 +134,7 @@ describe('colorFromSeed', () => {
 });
 
 describe('getVerdictBadgeClasses', () => {
-    it('returns green for GO', () => assert.ok(getVerdictBadgeClasses('GO').includes('bg-green-600')));
+    it('returns green for GO', () => assert.ok(getVerdictBadgeClasses('GO').includes('bg-success')));
     it('returns destructive for NO-GO', () => assert.ok(getVerdictBadgeClasses('NO-GO').includes('bg-destructive')));
     it('returns amber for GO-CONDITIONAL', () => assert.ok(getVerdictBadgeClasses('GO-CONDITIONAL').includes('bg-amber-600')));
 });
@@ -150,7 +150,7 @@ describe('getVerdictLabel', () => {
 
 describe('getConfidenceClasses', () => {
     it('maps confidence to colors', () => {
-        assert.ok(getConfidenceClasses('high').includes('bg-green-600'));
+        assert.ok(getConfidenceClasses('high').includes('bg-success'));
         assert.ok(getConfidenceClasses('medium').includes('bg-amber-600'));
         assert.ok(getConfidenceClasses('low').includes('bg-destructive'));
     });

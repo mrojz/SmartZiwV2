@@ -475,7 +475,7 @@ export default function ProjectTable({
             <Button type="button" variant="ghost" size="sm" onClick={() => setSelectedRowIds(new Set())}>Clear</Button>
           </div>
           <div className="flex items-center gap-2">
-            {canManageDecision ? <Button type="button" size="sm" className="bg-green-600 text-primary-foreground hover:bg-green-600/90" onClick={() => handleBulkDecision('Go')}>Mark Go</Button> : null}
+            {canManageDecision ? <Button type="button" size="sm" className="bg-success text-success-foreground hover:bg-success/90" onClick={() => handleBulkDecision('Go')}>Mark Go</Button> : null}
             {canManageDecision ? <Button type="button" size="sm" variant="outline" className="text-destructive hover:bg-destructive/10 hover:text-destructive" onClick={() => handleBulkDecision('No Go')}>Mark No Go</Button> : null}
             <Button type="button" size="sm" variant="destructive" onClick={() => { void handleBulkDelete(); }}>Delete</Button>
           </div>

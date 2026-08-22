@@ -137,7 +137,7 @@ function OverviewTab({ project, canManageDecision, onDecisionChange, compact }) 
                                     type="button"
                                     variant="outline"
                                     size="sm"
-                                    className={projectDecision === 'Go' ? 'border-green-600/30 bg-green-600/10 text-green-600 hover:bg-green-600/10 hover:text-green-600' : ''}
+                                    className={projectDecision === 'Go' ? 'border-success/30 bg-success/10 text-success hover:bg-success/10 hover:text-success' : ''}
                                     onClick={() => onDecisionChange(projectDecision === 'Go' ? '' : 'Go')}
                                 >
                                     Go

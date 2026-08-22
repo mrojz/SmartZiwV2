@@ -44,7 +44,7 @@ export default function ContextMenu({ anchorRect, items, onClose }) {
                 ) : (
                     <button
                         key={i}
-                        className={`context-menu-item flex w-full cursor-pointer items-center gap-3 rounded-lg border-none bg-none px-3 py-2 font-sans text-left text-sm font-medium text-foreground transition-colors duration-150 hover:bg-accent hover:text-foreground ${item.danger ? 'hover:bg-destructive/10 hover:text-destructive' : ''} ${item.active ? 'text-green-600' : ''}`}
+                        className={`context-menu-item flex w-full cursor-pointer items-center gap-3 rounded-lg border-none bg-none px-3 py-2 font-sans text-left text-sm font-medium text-foreground transition-colors duration-150 hover:bg-accent hover:text-foreground ${item.danger ? 'hover:bg-destructive/10 hover:text-destructive' : ''} ${item.active ? 'text-success' : ''}`}
                         onClick={() => {
                             item.onClick();
                             onClose();

@@ -1463,7 +1463,7 @@ export default function TendersPage({
                                             type="button"
                                             variant="outline"
                                             size="sm"
-                                            className={`gap-1.5 ${(selectedProject?.current_user_vote || '') === 'up' ? 'border-green-600/30 bg-green-600/10 text-green-600 hover:bg-green-600/10 hover:text-green-600' : ''}`}
+                                            className={`gap-1.5 ${(selectedProject?.current_user_vote || '') === 'up' ? 'border-success/30 bg-success/10 text-success hover:bg-success/10 hover:text-success' : ''}`}
                                             onClick={() => handleVoteChange(selectedProject.db_id, (selectedProject?.current_user_vote || '') === 'up' ? '' : 'up')}
                                         >
                                             <ThumbsUp className="size-4" />

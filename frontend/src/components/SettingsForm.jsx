@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Plus, RefreshCw } from 'lucide-react';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -43,7 +44,6 @@ export default function SettingsForm({ apiFetch }) {
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState('');
-  const [status, setStatus] = useState(null);
 
   const keywordCount = keywords.length;
   const regionCount = Object.keys(regions).length;
@@ -54,7 +54,6 @@ export default function SettingsForm({ apiFetch }) {
     if (!apiFetch) return;
     setLoading(true);
     setLoadError('');
-    setStatus(null);
     try {
       const res = await apiFetch('/api/config');
       if (!res.ok) {
@@ -84,7 +83,6 @@ export default function SettingsForm({ apiFetch }) {
   const handleSave = async () => {
     if (!apiFetch) return;
     setSaving(true);
-    setStatus(null);
     try {
       const res = await apiFetch('/api/config', {
         method: 'PUT',
@@ -95,10 +93,9 @@ export default function SettingsForm({ apiFetch }) {
         const data = await res.json().catch(() => ({}));
         throw new Error(data?.detail || 'Save failed');
       }
-      const data = await res.json().catch(() => ({}));
-      setStatus({ error: false, msg: data?.status === 'saved' ? 'Settings saved successfully' : 'Saved successfully' });
+      toast.success('Settings saved successfully');
     } catch (error) {
-      setStatus({ error: true, msg: error?.message || 'Network error' });
+      toast.error(error?.message || 'Network error');
     } finally {
       setSaving(false);
     }
@@ -335,11 +332,6 @@ export default function SettingsForm({ apiFetch }) {
       </Tabs>
 
       <div className="flex items-center justify-end gap-3 border-t p-4">
-        {status ? (
-          <span className={`text-sm ${status.error ? 'text-destructive' : 'text-green-600'}`}>
-            {status.msg}
-          </span>
-        ) : null}
         <Button type="button" onClick={handleSave} disabled={saving || loading || !!loadError}>
           {saving ? 'Saving...' : 'Save Settings'}
         </Button>

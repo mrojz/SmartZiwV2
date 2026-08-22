@@ -3,13 +3,22 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="color-scheme" content="light" />
+    <meta name="color-scheme" content="light dark" />
     <meta name="description" content="Procurement Watch - Track cybersecurity procurement notices across IADB, World Bank, and Global Tenders" />
     <link rel="icon" type="image/svg+xml" href="/forvis-mazars-logo.svg" />
     <title>Procurement Watch</title>
   </head>
   <body>
     <div id="root"></div>
+    <script>
+      (function () {
+        const theme = localStorage.getItem('pw-theme') || 'system';
+        const resolved = theme === 'system'
+          ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+          : theme;
+        document.documentElement.classList.add(resolved);
+      })();
+    </script>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>
