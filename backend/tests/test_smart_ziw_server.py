@@ -596,3 +596,39 @@ def test_admin_delete_skill_returns_404_when_missing(monkeypatch):
     client = TestClient(server.app)
     r = client.delete("/api/admin/smart-ziw-skills/missing")
     assert r.status_code == 404
+
+
+def test_run_smart_ziw_saves_structured_fields(monkeypatch):
+    project = {"db_id": "p1", "project_id": "id1", "project_name": "n1"}
+    updates = []
+
+    def fake_update(db_id, u):
+        updates.append(u)
+        return {**project, **u}
+
+    def fake_run(*args, **kwargs):
+        return {
+            "folder": "f",
+            "files": ["analysis.md"],
+            "repo_path": "/r",
+            "gitlab_pushed": False,
+            "gitlab_message": "disabled",
+            "research": True,
+            "research_verdict": "GO",
+            "research_stats": {"queries_run": 5, "pages_scraped": 3},
+            "analysis_markdown": "# Analysis",
+            "next_actions": [{"action": "Sign NDA", "priority": "high"}],
+        }
+
+    monkeypatch.setattr(server, "update_project_smart_ziw_state_by_db_id", fake_update)
+    monkeypatch.setattr(server, "run_smart_ziw_agent", fake_run)
+    monkeypatch.setattr(server, "list_comments", lambda *args: [])
+    monkeypatch.setattr(server, "_create_project_comment_and_notify", lambda **kwargs: None)
+    monkeypatch.setattr(server, "get_smart_ziw_config", _config_with_secrets)
+    server._run_smart_ziw("p1", {"id": "u1", "name": "Admin"})
+    completed_update = [u for u in updates if u.get("smart_ziw_status") == "completed"][0]
+    assert completed_update["smart_ziw_research_verdict"] == "GO"
+    assert completed_update["smart_ziw_analysis_markdown"] == "# Analysis"
+    assert completed_update["smart_ziw_next_actions"] == [{"action": "Sign NDA", "priority": "high"}]
+    assert completed_update["smart_ziw_ai_source"] == "Web research"
+    assert completed_update["smart_ziw_confidence"] == "high"

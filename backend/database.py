@@ -103,6 +103,12 @@ def _normalize_project(doc: dict, geography: dict | None = None, geography_looku
     doc['smart_ziw_error'] = doc.get('smart_ziw_error') or ''
     doc['smart_ziw_folder'] = str(doc.get('smart_ziw_folder') or '')
     doc['smart_ziw_gitlab_pushed'] = bool(doc.get('smart_ziw_gitlab_pushed', False))
+    doc['smart_ziw_analysis_markdown'] = str(doc.get('smart_ziw_analysis_markdown') or '')
+    doc['smart_ziw_next_actions'] = doc.get('smart_ziw_next_actions') or []
+    doc['smart_ziw_research_verdict'] = str(doc.get('smart_ziw_research_verdict') or '')
+    doc['smart_ziw_evidence'] = str(doc.get('smart_ziw_evidence') or '')
+    doc['smart_ziw_confidence'] = str(doc.get('smart_ziw_confidence') or '')
+    doc['smart_ziw_ai_source'] = str(doc.get('smart_ziw_ai_source') or '')
     return doc
 
 
@@ -310,6 +316,12 @@ def update_project_smart_ziw_state_by_db_id(project_db_id: str, updates: dict) -
         'smart_ziw_error',
         'smart_ziw_folder',
         'smart_ziw_gitlab_pushed',
+        'smart_ziw_analysis_markdown',
+        'smart_ziw_next_actions',
+        'smart_ziw_research_verdict',
+        'smart_ziw_evidence',
+        'smart_ziw_confidence',
+        'smart_ziw_ai_source',
     }
     filtered = {k: v for k, v in updates.items() if k in allowed}
     if not filtered:
