@@ -1213,7 +1213,7 @@ function ResetPasswordModal({ open, user, onClose, onReset, saving, result }) {
     );
 }
 
-function AdminPage({ apiFetch, initialTab = 'users' }) {
+function AdminPage({ apiFetch, authUser, initialTab = 'users' }) {
     const [adminTab, setAdminTab] = useState(initialTab);
     const [users, setUsers] = useState([]);
     const [q, setQ] = useState('');
@@ -1227,8 +1227,10 @@ function AdminPage({ apiFetch, initialTab = 'users' }) {
     const [togglingUserId, setTogglingUserId] = useState('');
     const [resetModal, setResetModal] = useState({ open: false, user: null });
     const [resetResult, setResetResult] = useState('');
+    const [createResult, setCreateResult] = useState('');
     const [deleteModal, setDeleteModal] = useState({ open: false, user: null });
     const [deletingUserId, setDeletingUserId] = useState('');
+    const [toggleModal, setToggleModal] = useState({ open: false, user: null });
     const [sortCol, setSortCol] = useState(null);
     const [sortDir, setSortDir] = useState('asc');
     const [page, setPage] = useState(0);
@@ -1769,10 +1771,14 @@ function AdminPage({ apiFetch, initialTab = 'users' }) {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ name: form.name, email: form.email, role: form.role, avatarUrl: form.avatarUrl, password: form.password || null }),
             });
+            if (!res.ok) throw new Error((await res.json()).detail || 'Create failed');
             const data = await res.json();
-            setMessage(`User created. Temporary password: ${data.temporaryPassword}`);
+            toast.success(`User created: ${data.user.email}`);
+            setCreateResult(`Temporary password: ${data.temporaryPassword}`);
             setDrawer({ open: false, mode: 'create', user: null });
             loadUsers();
+        } catch (err) {
+            toast.error(err?.message || 'Failed to create user');
         } finally {
             setSavingDrawer(false);
         }
@@ -1780,15 +1786,27 @@ function AdminPage({ apiFetch, initialTab = 'users' }) {
 
     const saveUser = async (form) => {
         if (!drawer.user) return;
+        if (drawer.user.id === authUser?.id && form.role !== 'admin') {
+            toast.error('You cannot remove your own admin role.');
+            return;
+        }
+        if (drawer.user.id === authUser?.id && !form.isActive) {
+            toast.error('You cannot deactivate your own account.');
+            return;
+        }
         setSavingDrawer(true);
         try {
-            await apiFetch(`/api/admin/users/${drawer.user.id}`, {
+            const res = await apiFetch(`/api/admin/users/${drawer.user.id}`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ name: form.name, email: form.email, role: form.role, avatarUrl: form.avatarUrl, isActive: form.isActive }),
             });
+            if (!res.ok) throw new Error((await res.json()).detail || 'Save failed');
+            toast.success('User saved');
             setDrawer({ open: false, mode: 'create', user: null });
             loadUsers();
+        } catch (err) {
+            toast.error(err?.message || 'Failed to save user');
         } finally {
             setSavingDrawer(false);
         }
@@ -1803,26 +1821,52 @@ function AdminPage({ apiFetch, initialTab = 'users' }) {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ newPassword }),
             });
+            if (!res.ok) throw new Error((await res.json()).detail || 'Reset failed');
             const data = await res.json();
             setResetResult(`Temporary password: ${data.temporaryPassword}`);
-            setMessage(`Password reset for ${resetModal.user.email}`);
+            toast.success(`Password reset for ${resetModal.user.email}`);
+        } catch (err) {
+            toast.error(err?.message || 'Failed to reset password');
         } finally {
             setResettingUserId('');
         }
     };
 
-    const toggleUser = async (user) => {
+    const promptToggleUser = (user) => {
+        if (user.id === authUser?.id) {
+            toast.error('You cannot deactivate your own account.');
+            return;
+        }
+        setToggleModal({ open: true, user });
+    };
+
+    const confirmToggleUser = async () => {
+        const user = toggleModal.user;
+        if (!user) return;
         setTogglingUserId(user.id);
         try {
-            await apiFetch(`/api/admin/users/${user.id}`, {
+            const res = await apiFetch(`/api/admin/users/${user.id}`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ name: user.name, email: user.email, role: user.role, avatarUrl: user.avatarUrl || '', isActive: !user.isActive }),
             });
+            if (!res.ok) throw new Error((await res.json()).detail || 'Toggle failed');
+            toast.success(user.isActive ? 'User deactivated' : 'User activated');
+            setToggleModal({ open: false, user: null });
             loadUsers();
+        } catch (err) {
+            toast.error(err?.message || 'Failed to update user status');
         } finally {
             setTogglingUserId('');
         }
+    };
+
+    const promptDeleteUser = (user) => {
+        if (user.id === authUser?.id) {
+            toast.error('You cannot delete your own account.');
+            return;
+        }
+        setDeleteModal({ open: true, user });
     };
 
     const deleteUser = async () => {
@@ -1831,12 +1875,12 @@ function AdminPage({ apiFetch, initialTab = 'users' }) {
         setDeletingUserId(user.id);
         try {
             const res = await apiFetch(`/api/admin/users/${user.id}`, { method: 'DELETE' });
-            if (!res.ok) throw new Error('Delete failed');
-            setMessage(`Deleted ${user.email}`);
+            if (!res.ok) throw new Error((await res.json()).detail || 'Delete failed');
+            toast.success(`Deleted ${user.email}`);
             setDeleteModal({ open: false, user: null });
             loadUsers();
         } catch (err) {
-            setMessage(err?.message || 'Failed to delete user');
+            toast.error(err?.message || 'Failed to delete user');
         } finally {
             setDeletingUserId('');
         }
@@ -2069,7 +2113,12 @@ function AdminPage({ apiFetch, initialTab = 'users' }) {
                     </div>
                 </div>
 
-                {message ? <div className="border-y border-border bg-primary/5 px-5 py-3 text-sm text-foreground/80">{message}</div> : null}
+                {createResult ? (
+                    <div className="border-y border-border bg-primary/5 px-5 py-3 text-sm text-foreground/80 flex items-center justify-between gap-3">
+                        <span>{createResult}</span>
+                        <ShadcnButton type="button" variant="ghost" size="sm" onClick={() => setCreateResult('')}>Dismiss</ShadcnButton>
+                    </div>
+                ) : null}
 
                 <Table aria-label="Users table">
                     <TableHeader>
@@ -2131,14 +2180,14 @@ function AdminPage({ apiFetch, initialTab = 'users' }) {
                                                 <KeyRound className="mr-2 h-4 w-4" />{resettingUserId === u.id ? 'Resetting...' : 'Reset password'}
                                             </DropdownMenuItem>
                                             <DropdownMenuSeparator />
-                                            <DropdownMenuItem onSelect={() => toggleUser(u)}>
+                                            <DropdownMenuItem onSelect={() => promptToggleUser(u)}>
                                                 {u.isActive ? <UserX className="mr-2 h-4 w-4" /> : <UserCheck className="mr-2 h-4 w-4" />}
                                                 {togglingUserId === u.id ? 'Updating...' : (u.isActive ? 'Deactivate' : 'Activate')}
                                             </DropdownMenuItem>
                                             <DropdownMenuSeparator />
                                             <DropdownMenuItem
                                                 className="text-destructive focus:text-destructive"
-                                                onSelect={() => { setDeleteModal({ open: true, user: u }); }}
+                                                onSelect={() => promptDeleteUser(u)}
                                             >
                                                 <Trash2 className="mr-2 h-4 w-4" />
                                                 {deletingUserId === u.id ? 'Deleting...' : 'Delete user'}
@@ -2800,6 +2849,22 @@ function AdminPage({ apiFetch, initialTab = 'users' }) {
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
+            <Dialog open={toggleModal.open} onOpenChange={(open) => { if (!open) setToggleModal({ open: false, user: null }); }}>
+                <DialogContent className="sm:max-w-md">
+                    <DialogHeader>
+                        <DialogTitle>{toggleModal.user?.isActive ? 'Deactivate user?' : 'Activate user?'}</DialogTitle>
+                    </DialogHeader>
+                    <p className="text-sm text-muted-foreground">
+                        This will {toggleModal.user?.isActive ? 'deactivate' : 'activate'} {toggleModal.user?.name || toggleModal.user?.email || 'this user'}.
+                    </p>
+                    <DialogFooter className="mt-2 gap-2 sm:justify-end">
+                        <ShadcnButton variant="outline" onClick={() => setToggleModal({ open: false, user: null })}>Cancel</ShadcnButton>
+                        <ShadcnButton onClick={confirmToggleUser} disabled={!!togglingUserId}>
+                            {togglingUserId === toggleModal.user?.id ? 'Updating…' : 'Confirm'}
+                        </ShadcnButton>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </div>
     );
 }
@@ -3415,6 +3480,7 @@ export default function App() {
                             <AdminPage
                                 key={route}
                                 apiFetch={apiFetch}
+                                authUser={authUser}
                                 initialTab={route === 'llm-config' ? 'llm' : route === 'smart-ziw' ? 'smart-ziw' : route === 'skills' ? 'skills' : 'users'}
                             />
                         ) : null}
