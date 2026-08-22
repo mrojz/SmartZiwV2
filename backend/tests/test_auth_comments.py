@@ -73,3 +73,22 @@ def test_create_and_list_comments_for_entity(monkeypatch):
     payload = res.json()
     assert len(payload) == 1
     assert payload[0]["body"] == "hello"
+
+
+def test_admin_cannot_self_deactivate(monkeypatch):
+    monkeypatch.setattr(server, "_get_request_user", lambda req: _mk_user(role="admin"))
+    target = _mk_user(role="admin")
+    target["id"] = "u1"
+    monkeypatch.setattr(server, "get_user_by_id", lambda uid: target if uid == "u1" else None)
+    monkeypatch.setattr(server, "get_user_by_email", lambda email: None)
+    monkeypatch.setattr(server, "update_user", lambda *args, **kwargs: None)
+    client = TestClient(server.app)
+    r = client.put("/api/admin/users/u1", json={
+        "name": "User",
+        "email": "u@example.com",
+        "role": "admin",
+        "avatarUrl": "",
+        "isActive": False,
+    })
+    assert r.status_code == 400
+    assert r.json()["detail"] == "Cannot deactivate yourself"

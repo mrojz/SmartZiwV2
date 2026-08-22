@@ -1323,6 +1323,8 @@ def admin_update_user(user_id: str, body: AdminUserUpdateRequest, request: Reque
         raise HTTPException(status_code=404, detail="User not found")
     if target["id"] == admin["id"] and body.role != "admin":
         raise HTTPException(status_code=400, detail="Cannot remove your own admin role")
+    if target["id"] == admin["id"] and not body.isActive:
+        raise HTTPException(status_code=400, detail="Cannot deactivate yourself")
     existing = get_user_by_email(body.email)
     if existing and existing.get("id") != user_id:
         raise HTTPException(status_code=400, detail="Email already used")
