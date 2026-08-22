@@ -6,6 +6,7 @@ import ProjectInspector from '../components/ProjectInspector';
 import TenderDetailSkeleton from '../components/TenderDetailSkeleton';
 import TenderSheetPanel from '../components/TenderSheetPanel';
 import CommentComposer from '../components/CommentComposer';
+import { usePageHeader } from '../components/PageHeaderContext';
 
 const API = '/api';
 
@@ -41,6 +42,16 @@ export default function TenderDetailPage({ dbId, apiFetch, authUser, availableUs
 
     const canEditDeadline = authUser?.role === 'admin' || authUser?.role === 'manager';
     const canManageDecision = authUser?.role !== 'viewer';
+
+    const { setPageHeader, clearPageHeader } = usePageHeader();
+
+    useEffect(() => {
+        setPageHeader({
+            title: project?.project_name || 'Tender detail',
+            subtitle: project ? `${project?.source || 'Unknown source'} · ${project?.country || 'Unknown location'}` : 'Loading tender...',
+        });
+        return () => clearPageHeader();
+    }, [setPageHeader, clearPageHeader, project?.project_name, project?.source, project?.country]);
 
     const entity = useMemo(() => (
         project

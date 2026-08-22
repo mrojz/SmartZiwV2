@@ -1,13 +1,12 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { usePageHeader } from '../components/PageHeaderContext';
 import ProjectTable from '../components/ProjectTable';
 import ProjectInspector from '../components/ProjectInspector';
-import PageHeader from '../components/PageHeader';
 import SectionCard from '../components/SectionCard';
 import CommentComposer from '../components/CommentComposer';
 import TenderSheetPanel from '../components/TenderSheetPanel';
 import { Button as ShadcnButton } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Card, CardContent } from '@/components/ui/card';
 import {
     Sheet,
     SheetClose,
@@ -63,6 +62,16 @@ export default function TendersPage({
     newProjectIds,
     onStartDemo,
 }) {
+    const { setPageHeader, clearPageHeader } = usePageHeader();
+
+    useEffect(() => {
+        setPageHeader({
+            title: 'Procurement Watch',
+            subtitle: 'Track tenders, review sources, and manage decisions.',
+        });
+        return () => clearPageHeader();
+    }, [setPageHeader, clearPageHeader]);
+
     // Filter / chip state
     const [chips, setChips] = useState([]);
     const [freeText, setFreeText] = useState('');
@@ -901,39 +910,35 @@ export default function TendersPage({
     return (
         <div className="flex flex-col gap-6">
             <div className="flex min-w-0 flex-1 flex-col gap-6">
-                <PageHeader
-                    title="Procurement Watch"
-                    subtitle="Track tenders, review sources, and manage decisions."
-                />
-                <div className="grid grid-cols-1 gap-4 md:gap-6 sm:grid-cols-2 lg:grid-cols-4">
-                    <Card>
-                        <CardContent className="flex flex-col gap-1.5">
+                <div className="tender-stats-cards grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                    <div className="rounded-lg bg-muted/40 p-4">
+                        <div className="flex flex-col gap-1.5">
                             <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Total Tenders</span>
-                            <span className="text-3xl font-bold tracking-tight text-foreground">{dashboardStats.total}</span>
-                            <span className="text-sm text-muted-foreground">Across {dashboardStats.sourcesCount} sources</span>
-                        </CardContent>
-                    </Card>
-                    <Card>
-                        <CardContent className="flex flex-col gap-1.5">
+                            <span className="text-2xl font-semibold tracking-tight text-foreground">{dashboardStats.total}</span>
+                            <span className="text-xs text-muted-foreground">Across {dashboardStats.sourcesCount} sources</span>
+                        </div>
+                    </div>
+                    <div className="rounded-lg bg-muted/40 p-4">
+                        <div className="flex flex-col gap-1.5">
                             <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">New This Week</span>
-                            <span className="text-3xl font-bold tracking-tight text-foreground">{dashboardStats.newThisWeek}</span>
-                            <span className="text-sm text-muted-foreground">Scraped this week</span>
-                        </CardContent>
-                    </Card>
-                    <Card>
-                        <CardContent className="flex flex-col gap-1.5">
+                            <span className="text-2xl font-semibold tracking-tight text-foreground">{dashboardStats.newThisWeek}</span>
+                            <span className="text-xs text-muted-foreground">Scraped this week</span>
+                        </div>
+                    </div>
+                    <div className="rounded-lg bg-muted/40 p-4">
+                        <div className="flex flex-col gap-1.5">
                             <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Pending Review</span>
-                            <span className="text-3xl font-bold tracking-tight text-foreground">{dashboardStats.pendingReview}</span>
-                            <span className="text-sm text-muted-foreground">Awaiting decision</span>
-                        </CardContent>
-                    </Card>
-                    <Card>
-                        <CardContent className="flex flex-col gap-1.5">
+                            <span className="text-2xl font-semibold tracking-tight text-foreground">{dashboardStats.pendingReview}</span>
+                            <span className="text-xs text-muted-foreground">Awaiting decision</span>
+                        </div>
+                    </div>
+                    <div className="rounded-lg bg-muted/40 p-4">
+                        <div className="flex flex-col gap-1.5">
                             <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Expiring Soon</span>
-                            <span className="text-3xl font-bold tracking-tight text-foreground">{dashboardStats.expiringSoon}</span>
-                            <span className="text-sm text-muted-foreground"><strong className="font-semibold text-primary">30</strong> day window</span>
-                        </CardContent>
-                    </Card>
+                            <span className="text-2xl font-semibold tracking-tight text-foreground">{dashboardStats.expiringSoon}</span>
+                            <span className="text-xs text-muted-foreground"><strong className="font-semibold text-primary">30</strong> day window</span>
+                        </div>
+                    </div>
                 </div>
                 <ProjectTable
                     projects={filtered}

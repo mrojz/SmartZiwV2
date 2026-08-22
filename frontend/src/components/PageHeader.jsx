@@ -1,6 +1,15 @@
 import { cn } from '@/utils/cn';
 
-export default function PageHeader({ title, subtitle, action, className = '' }) {
+export default function PageHeader({ title, subtitle, action, className = '', inline = false }) {
+    if (inline) {
+        return (
+            <div className={cn('flex min-w-0 flex-col', className)}>
+                {title ? <h1 className="truncate text-sm font-semibold leading-tight text-foreground">{title}</h1> : null}
+                {subtitle ? <p className="truncate text-xs text-muted-foreground">{subtitle}</p> : null}
+            </div>
+        );
+    }
+
     return (
         <div className={cn('mb-6', className)}>
             <div className="flex flex-wrap items-center justify-between gap-4">

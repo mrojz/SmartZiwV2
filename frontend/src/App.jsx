@@ -4,6 +4,7 @@ import TendersPage from './pages/TendersPage';
 import TenderDetailPage from './pages/TenderDetailPage';
 import ErrorBoundary from './components/ErrorBoundary';
 import PageHeader from './components/PageHeader';
+import { usePageHeader } from './components/PageHeaderContext';
 import SectionCard from './components/SectionCard';
 import DemoWalkthrough from './components/DemoWalkthrough';
 import SyncPanel from './components/SyncPanel';
@@ -755,13 +756,19 @@ function ReleaseNotesModal({ open, releases, onClose, onOpenFull }) {
 }
 
 function ReleaseNotesPage({ releases, onBack }) {
+    const { setPageHeader, clearPageHeader } = usePageHeader();
+
+    useEffect(() => {
+        setPageHeader({
+            title: 'Release Notes',
+            subtitle: 'Track major platform updates and newly delivered capabilities.',
+            action: <ShadcnButton type="button" variant="outline" onClick={onBack}>Back</ShadcnButton>,
+        });
+        return () => clearPageHeader();
+    }, [setPageHeader, clearPageHeader, onBack]);
+
     return (
         <div className="mx-auto w-full max-w-3xl">
-            <PageHeader
-                title="Release Notes"
-                subtitle="Track major platform updates and newly delivered capabilities."
-                action={<ShadcnButton type="button" variant="outline" onClick={onBack}>Back</ShadcnButton>}
-            />
             <div className="flex flex-col gap-4">
                 {releases.map((note) => (
                     <ReleaseChangelogCard
@@ -851,6 +858,16 @@ function ProfilePage({ user, apiFetch, onUserUpdate }) {
     };
     const passwordMismatch = Boolean(newPassword && newPassword !== confirmPassword);
 
+    const { setPageHeader, clearPageHeader } = usePageHeader();
+
+    useEffect(() => {
+        setPageHeader({
+            title: 'Profile settings',
+            subtitle: 'Manage your personal information and account security.',
+        });
+        return () => clearPageHeader();
+    }, [setPageHeader, clearPageHeader]);
+
     const saveProfile = async () => {
         const emailError = isEmail(email.trim());
         if (emailError) {
@@ -909,7 +926,6 @@ function ProfilePage({ user, apiFetch, onUserUpdate }) {
 
     return (
         <div className="mx-auto flex w-full max-w-3xl flex-col gap-6">
-            <PageHeader title="Profile settings" subtitle="Manage your personal information and account security." />
 
             <div className="flex flex-col gap-6">
                 <Card>
@@ -1336,6 +1352,80 @@ function AdminPage({ apiFetch, authUser, initialTab = 'users' }) {
     const [llmProviders, setLlmProviders] = useState([]);
     const [llmProvidersLoading, setLlmProvidersLoading] = useState(false);
     const [llmEnvStatus, setLlmEnvStatus] = useState({ model: '', api_key_set: false });
+    const { setPageHeader, clearPageHeader } = usePageHeader();
+    const skillUrlInputRef = useRef(null);
+
+    const adminSubtitles = {
+        users: 'Create, edit, deactivate users, and reset passwords.',
+        'release-notes': 'Create new release notes or update existing versions.',
+        'smart-ziw': 'Configure the Smart-Ziw agent and optional GitLab push.',
+        skills: 'Enable, disable, and manage Smart-Ziw skills.',
+        'mcp-servers': 'Connect external MCP servers and expose their tools as Smart-Ziw skills.',
+        llm: 'Configure the LLM backend used by the Smart-Ziw agent.',
+        'system-prompts': 'Edit the system prompts that guide the AI verification filter.',
+    };
+
+    useEffect(() => {
+        const getAction = () => {
+            if (adminTab === 'users') {
+                return (
+                    <ShadcnButton
+                        type="button"
+                        disabled={savingDrawer}
+                        onClick={() => setDrawer({ open: true, mode: 'create', user: null })}
+                    >
+                        Create user
+                    </ShadcnButton>
+                );
+            }
+            if (adminTab === 'release-notes') {
+                return (
+                    <ShadcnButton
+                        type="button"
+                        disabled={savingReleaseNotes}
+                        onClick={startNewReleaseNote}
+                    >
+                        New release note
+                    </ShadcnButton>
+                );
+            }
+            if (adminTab === 'skills') {
+                return (
+                    <ShadcnButton
+                        type="button"
+                        onClick={() => {
+                            setSkillUrlError('');
+                            setSkillUrl('');
+                            skillUrlInputRef.current?.focus();
+                        }}
+                    >
+                        Add skill
+                    </ShadcnButton>
+                );
+            }
+            if (adminTab === 'mcp-servers') {
+                return (
+                    <ShadcnButton
+                        type="button"
+                        onClick={() => {
+                            resetMcpForm();
+                            setTimeout(() => document.getElementById('mcp-name')?.focus(), 0);
+                        }}
+                    >
+                        Add server
+                    </ShadcnButton>
+                );
+            }
+            return null;
+        };
+        setPageHeader({
+            title: 'Admin',
+            subtitle: adminSubtitles[adminTab] || '',
+            action: getAction(),
+        });
+        return () => clearPageHeader();
+    }, [adminTab, savingDrawer, savingReleaseNotes, setPageHeader, clearPageHeader]);
+
     const handleSearchChange = useCallback((nextValue) => {
         if (typeof nextValue === 'string') {
             setQ(nextValue);
@@ -2104,73 +2194,29 @@ function AdminPage({ apiFetch, authUser, initialTab = 'users' }) {
 
     return (
         <div className="flex flex-col gap-6">
-            <PageHeader
-                title="Admin"
-                subtitle={adminTab === 'users' ? 'Create, edit, deactivate users, and reset passwords.' : adminTab === 'release-notes' ? 'Create new release notes or update existing versions.' : adminTab === 'llm' ? 'Configure the LLM backend used by the Smart-Ziw agent.' : adminTab === 'system-prompts' ? 'Edit the system prompts that guide the AI verification filter.' : adminTab === 'skills' ? 'Enable, disable, and manage Smart-Ziw skills.' : adminTab === 'mcp-servers' ? 'Connect external MCP servers and expose their tools as Smart-Ziw skills.' : 'Configure the Smart-Ziw agent and optional GitHub push.'}
-                action={(
-                    <>
-                        {adminTab === 'users' ? (
-                            <ShadcnButton
-                                type="button"
-                                disabled={savingDrawer}
-                                onClick={() => setDrawer({ open: true, mode: 'create', user: null })}
-                            >
-                                Create User
-                            </ShadcnButton>
-                        ) : adminTab === 'release-notes' ? (
-                            <ShadcnButton
-                                type="button"
-                                disabled={savingReleaseNotes}
-                                onClick={startNewReleaseNote}
-                            >
-                                New Release Note
-                            </ShadcnButton>
-                        ) : null}
-                    </>
-                )}
-            />
-
-            <div className="grid grid-cols-1 gap-4 md:gap-6 sm:grid-cols-3">
-                <Card>
-                    <CardContent className="flex flex-col gap-1.5">
-                        <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Total Users</span>
-                        <span className="text-3xl font-bold tracking-tight text-foreground">{users.length}</span>
-                        <span className="text-sm text-muted-foreground">Accounts in the system</span>
-                    </CardContent>
-                </Card>
-                <Card>
-                    <CardContent className="flex flex-col gap-1.5">
-                        <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Active Users</span>
-                        <span className="text-3xl font-bold tracking-tight text-foreground">{users.filter((u) => u.isActive).length}</span>
-                        <span className="text-sm text-muted-foreground">Currently enabled</span>
-                    </CardContent>
-                </Card>
-                <Card>
-                    <CardContent className="flex flex-col gap-1.5">
-                        <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Admins</span>
-                        <span className="text-3xl font-bold tracking-tight text-foreground">{users.filter((u) => u.role === 'admin').length}</span>
-                        <span className="text-sm text-muted-foreground">Privileged accounts</span>
-                    </CardContent>
-                </Card>
-            </div>
-
-            <Tabs value={adminTab} onValueChange={setAdminTab} className="w-full">
-                <TabsList variant="line" className="w-full justify-start">
+            <Tabs value={adminTab} onValueChange={setAdminTab} className="flex gap-6">
+                <div className="admin-sidebar flex w-48 shrink-0 flex-col gap-0.5 border-r pr-4">
                     {[
-                        { id: 'users', group: 'Administration', label: 'Users' },
-                        { id: 'release-notes', group: 'Content', label: 'Release Notes' },
-                        { id: 'smart-ziw', group: 'Smart-Ziw', label: 'Agent' },
-                        { id: 'skills', group: 'Smart-Ziw', label: 'Skills' },
-                        { id: 'mcp-servers', group: 'Smart-Ziw', label: 'MCP Servers' },
-                        { id: 'llm', group: 'Smart-Ziw', label: 'LLM Provider' },
-                        { id: 'system-prompts', group: 'Smart-Ziw', label: 'System Prompts' },
+                        { id: 'users', label: 'Users' },
+                        { id: 'release-notes', label: 'Release Notes' },
+                        { id: 'smart-ziw', label: 'Agent' },
+                        { id: 'skills', label: 'Skills' },
+                        { id: 'mcp-servers', label: 'MCP Servers' },
+                        { id: 'llm', label: 'LLM Provider' },
+                        { id: 'system-prompts', label: 'System Prompts' },
                     ].map((tab) => (
-                        <TabsTrigger key={tab.id} value={tab.id}>
-                            <span className="hidden sm:inline">{tab.group} › </span>
+                        <button
+                            key={tab.id}
+                            type="button"
+                            onClick={() => setAdminTab(tab.id)}
+                            className={`rounded-md px-3 py-2 text-left text-sm transition-colors ${adminTab === tab.id ? 'bg-muted font-medium text-foreground' : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'}`}
+                        >
                             {tab.label}
-                        </TabsTrigger>
+                        </button>
                     ))}
-                </TabsList>
+                </div>
+
+                <div className="flex-1 min-w-0">
 
             <TabsContent value="users" className="mt-4">
             <div className="overflow-hidden rounded-lg border bg-card shadow-sm">
@@ -2219,6 +2265,30 @@ function AdminPage({ apiFetch, authUser, initialTab = 'users' }) {
                         >
                             {refreshingUsers ? 'Refreshing...' : 'Refresh'}
                         </ShadcnButton>
+                    </div>
+                </div>
+
+                <div className="admin-stats-cards grid grid-cols-1 gap-3 border-b p-4 sm:grid-cols-3">
+                    <div className="rounded-lg bg-muted/40 p-4">
+                        <div className="flex flex-col gap-1.5">
+                            <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Total Users</span>
+                            <span className="text-2xl font-semibold tracking-tight text-foreground">{users.length}</span>
+                            <span className="text-xs text-muted-foreground">Accounts in the system</span>
+                        </div>
+                    </div>
+                    <div className="rounded-lg bg-muted/40 p-4">
+                        <div className="flex flex-col gap-1.5">
+                            <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Active Users</span>
+                            <span className="text-2xl font-semibold tracking-tight text-foreground">{users.filter((u) => u.isActive).length}</span>
+                            <span className="text-xs text-muted-foreground">Currently enabled</span>
+                        </div>
+                    </div>
+                    <div className="rounded-lg bg-muted/40 p-4">
+                        <div className="flex flex-col gap-1.5">
+                            <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Admins</span>
+                            <span className="text-2xl font-semibold tracking-tight text-foreground">{users.filter((u) => u.role === 'admin').length}</span>
+                            <span className="text-xs text-muted-foreground">Privileged accounts</span>
+                        </div>
                     </div>
                 </div>
 
@@ -2481,6 +2551,7 @@ function AdminPage({ apiFetch, authUser, initialTab = 'users' }) {
                             <div className="flex gap-2">
                                 <ShadcnInput
                                     id="skill-url"
+                                    ref={skillUrlInputRef}
                                     type="url"
                                     placeholder="https://example.com/skill.json"
                                     value={skillUrl}
@@ -2929,6 +3000,7 @@ function AdminPage({ apiFetch, authUser, initialTab = 'users' }) {
                     </CardFooter>
                 </Card>
             </TabsContent>
+                </div>
             </Tabs>
 
             <UserDrawer
@@ -2988,6 +3060,7 @@ function AdminPage({ apiFetch, authUser, initialTab = 'users' }) {
 
 export default function App() {
     const { theme, setTheme, resolvedTheme } = useTheme();
+    const { title, subtitle, action } = usePageHeader();
     const [loading, setLoading] = useState(true);
     const [projects, setProjects] = useState([]);
     const [newProjectIds, setNewProjectIds] = useState(new Set());
@@ -3508,72 +3581,76 @@ export default function App() {
                 <div className="flex min-w-0 flex-1 flex-col">
                 <div className="min-h-0 flex-1 overflow-auto">
                     <div className="w-full px-4 py-6 md:px-6 lg:px-8 lg:py-8">
-                        <div className="mb-6 flex items-center justify-end gap-1 border-b border-border pb-4">
-                            <TooltipProvider>
-                                <Tooltip>
-                                    <TooltipTrigger asChild>
-                                        <ShadcnButton variant="ghost" size="icon" className="relative transition-colors duration-200" aria-label="Notifications" onClick={() => setNotificationsOpen(true)}>
-                                            <Bell className="h-4 w-4" />
-                                            {unreadNotificationCount ? <Badge variant="destructive" className="absolute -right-1 -top-1 h-5 min-w-5 items-center justify-center rounded-full px-1 text-[10px] leading-none">{unreadNotificationCount}</Badge> : null}
+                        <div className="app-top-header sticky top-0 z-20 -mx-4 flex items-center justify-between gap-4 border-b border-border bg-background/95 px-4 py-3 backdrop-blur md:-mx-6 md:px-6 lg:-mx-8 lg:px-8 mb-6">
+                            <PageHeader title={title} subtitle={subtitle} inline className="min-w-0" />
+                            <div className="flex shrink-0 items-center gap-1">
+                                {action ? <div className="flex items-center gap-2 pr-2">{action}</div> : null}
+                                <TooltipProvider>
+                                    <Tooltip>
+                                        <TooltipTrigger asChild>
+                                            <ShadcnButton variant="ghost" size="icon" className="relative transition-colors duration-200" aria-label="Notifications" onClick={() => setNotificationsOpen(true)}>
+                                                <Bell className="h-4 w-4" />
+                                                {unreadNotificationCount ? <Badge variant="destructive" className="absolute -right-1 -top-1 h-5 min-w-5 items-center justify-center rounded-full px-1 text-[10px] leading-none">{unreadNotificationCount}</Badge> : null}
+                                            </ShadcnButton>
+                                        </TooltipTrigger>
+                                        <TooltipContent>Notifications</TooltipContent>
+                                    </Tooltip>
+                                    <Tooltip>
+                                        <TooltipTrigger asChild>
+                                            <ShadcnButton variant="ghost" size="icon" className="transition-colors duration-200" aria-label="Sync now" onClick={() => setSyncOpen(true)}>
+                                                <RefreshCw className="h-4 w-4" />
+                                            </ShadcnButton>
+                                        </TooltipTrigger>
+                                        <TooltipContent>Sync now</TooltipContent>
+                                    </Tooltip>
+                                    <Tooltip>
+                                        <TooltipTrigger asChild>
+                                            <ShadcnButton variant="ghost" size="icon" className="transition-colors duration-200" aria-label="Show me around" onClick={() => setDemoOpen(true)}>
+                                                <CircleHelp className="h-4 w-4" />
+                                            </ShadcnButton>
+                                        </TooltipTrigger>
+                                        <TooltipContent>Show me around</TooltipContent>
+                                    </Tooltip>
+                                </TooltipProvider>
+                                <div className="mx-2 h-5 w-px bg-border" />
+                                <DropdownMenu>
+                                    <DropdownMenuTrigger asChild>
+                                        <ShadcnButton variant="ghost" size="icon" className="rounded-full transition-colors duration-200" aria-label="Account menu">
+                                            <Avatar user={authUser} size={32} />
                                         </ShadcnButton>
-                                    </TooltipTrigger>
-                                    <TooltipContent>Notifications</TooltipContent>
-                                </Tooltip>
-                                <Tooltip>
-                                    <TooltipTrigger asChild>
-                                        <ShadcnButton variant="ghost" size="icon" className="transition-colors duration-200" aria-label="Sync now" onClick={() => setSyncOpen(true)}>
-                                            <RefreshCw className="h-4 w-4" />
-                                        </ShadcnButton>
-                                    </TooltipTrigger>
-                                    <TooltipContent>Sync now</TooltipContent>
-                                </Tooltip>
-                                <Tooltip>
-                                    <TooltipTrigger asChild>
-                                        <ShadcnButton variant="ghost" size="icon" className="transition-colors duration-200" aria-label="Show me around" onClick={() => setDemoOpen(true)}>
-                                            <CircleHelp className="h-4 w-4" />
-                                        </ShadcnButton>
-                                    </TooltipTrigger>
-                                    <TooltipContent>Show me around</TooltipContent>
-                                </Tooltip>
-                            </TooltipProvider>
-                            <div className="mx-2 h-5 w-px bg-border" />
-                            <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
-                                    <ShadcnButton variant="ghost" size="icon" className="rounded-full transition-colors duration-200" aria-label="Account menu">
-                                        <Avatar user={authUser} size={32} />
-                                    </ShadcnButton>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent align="end">
-                                    <DropdownMenuItem onSelect={() => handleHeaderMenuAction('profile')}>
-                                        <User className="mr-2 h-4 w-4" />Profile
-                                    </DropdownMenuItem>
-                                    {authUser.role === 'admin' ? (
-                                        <DropdownMenuItem onSelect={() => handleHeaderMenuAction('admin')}>
-                                            <Shield className="mr-2 h-4 w-4" />Admin
+                                    </DropdownMenuTrigger>
+                                    <DropdownMenuContent align="end">
+                                        <DropdownMenuItem onSelect={() => handleHeaderMenuAction('profile')}>
+                                            <User className="mr-2 h-4 w-4" />Profile
                                         </DropdownMenuItem>
-                                    ) : null}
-                                    <DropdownMenuItem onSelect={() => handleHeaderMenuAction('settings')}>
-                                        <Settings className="mr-2 h-4 w-4" />Settings
-                                    </DropdownMenuItem>
-                                    <DropdownMenuSub>
-                                        <DropdownMenuSubTrigger>
-                                            <SunMoon className="mr-2 h-4 w-4" />Appearance
-                                        </DropdownMenuSubTrigger>
-                                        <DropdownMenuSubContent>
-                                            <DropdownMenuItem onSelect={() => setTheme('light')} className={theme === 'light' ? 'bg-accent' : ''}>Light</DropdownMenuItem>
-                                            <DropdownMenuItem onSelect={() => setTheme('dark')} className={theme === 'dark' ? 'bg-accent' : ''}>Dark</DropdownMenuItem>
-                                            <DropdownMenuItem onSelect={() => setTheme('system')} className={theme === 'system' ? 'bg-accent' : ''}>System</DropdownMenuItem>
-                                        </DropdownMenuSubContent>
-                                    </DropdownMenuSub>
-                                    <DropdownMenuItem onSelect={() => handleHeaderMenuAction('schedule')}>
-                                        <CalendarClock className="mr-2 h-4 w-4" />Schedule
-                                    </DropdownMenuItem>
-                                    <DropdownMenuSeparator />
-                                    <DropdownMenuItem onSelect={() => handleHeaderMenuAction('logout')}>
-                                        <LogOut className="mr-2 h-4 w-4" />Logout
-                                    </DropdownMenuItem>
-                                </DropdownMenuContent>
-                            </DropdownMenu>
+                                        {authUser.role === 'admin' ? (
+                                            <DropdownMenuItem onSelect={() => handleHeaderMenuAction('admin')}>
+                                                <Shield className="mr-2 h-4 w-4" />Admin
+                                            </DropdownMenuItem>
+                                        ) : null}
+                                        <DropdownMenuItem onSelect={() => handleHeaderMenuAction('settings')}>
+                                            <Settings className="mr-2 h-4 w-4" />Settings
+                                        </DropdownMenuItem>
+                                        <DropdownMenuSub>
+                                            <DropdownMenuSubTrigger>
+                                                <SunMoon className="mr-2 h-4 w-4" />Appearance
+                                            </DropdownMenuSubTrigger>
+                                            <DropdownMenuSubContent>
+                                                <DropdownMenuItem onSelect={() => setTheme('light')} className={theme === 'light' ? 'bg-accent' : ''}>Light</DropdownMenuItem>
+                                                <DropdownMenuItem onSelect={() => setTheme('dark')} className={theme === 'dark' ? 'bg-accent' : ''}>Dark</DropdownMenuItem>
+                                                <DropdownMenuItem onSelect={() => setTheme('system')} className={theme === 'system' ? 'bg-accent' : ''}>System</DropdownMenuItem>
+                                            </DropdownMenuSubContent>
+                                        </DropdownMenuSub>
+                                        <DropdownMenuItem onSelect={() => handleHeaderMenuAction('schedule')}>
+                                            <CalendarClock className="mr-2 h-4 w-4" />Schedule
+                                        </DropdownMenuItem>
+                                        <DropdownMenuSeparator />
+                                        <DropdownMenuItem onSelect={() => handleHeaderMenuAction('logout')}>
+                                            <LogOut className="mr-2 h-4 w-4" />Logout
+                                        </DropdownMenuItem>
+                                    </DropdownMenuContent>
+                                </DropdownMenu>
+                            </div>
                         </div>
                         <ErrorBoundary>
 {tenderDetailId && isTenderFullPageHash(window.location.hash) ? (
