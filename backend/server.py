@@ -518,12 +518,32 @@ def _run_smart_ziw(project_db_id: str, actor_user: dict, thread_comments: list[d
         if config.get("gitlab_push_enabled") and not result.get("gitlab_pushed"):
             push_error = result.get("gitlab_message") or "GitLab push failed"
         error = enrichment_error or push_error
+        ai_source = "Web research" if result.get("research") else "LLM enrichment"
+        if result.get("research"):
+            if result.get("research_timed_out") or (result.get("research_stats", {}).get("pages_scraped", 0) == 0):
+                confidence = "medium"
+            else:
+                confidence = "high"
+        else:
+            confidence = "low"
+        evidence = ""
+        verdict_dict = result.get("verdict") or {}
+        if isinstance(verdict_dict, dict):
+            evidence = str(verdict_dict.get("reasoning") or "").strip()
+        if not evidence and result.get("research_verdict"):
+            evidence = f"Recommendation: {result['research_verdict']}"
         update_project_smart_ziw_state_by_db_id(project_db_id, {
             "smart_ziw_status": "error" if error else "completed",
             "smart_ziw_completed_at": now_iso(),
             "smart_ziw_error": (str(error)[:1000] if error else ""),
             "smart_ziw_folder": result.get("folder", ""),
             "smart_ziw_gitlab_pushed": bool(result.get("gitlab_pushed")),
+            "smart_ziw_analysis_markdown": str(result.get("analysis_markdown") or ""),
+            "smart_ziw_next_actions": result.get("next_actions") if isinstance(result.get("next_actions"), list) else [],
+            "smart_ziw_research_verdict": str(result.get("research_verdict") or ""),
+            "smart_ziw_evidence": evidence,
+            "smart_ziw_confidence": confidence,
+            "smart_ziw_ai_source": ai_source,
         })
     except Exception as exc:
         project = get_project_by_db_id(project_db_id)
