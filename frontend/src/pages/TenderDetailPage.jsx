@@ -1,18 +1,56 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import { ArrowLeft } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import ProjectInspector from '../components/ProjectInspector';
 import TenderDetailSkeleton from '../components/TenderDetailSkeleton';
+import TenderSheetPanel from '../components/TenderSheetPanel';
+import CommentComposer from '../components/CommentComposer';
 
 const API = '/api';
 
-export default function TenderDetailPage({ dbId, apiFetch, authUser, availableUsers }) {
+function toInputDate(value) {
+    if (!value) return '';
+    const direct = new Date(value);
+    if (!Number.isNaN(direct.getTime())) {
+        const day = String(direct.getDate()).padStart(2, '0');
+        const month = String(direct.getMonth() + 1).padStart(2, '0');
+        const year = direct.getFullYear();
+        return `${year}-${month}-${day}`;
+    }
+    const parts = String(value).split('/');
+    if (parts.length === 3) {
+        const [month, day, year] = parts;
+        return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    }
+    return '';
+}
+
+export default function TenderDetailPage({ dbId, apiFetch, authUser, availableUsers, navigate }) {
     const [project, setProject] = useState(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     const [comments, setComments] = useState([]);
     const [commentsLoading, setCommentsLoading] = useState(false);
+    const [commentsBody, setCommentsBody] = useState('');
+
+    const [deadlineInput, setDeadlineInput] = useState('');
+    const [savingDeadline, setSavingDeadline] = useState(false);
+    const [discussionSearch, setDiscussionSearch] = useState('');
+    const [discussionSearchOpen, setDiscussionSearchOpen] = useState(false);
+
+    const canEditDeadline = authUser?.role === 'admin' || authUser?.role === 'manager';
+    const canManageDecision = authUser?.role !== 'viewer';
+
+    const entity = useMemo(() => (
+        project
+            ? {
+                type: 'project',
+                id: project.project_id || project.project_name,
+                label: project.project_name || project.project_description,
+            }
+            : null
+    ), [project]);
 
     const loadProject = useCallback(async () => {
         setLoading(true);
@@ -34,7 +72,7 @@ export default function TenderDetailPage({ dbId, apiFetch, authUser, availableUs
         if (!dbId) return;
         setCommentsLoading(true);
         try {
-            const res = await apiFetch(`${API}/comments?entityType=project&entityId=${encodeURIComponent(dbId)}&mine=false`);
+            const res = await apiFetch(`${API}/comments?entityType=project&entityId=${encodeURIComponent(entity?.id || dbId)}&mine=false`);
             if (!res.ok) throw new Error(`Failed to load comments (${res.status})`);
             const data = await res.json();
             setComments(Array.isArray(data?.comments) ? data.comments : []);
@@ -43,12 +81,20 @@ export default function TenderDetailPage({ dbId, apiFetch, authUser, availableUs
         } finally {
             setCommentsLoading(false);
         }
-    }, [dbId, apiFetch]);
+    }, [dbId, entity?.id, apiFetch]);
 
     useEffect(() => {
         loadProject();
+    }, [loadProject]);
+
+    useEffect(() => {
+        if (!project) return;
         loadComments();
-    }, [loadProject, loadComments]);
+    }, [project, loadComments]);
+
+    useEffect(() => {
+        setDeadlineInput(toInputDate(project?.manual_deadline || ''));
+    }, [project?.manual_deadline]);
 
     const handleDecisionChange = async (decision) => {
         if (!project) return;
@@ -80,8 +126,118 @@ export default function TenderDetailPage({ dbId, apiFetch, authUser, availableUs
         }
     };
 
+    const handleVoteChange = async (projectDbId, nextValue) => {
+        if (!projectDbId || !project) return;
+        const previousVote = project.current_user_vote || '';
+        const previousSummary = project.vote_summary || { up: 0, down: 0 };
+        const optimisticSummary = {
+            up: Math.max(0, (previousSummary.up || 0) + (previousVote === 'up' ? -1 : 0) + (nextValue === 'up' ? 1 : 0)),
+            down: Math.max(0, (previousSummary.down || 0) + (previousVote === 'down' ? -1 : 0) + (nextValue === 'down' ? 1 : 0)),
+        };
+        setProject((prev) => ({ ...prev, current_user_vote: nextValue, vote_summary: optimisticSummary }));
+        try {
+            const res = await apiFetch(`${API}/projects/by-db-id/${encodeURIComponent(projectDbId)}/vote`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ value: nextValue }),
+            });
+            if (!res.ok) throw new Error('Failed to update vote');
+            const updated = await res.json();
+            setProject((prev) => (prev?.db_id === updated.db_id ? { ...prev, ...updated } : prev));
+        } catch (err) {
+            setProject((prev) => ({ ...prev, current_user_vote: previousVote, vote_summary: previousSummary }));
+            window.alert(err?.message || 'Failed to update vote');
+        }
+    };
+
+    const handleAssignmentsChange = async (nextUserIds) => {
+        if (!project?.db_id) return;
+        const res = await apiFetch(`${API}/projects/by-db-id/${encodeURIComponent(project.db_id)}/assignments`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userIds: nextUserIds }),
+        });
+        if (!res.ok) throw new Error('Failed to update assignments');
+        const updated = await res.json();
+        setProject((prev) => (prev?.db_id === updated.db_id ? { ...prev, ...updated } : prev));
+    };
+
+    const toggleAssignment = async (userId) => {
+        if (!project?.db_id) return;
+        const assignedUserIds = project?.assigned_user_ids || [];
+        const next = assignedUserIds.includes(userId)
+            ? assignedUserIds.filter((item) => item !== userId)
+            : [...assignedUserIds, userId];
+        await handleAssignmentsChange(next);
+    };
+
+    const handleDeadlineSave = async () => {
+        if (!canEditDeadline || !project?.db_id) return;
+        setSavingDeadline(true);
+        try {
+            const res = await apiFetch(`${API}/projects/by-db-id/${encodeURIComponent(project.db_id)}/deadline`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ manualDeadline: deadlineInput || null }),
+            });
+            if (!res.ok) throw new Error('Failed to update deadline');
+            const updated = await res.json();
+            setProject((prev) => (prev?.db_id === updated.db_id ? { ...prev, ...updated } : prev));
+        } catch (err) {
+            toast.error(err?.message || 'Failed to update deadline');
+        } finally {
+            setSavingDeadline(false);
+        }
+    };
+
+    const submitComment = async (pendingFiles = [], mentions = [], onFilesClear = null) => {
+        if ((!commentsBody.trim() && !pendingFiles.length) || !entity?.id) return;
+        const attachments = pendingFiles || [];
+        const optimistic = {
+            id: `tmp-${Date.now()}`,
+            authorName: authUser?.name || 'You',
+            body: commentsBody.trim(),
+            attachments,
+            mentions,
+            createdAt: new Date().toISOString(),
+        };
+        setComments((prev) => [...prev, optimistic]);
+        const text = commentsBody;
+        setCommentsBody('');
+        if (onFilesClear) onFilesClear();
+        try {
+            const res = await apiFetch('/api/comments', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    entityType: entity.type,
+                    entityId: entity.id,
+                    projectDbId: project?.db_id || '',
+                    body: text || ' ',
+                    attachments,
+                    mentions,
+                }),
+            });
+            if (!res.ok) throw new Error('Failed to post comment');
+            const created = await res.json().catch(() => null);
+            if (created?.comment) {
+                setComments((prev) => prev.map((item) => (item.id === optimistic.id ? created.comment : item)));
+            }
+            await loadComments();
+        } catch (err) {
+            toast.error(err?.message || 'Failed to post comment');
+            setComments((prev) => prev.filter((item) => item.id !== optimistic.id));
+        }
+    };
+
     const goBack = () => {
-        window.location.hash = '#dashboard';
+        if (window.history.length > 1) {
+            window.history.back();
+        } else if (navigate) {
+            navigate('dashboard');
+        } else {
+            window.location.hash = '#dashboard';
+        }
     };
 
     if (loading) return <TenderDetailSkeleton />;
@@ -108,17 +264,47 @@ export default function TenderDetailPage({ dbId, apiFetch, authUser, availableUs
                 </Button>
                 <span className="text-sm text-muted-foreground">Tender detail</span>
             </div>
-            <ProjectInspector
+
+            <TenderSheetPanel
                 project={project}
-                comments={comments}
-                commentsLoading={commentsLoading}
-                authUser={authUser}
                 availableUsers={availableUsers}
-                canManageDecision={authUser?.role !== 'viewer'}
-                onDecisionChange={handleDecisionChange}
-                onOpenFullPage={null}
-                onRunSmartZiw={handleRunSmartZiw}
-                compact={false}
+                comments={comments}
+                canEditDeadline={canEditDeadline}
+                savingDeadline={savingDeadline}
+                deadlineInput={deadlineInput}
+                setDeadlineInput={setDeadlineInput}
+                onDeadlineSave={handleDeadlineSave}
+                onVoteChange={handleVoteChange}
+                onToggleAssignment={toggleAssignment}
+                discussionSearch={discussionSearch}
+                setDiscussionSearch={setDiscussionSearch}
+                discussionSearchOpen={discussionSearchOpen}
+                setDiscussionSearchOpen={setDiscussionSearchOpen}
+            />
+
+            <div className="min-h-0 flex-1">
+                <ProjectInspector
+                    project={project}
+                    comments={comments}
+                    commentsLoading={commentsLoading}
+                    authUser={authUser}
+                    availableUsers={availableUsers}
+                    canManageDecision={canManageDecision}
+                    onDecisionChange={handleDecisionChange}
+                    onOpenFullPage={null}
+                    onRunSmartZiw={handleRunSmartZiw}
+                    compact={false}
+                />
+            </div>
+
+            <CommentComposer
+                entity={entity}
+                body={commentsBody}
+                setBody={setCommentsBody}
+                onSubmit={submitComment}
+                currentUser={authUser}
+                availableUsers={availableUsers}
+                apiFetch={apiFetch}
             />
         </div>
     );
