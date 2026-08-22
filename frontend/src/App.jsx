@@ -2101,7 +2101,7 @@ function AdminPage({ apiFetch, authUser, initialTab = 'users' }) {
     };
 
     return (
-        <div className="flex flex-col gap-5">
+        <div className="flex flex-col gap-6">
             <PageHeader
                 title="Admin"
                 subtitle={adminTab === 'users' ? 'Create, edit, deactivate users, and reset passwords.' : adminTab === 'release-notes' ? 'Create new release notes or update existing versions.' : adminTab === 'llm' ? 'Configure the LLM backend used by the Smart-Ziw agent.' : adminTab === 'system-prompts' ? 'Edit the system prompts that guide the AI verification filter.' : adminTab === 'skills' ? 'Enable, disable, and manage Smart-Ziw skills.' : adminTab === 'mcp-servers' ? 'Connect external MCP servers and expose their tools as Smart-Ziw skills.' : 'Configure the Smart-Ziw agent and optional GitHub push.'}
@@ -2128,7 +2128,7 @@ function AdminPage({ apiFetch, authUser, initialTab = 'users' }) {
                 )}
             />
 
-            <div className="mb-5 grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <div className="grid grid-cols-1 gap-4 md:gap-6 sm:grid-cols-3">
                 <Card>
                     <CardContent className="flex flex-col gap-1.5">
                         <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Total Users</span>
@@ -3505,12 +3505,12 @@ export default function App() {
                 />
                 <div className="flex min-w-0 flex-1 flex-col">
                 <div className="min-h-0 flex-1 overflow-auto">
-                    <div className="w-full px-8 py-8">
+                    <div className="w-full px-4 py-6 md:px-6 lg:px-8 lg:py-8">
                         <div className="mb-6 flex items-center justify-end gap-1 border-b border-border pb-4">
                             <TooltipProvider>
                                 <Tooltip>
                                     <TooltipTrigger asChild>
-                                        <ShadcnButton variant="ghost" size="icon" className="relative" aria-label="Notifications" onClick={() => setNotificationsOpen(true)}>
+                                        <ShadcnButton variant="ghost" size="icon" className="relative transition-colors duration-200" aria-label="Notifications" onClick={() => setNotificationsOpen(true)}>
                                             <Bell className="h-4 w-4" />
                                             {unreadNotificationCount ? <Badge variant="destructive" className="absolute -right-1 -top-1 h-5 min-w-5 items-center justify-center rounded-full px-1 text-[10px] leading-none">{unreadNotificationCount}</Badge> : null}
                                         </ShadcnButton>
@@ -3519,7 +3519,7 @@ export default function App() {
                                 </Tooltip>
                                 <Tooltip>
                                     <TooltipTrigger asChild>
-                                        <ShadcnButton variant="ghost" size="icon" aria-label="Sync now" onClick={() => setSyncOpen(true)}>
+                                        <ShadcnButton variant="ghost" size="icon" className="transition-colors duration-200" aria-label="Sync now" onClick={() => setSyncOpen(true)}>
                                             <RefreshCw className="h-4 w-4" />
                                         </ShadcnButton>
                                     </TooltipTrigger>
@@ -3527,7 +3527,7 @@ export default function App() {
                                 </Tooltip>
                                 <Tooltip>
                                     <TooltipTrigger asChild>
-                                        <ShadcnButton variant="ghost" size="icon" aria-label="Show me around" onClick={() => setDemoOpen(true)}>
+                                        <ShadcnButton variant="ghost" size="icon" className="transition-colors duration-200" aria-label="Show me around" onClick={() => setDemoOpen(true)}>
                                             <CircleHelp className="h-4 w-4" />
                                         </ShadcnButton>
                                     </TooltipTrigger>
@@ -3537,7 +3537,7 @@ export default function App() {
                             <div className="mx-2 h-5 w-px bg-border" />
                             <DropdownMenu>
                                 <DropdownMenuTrigger asChild>
-                                    <ShadcnButton variant="ghost" size="icon" className="rounded-full" aria-label="Account menu">
+                                    <ShadcnButton variant="ghost" size="icon" className="rounded-full transition-colors duration-200" aria-label="Account menu">
                                         <Avatar user={authUser} size={32} />
                                     </ShadcnButton>
                                 </DropdownMenuTrigger>

@@ -1286,7 +1286,7 @@ export default function TendersPage({
                     title="Procurement Watch"
                     subtitle="Track tenders, review sources, and manage decisions."
                 />
-                <div className="mb-5 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                <div className="grid grid-cols-1 gap-4 md:gap-6 sm:grid-cols-2 lg:grid-cols-4">
                     <Card>
                         <CardContent className="flex flex-col gap-1.5">
                             <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Total Tenders</span>
@@ -1404,7 +1404,7 @@ export default function TendersPage({
                                 {shareCopied ? 'Copied' : 'Copy link'}
                             </ShadcnButton>
                             <SheetClose asChild>
-                                <ShadcnButton variant="ghost" size="icon-sm" aria-label="Close project inspector">
+                                <ShadcnButton variant="ghost" size="icon-sm" className="transition-colors duration-200" aria-label="Close project inspector">
                                     <X />
                                 </ShadcnButton>
                             </SheetClose>
@@ -1423,7 +1423,7 @@ export default function TendersPage({
                                         type="button"
                                         variant="ghost"
                                         size="icon-sm"
-                                        className={discussionSearchOpen ? 'bg-muted text-foreground' : 'text-muted-foreground'}
+                                        className={`transition-colors duration-200 ${discussionSearchOpen ? 'bg-muted text-foreground' : 'text-muted-foreground'}`}
                                         aria-label={discussionSearchOpen ? 'Hide message search' : 'Search messages'}
                                         onClick={() => {
                                             if (discussionSearchOpen && !discussionSearch) {
@@ -1463,7 +1463,7 @@ export default function TendersPage({
                                             type="button"
                                             variant="outline"
                                             size="sm"
-                                            className={`gap-1.5 ${(selectedProject?.current_user_vote || '') === 'up' ? 'border-success/30 bg-success/10 text-success hover:bg-success/10 hover:text-success' : ''}`}
+                                            className={`gap-1.5 transition-colors duration-200 ${(selectedProject?.current_user_vote || '') === 'up' ? 'border-success/30 bg-success/10 text-success hover:bg-success/10 hover:text-success' : ''}`}
                                             onClick={() => handleVoteChange(selectedProject.db_id, (selectedProject?.current_user_vote || '') === 'up' ? '' : 'up')}
                                         >
                                             <ThumbsUp className="size-4" />
@@ -1474,7 +1474,7 @@ export default function TendersPage({
                                             type="button"
                                             variant="outline"
                                             size="sm"
-                                            className={`gap-1.5 ${(selectedProject?.current_user_vote || '') === 'down' ? 'border-destructive/30 bg-destructive/10 text-destructive hover:bg-destructive/10 hover:text-destructive' : ''}`}
+                                            className={`gap-1.5 transition-colors duration-200 ${(selectedProject?.current_user_vote || '') === 'down' ? 'border-destructive/30 bg-destructive/10 text-destructive hover:bg-destructive/10 hover:text-destructive' : ''}`}
                                             onClick={() => handleVoteChange(selectedProject.db_id, (selectedProject?.current_user_vote || '') === 'down' ? '' : 'down')}
                                         >
                                             <ThumbsDown className="size-4" />
@@ -1497,7 +1497,7 @@ export default function TendersPage({
                                                     key={user.id}
                                                     type="button"
                                                     onClick={() => toggleAssignment(user.id)}
-                                                    className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${assigned ? 'border-primary/30 bg-primary/5 text-primary' : 'border-border bg-card text-muted-foreground hover:bg-muted'}`}
+                                                    className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors duration-200 ${assigned ? 'border-primary/30 bg-primary/5 text-primary' : 'border-border bg-card text-muted-foreground hover:bg-muted'}`}
                                                 >
                                                     <span className="flex size-5 items-center justify-center rounded-full bg-muted text-[10px] font-semibold text-muted-foreground">{initials(user.name || '', user.email || '')}</span>
                                                     <span>{user.name || user.email}</span>
@@ -1572,7 +1572,7 @@ export default function TendersPage({
                                             <span className="min-w-0 truncate text-sm font-medium text-foreground">{previewAttachment.originalName || 'Attachment'}</span>
                                             <div className="flex shrink-0 items-center gap-1">
                                                 <a
-                                                    className="inline-flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+                                                    className="inline-flex size-8 items-center justify-center rounded-md text-muted-foreground transition-colors duration-200 hover:bg-muted hover:text-foreground"
                                                     href={previewAttachment.url}
                                                     download={previewAttachment.originalName || 'attachment'}
                                                     aria-label="Download attachment"
@@ -1582,7 +1582,7 @@ export default function TendersPage({
                                                 </a>
                                                 <button
                                                     type="button"
-                                                    className="inline-flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+                                                    className="inline-flex size-8 items-center justify-center rounded-md text-muted-foreground transition-colors duration-200 hover:bg-muted hover:text-foreground"
                                                     onClick={() => setPreviewAttachment(null)}
                                                     aria-label="Close attachment preview"
                                                     title="Close"

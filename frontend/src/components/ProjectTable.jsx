@@ -528,7 +528,7 @@ export default function ProjectTable({
                 <TableRow
                   key={rowId}
                   onClick={(event) => handleRowClick(event, p, realIndex)}
-                  className={`group h-12 cursor-pointer transition-colors ${p.decision === 'No Go' ? 'opacity-50' : ''} ${isSelected ? 'bg-primary/10 shadow-[inset_3px_0_0_var(--color-primary)] hover:bg-primary/10' : ''} ${rowEntityId && activeProjectId === rowEntityId ? 'bg-primary/[0.06] shadow-[inset_3px_0_0_var(--color-primary)] hover:bg-primary/[0.06]' : ''} ${isNew ? 'bg-primary/[0.08]' : ''} ${!isSelected && !(rowEntityId && activeProjectId === rowEntityId) && !isNew ? `even:bg-muted/40 hover:bg-muted/60 ${focusedRowIndex === realIndex ? 'bg-primary/5' : ''}` : ''}`}
+                  className={`group h-12 cursor-pointer transition-colors duration-200 ${p.decision === 'No Go' ? 'opacity-50' : ''} ${isSelected ? 'bg-primary/10 shadow-[inset_3px_0_0_var(--color-primary)] hover:bg-primary/10' : ''} ${rowEntityId && activeProjectId === rowEntityId ? 'bg-primary/[0.06] shadow-[inset_3px_0_0_var(--color-primary)] hover:bg-primary/[0.06]' : ''} ${isNew ? 'bg-primary/[0.08]' : ''} ${!isSelected && !(rowEntityId && activeProjectId === rowEntityId) && !isNew ? `even:bg-muted/40 hover:bg-muted/60 ${focusedRowIndex === realIndex ? 'bg-primary/5' : ''}` : ''}`}
                 >
                   {columns.map((columnKey) => {
                     const key = typeof columnKey === 'string' ? columnKey : (columnKey?.key || columnKey?.id || '');
@@ -563,7 +563,7 @@ export default function ProjectTable({
                       return (
                         <TableCell key={key} className="overflow-hidden">
                           <div className="flex min-w-0 flex-col gap-1">
-                            <span className="line-clamp-2 text-sm leading-[1.35] font-semibold text-foreground group-hover:text-primary" title={displayName}>{displayName}</span>
+                            <span className="line-clamp-2 text-sm leading-[1.35] font-semibold text-foreground transition-colors duration-200 group-hover:text-primary" title={displayName}>{displayName}</span>
                             <span className="mt-0.5 flex flex-wrap items-center gap-1.5">
                               <Badge variant="outline" className="px-2 py-0.5 text-[0.64rem] border-border bg-card text-muted-foreground" style={p.source ? sourceStyle(p.source) : undefined}>{p.source}</Badge>
                             </span>
@@ -635,8 +635,8 @@ export default function ProjectTable({
                             const remaining = kws.length - shown.length;
                             return (
                               <>
-                                {shown.map((kw) => <Badge key={kw} variant="outline" className="m-0.5 font-medium">{kw}</Badge>)}
-                                {remaining > 0 ? <Badge variant="secondary" className="m-0.5 font-medium" title={kws.slice(2).join(', ')}>+{remaining}</Badge> : null}
+                                {shown.map((kw) => <Badge key={kw} variant="outline" className="m-0.5 font-medium transition-colors duration-200">{kw}</Badge>)}
+                                {remaining > 0 ? <Badge variant="secondary" className="m-0.5 font-medium transition-colors duration-200" title={kws.slice(2).join(', ')}>+{remaining}</Badge> : null}
                               </>
                             );
                           })() : <span className="text-muted-foreground">-</span>}
@@ -670,7 +670,7 @@ export default function ProjectTable({
                       <TableCell key={key} className="td-actions w-12 text-right" onClick={(e) => e.stopPropagation()}>
                         {p.project_url ? (
                           <button
-                            className="context-trigger mr-1.5 inline-flex h-8 w-8 items-center justify-center rounded-md border border-transparent text-muted-foreground transition-all hover:border-border hover:bg-muted hover:text-foreground"
+                            className="context-trigger mr-1.5 inline-flex h-8 w-8 items-center justify-center rounded-md border border-transparent text-muted-foreground transition-colors duration-200 hover:border-border hover:bg-muted hover:text-foreground"
                             onClick={(e) => {
                               e.stopPropagation();
                               window.open(p.project_url, '_blank');
@@ -682,7 +682,7 @@ export default function ProjectTable({
                           </button>
                         ) : null}
                         <button
-                          className="context-trigger inline-flex h-8 w-8 items-center justify-center rounded-md border border-transparent text-muted-foreground transition-all hover:border-border hover:bg-muted hover:text-foreground"
+                          className="context-trigger inline-flex h-8 w-8 items-center justify-center rounded-md border border-transparent text-muted-foreground transition-colors duration-200 hover:border-border hover:bg-muted hover:text-foreground"
                           onClick={(e) => {
                             e.stopPropagation();
                             const rect = e.currentTarget.getBoundingClientRect();

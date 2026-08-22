@@ -43,7 +43,7 @@ export default function ProjectInspector({
                     <button
                         type="button"
                         onClick={onOpenFullPage}
-                        className="text-sm font-medium text-primary hover:underline"
+                        className="text-sm font-medium text-primary transition-colors duration-200 hover:underline"
                     >
                         Open full page
                     </button>
@@ -137,7 +137,7 @@ function OverviewTab({ project, canManageDecision, onDecisionChange, compact }) 
                                     type="button"
                                     variant="outline"
                                     size="sm"
-                                    className={projectDecision === 'Go' ? 'border-success/30 bg-success/10 text-success hover:bg-success/10 hover:text-success' : ''}
+                                    className={`transition-colors duration-200 ${projectDecision === 'Go' ? 'border-success/30 bg-success/10 text-success hover:bg-success/10 hover:text-success' : ''}`}
                                     onClick={() => onDecisionChange(projectDecision === 'Go' ? '' : 'Go')}
                                 >
                                     Go
@@ -146,7 +146,7 @@ function OverviewTab({ project, canManageDecision, onDecisionChange, compact }) 
                                     type="button"
                                     variant="outline"
                                     size="sm"
-                                    className={projectDecision === 'No Go' ? 'border-destructive/30 bg-destructive/10 text-destructive hover:bg-destructive/10 hover:text-destructive' : ''}
+                                    className={`transition-colors duration-200 ${projectDecision === 'No Go' ? 'border-destructive/30 bg-destructive/10 text-destructive hover:bg-destructive/10 hover:text-destructive' : ''}`}
                                     onClick={() => onDecisionChange(projectDecision === 'No Go' ? '' : 'No Go')}
                                 >
                                     No Go
@@ -155,7 +155,7 @@ function OverviewTab({ project, canManageDecision, onDecisionChange, compact }) 
                                     type="button"
                                     variant="outline"
                                     size="sm"
-                                    className={!projectDecision ? 'border-foreground bg-muted/60 text-foreground hover:bg-muted/60 hover:text-foreground' : ''}
+                                    className={`transition-colors duration-200 ${!projectDecision ? 'border-foreground bg-muted/60 text-foreground hover:bg-muted/60 hover:text-foreground' : ''}`}
                                     onClick={() => onDecisionChange('')}
                                 >
                                     Undecided
@@ -203,7 +203,7 @@ function DocumentsTab({ project, compact }) {
                             href={project.document_url}
                             target="_blank"
                             rel="noreferrer"
-                            className="flex min-h-9 items-center rounded-lg bg-muted px-3 text-sm font-medium text-foreground hover:text-primary"
+                            className="flex min-h-9 items-center rounded-lg bg-muted px-3 text-sm font-medium text-foreground transition-colors duration-200 hover:text-primary"
                         >
                             Open tender document
                         </a>
@@ -215,7 +215,7 @@ function DocumentsTab({ project, compact }) {
                             href={project.project_url}
                             target="_blank"
                             rel="noreferrer"
-                            className="flex min-h-9 items-center rounded-lg bg-muted px-3 text-sm font-medium text-foreground hover:text-primary"
+                            className="flex min-h-9 items-center rounded-lg bg-muted px-3 text-sm font-medium text-foreground transition-colors duration-200 hover:text-primary"
                         >
                             Open source listing
                         </a>
@@ -460,7 +460,7 @@ function SmartZiwTab({ project, onRun, compact }) {
                                         <a
                                             key={file}
                                             href={`file://${path}`}
-                                            className="text-sm font-medium text-primary hover:underline"
+                                            className="text-sm font-medium text-primary transition-colors duration-200 hover:underline"
                                         >
                                             {file}
                                         </a>

@@ -133,6 +133,21 @@
     }
 }
 
+/* Subtle transitions for all interactive elements. */
+button,
+a,
+input,
+select,
+textarea,
+[role="tab"],
+[role="button"],
+.card,
+.badge {
+  transition-property: color, background-color, border-color, box-shadow;
+  transition-duration: 200ms;
+  transition-timing-function: ease-in-out;
+}
+
 /* Scroll lock for legacy modal-style panels (toggled by setModalScrollLock in App.jsx). */
 html.modal-scroll-locked,
 body.modal-scroll-locked {
