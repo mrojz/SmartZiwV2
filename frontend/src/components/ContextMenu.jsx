@@ -44,13 +44,13 @@ export default function ContextMenu({ anchorRect, items, onClose }) {
                 ) : (
                     <button
                         key={i}
-                        className={`context-menu-item flex w-full cursor-pointer items-center gap-3 rounded-lg border-none bg-none px-3 py-2 font-sans text-left text-sm font-medium text-slate-700 transition-colors duration-150 hover:bg-accent hover:text-foreground ${item.danger ? 'hover:bg-destructive/10 hover:text-destructive' : ''} ${item.active ? 'text-green-700' : ''}`}
+                        className={`context-menu-item flex w-full cursor-pointer items-center gap-3 rounded-lg border-none bg-none px-3 py-2 font-sans text-left text-sm font-medium text-foreground transition-colors duration-150 hover:bg-accent hover:text-foreground ${item.danger ? 'hover:bg-destructive/10 hover:text-destructive' : ''} ${item.active ? 'text-green-600' : ''}`}
                         onClick={() => {
                             item.onClick();
                             onClose();
                         }}
                     >
-                        <span className="h-5 w-5 shrink-0 rounded-full border border-border bg-muted text-center text-xs leading-[18px]">{item.icon}</span>
+                        <span className="h-4 w-4 shrink-0 rounded-full border border-border bg-muted text-center text-[10px] leading-4">{item.icon}</span>
                         <span>{item.label}</span>
                     </button>
                 )

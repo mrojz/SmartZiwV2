@@ -30,6 +30,10 @@ def _mk_comment(body="@SmartZiw what is the deadline?", comment_id="c1"):
     return {"id": comment_id, "entityType": "project", "entityId": "e1", "body": body, "authorName": "User One"}
 
 
+def _mk_thread(count=35):
+    return [{"id": f"c{i}", "body": f"prior note {i}", "authorName": f"user{i}"} for i in range(count)]
+
+
 def _no_thread(*args, **kwargs):
     raise AssertionError("no thread should be spawned")
 
@@ -42,21 +46,24 @@ def test_chat_prompt_strips_mention_token_and_includes_project_fields():
     assert "Smart-Ziw status: completed" in prompt
 
 
-def test_chat_prompt_includes_last_10_comments_excluding_trigger():
-    trigger = _mk_comment("@SmartZiw tell me more", comment_id="c11")
-    thread = [{"id": f"c{i}", "body": f"prior note {i}", "authorName": f"user{i}"} for i in range(10)]
-    thread.extend([trigger, {"id": "c12", "body": "", "authorName": "empty"}])
+def test_chat_prompt_includes_last_30_comments_excluding_trigger():
+    trigger = _mk_comment("@SmartZiw tell me more", comment_id="c35")
+    thread = _mk_thread(35)
+    thread.extend([trigger, {"id": "c36", "body": "", "authorName": "empty"}])
     prompt = server._build_smart_ziw_chat_prompt(_mk_project(), trigger, thread)
-    assert "prior note 1" in prompt
-    assert "prior note 9" in prompt
+    assert "prior note 6" in prompt
+    assert "prior note 34" in prompt
     assert "prior note 0" not in prompt
+    assert "prior note 5" not in prompt
     assert "empty" not in prompt
     assert "@SmartZiw" not in prompt
 
 
-def test_hook_spawns_worker_for_tagged_project_comment(monkeypatch):
+def test_hook_fetches_thread_before_spawning_worker(monkeypatch):
     monkeypatch.setattr(server, "_smart_ziw_running", set())
     monkeypatch.setattr(server, "get_smart_ziw_config", lambda: {"smart_ziw_enabled": True})
+    fetched = {}
+    monkeypatch.setattr(server, "list_comments", lambda entity_type, entity_id: fetched.update(entity_type=entity_type, entity_id=entity_id) or _mk_thread(2))
     spawned = {}
 
     class _FakeThread:
@@ -70,8 +77,11 @@ def test_hook_spawns_worker_for_tagged_project_comment(monkeypatch):
 
     monkeypatch.setattr("threading.Thread", _FakeThread)
     server._maybe_start_smart_ziw_chat(_mk_comment(), _mk_project(), _mk_requester())
+    assert fetched["entity_type"] == "project"
+    assert fetched["entity_id"] == "e1"
     assert spawned["target"] is server._answer_smart_ziw_mention
     assert spawned["args"][0] == "p1"
+    assert spawned["args"][2] is not None
     assert spawned["daemon"] is True
     assert "p1" in server._smart_ziw_running
 
@@ -111,7 +121,6 @@ def test_answer_posts_bot_reply_with_requester_mention(monkeypatch):
     monkeypatch.setattr(server, "_smart_ziw_running", {"p1"})
     monkeypatch.setattr(server, "get_smart_ziw_config", lambda: {"smart_ziw_enabled": True})
     monkeypatch.setattr(server, "get_llm_call", lambda config, json_mode=False: lambda system, user: "Here is the answer.")
-    monkeypatch.setattr(server, "list_comments", lambda entity_type, entity_id: [])
     captured = {}
 
     def fake_create(*, entity_type, entity_id, project, author_user, body_text, attachments=None, mentions=None):
@@ -120,7 +129,7 @@ def test_answer_posts_bot_reply_with_requester_mention(monkeypatch):
         return {}
 
     monkeypatch.setattr(server, "_create_project_comment_and_notify", fake_create)
-    server._answer_smart_ziw_mention("p1", _mk_project(), _mk_requester(), _mk_comment())
+    server._answer_smart_ziw_mention("p1", _mk_project(), _mk_requester(), _mk_comment(), _mk_thread(2))
     assert captured["author_user"] == server.SMART_ZIW_BOT_USER
     assert captured["body_text"] == "Here is the answer."
     assert captured["mentions"] == [{"userId": "u1", "name": "User One", "email": "u1@example.com"}]
@@ -131,7 +140,6 @@ def test_answer_truncates_long_replies(monkeypatch):
     monkeypatch.setattr(server, "_smart_ziw_running", {"p1"})
     monkeypatch.setattr(server, "get_smart_ziw_config", lambda: {"smart_ziw_enabled": True})
     monkeypatch.setattr(server, "get_llm_call", lambda config, json_mode=False: lambda system, user: "x" * 3000)
-    monkeypatch.setattr(server, "list_comments", lambda entity_type, entity_id: [])
     captured = {}
 
     def fake_create(*, entity_type, entity_id, project, author_user, body_text, attachments=None, mentions=None):
@@ -139,7 +147,7 @@ def test_answer_truncates_long_replies(monkeypatch):
         return {}
 
     monkeypatch.setattr(server, "_create_project_comment_and_notify", fake_create)
-    server._answer_smart_ziw_mention("p1", _mk_project(), _mk_requester(), _mk_comment())
+    server._answer_smart_ziw_mention("p1", _mk_project(), _mk_requester(), _mk_comment(), [])
     assert len(captured["body_text"]) == 2001
     assert captured["body_text"].endswith("…")
 
@@ -148,7 +156,6 @@ def test_answer_uses_fallback_text_when_llm_returns_empty(monkeypatch):
     monkeypatch.setattr(server, "_smart_ziw_running", {"p1"})
     monkeypatch.setattr(server, "get_smart_ziw_config", lambda: {"smart_ziw_enabled": True})
     monkeypatch.setattr(server, "get_llm_call", lambda config, json_mode=False: lambda system, user: "")
-    monkeypatch.setattr(server, "list_comments", lambda entity_type, entity_id: [])
     captured = {}
 
     def fake_create(*, entity_type, entity_id, project, author_user, body_text, attachments=None, mentions=None):
@@ -156,7 +163,7 @@ def test_answer_uses_fallback_text_when_llm_returns_empty(monkeypatch):
         return {}
 
     monkeypatch.setattr(server, "_create_project_comment_and_notify", fake_create)
-    server._answer_smart_ziw_mention("p1", _mk_project(), _mk_requester(), _mk_comment())
+    server._answer_smart_ziw_mention("p1", _mk_project(), _mk_requester(), _mk_comment(), [])
     assert captured["body_text"] == "Smart-Ziw has no answer for this question."
 
 
@@ -168,7 +175,6 @@ def test_answer_posts_error_note_on_llm_failure(monkeypatch):
         raise RuntimeError("provider down")
 
     monkeypatch.setattr(server, "get_llm_call", _boom)
-    monkeypatch.setattr(server, "list_comments", lambda entity_type, entity_id: [])
     captured = {}
 
     def fake_create(*, entity_type, entity_id, project, author_user, body_text, attachments=None, mentions=None):
@@ -176,7 +182,7 @@ def test_answer_posts_error_note_on_llm_failure(monkeypatch):
         return {}
 
     monkeypatch.setattr(server, "_create_project_comment_and_notify", fake_create)
-    server._answer_smart_ziw_mention("p1", _mk_project(), _mk_requester(), _mk_comment())
+    server._answer_smart_ziw_mention("p1", _mk_project(), _mk_requester(), _mk_comment(), [])
     assert captured["body_text"].startswith("Smart-Ziw could not answer")
     assert "provider down" in captured["body_text"]
     assert captured["author_user"] == server.SMART_ZIW_BOT_USER
@@ -203,3 +209,74 @@ def test_post_comment_triggers_mention_hook(monkeypatch):
     assert r.status_code == 200
     assert called["project"]["db_id"] == "p1"
     assert called["requester"]["id"] == "u1"
+
+
+def test_run_request_intent_detection():
+    is_run = server._smart_ziw_mention_is_run_request
+    assert is_run("@smartziw check next actions and perform them") is True
+    assert is_run("@smartziw please run the next actions") is True
+    assert is_run("@SmartZiw execute tasks now") is True
+    assert is_run("@smartziw start processing next actions") is True
+    assert is_run("@smartziw what are the next actions?") is False
+    assert is_run("@SmartZiw hello") is False
+    assert is_run("@smartziw tell me the deadline") is False
+
+
+def test_hook_spawns_run_worker_for_run_request(monkeypatch):
+    monkeypatch.setattr(server, "_smart_ziw_running", set())
+    monkeypatch.setattr(server, "get_smart_ziw_config", lambda: {"smart_ziw_enabled": True})
+    thread = _mk_thread(2)
+    monkeypatch.setattr(server, "list_comments", lambda entity_type, entity_id: thread)
+    posted = []
+    monkeypatch.setattr(server, "_smart_ziw_bot_note", lambda project, body_text: posted.append(body_text))
+    spawned = {}
+
+    class _FakeThread:
+        def __init__(self, target, args, daemon):
+            spawned["target"] = target
+            spawned["args"] = args
+            spawned["daemon"] = daemon
+
+        def start(self):
+            pass
+
+    monkeypatch.setattr("threading.Thread", _FakeThread)
+    run_comment = _mk_comment("@SmartZiw check next actions and perform them")
+    server._maybe_start_smart_ziw_chat(run_comment, _mk_project(), _mk_requester())
+    assert spawned["target"] is server._run_smart_ziw
+    assert spawned["args"][0] == "p1"
+    assert spawned["args"][1] == _mk_requester()
+    assert spawned["args"][2] is thread
+    assert spawned["daemon"] is True
+    assert "starting" in posted[0].lower()
+    assert "p1" in server._smart_ziw_running
+
+
+def test_hook_spawns_chat_worker_for_non_run_request(monkeypatch):
+    monkeypatch.setattr(server, "_smart_ziw_running", set())
+    monkeypatch.setattr(server, "get_smart_ziw_config", lambda: {"smart_ziw_enabled": True})
+    thread = _mk_thread(2)
+    monkeypatch.setattr(server, "list_comments", lambda entity_type, entity_id: thread)
+    posted = []
+    monkeypatch.setattr(server, "_smart_ziw_bot_note", lambda project, body_text: posted.append(body_text))
+    spawned = {}
+
+    class _FakeThread:
+        def __init__(self, target, args, daemon):
+            spawned["target"] = target
+            spawned["args"] = args
+            spawned["daemon"] = daemon
+
+        def start(self):
+            pass
+
+    monkeypatch.setattr("threading.Thread", _FakeThread)
+    chat_comment = _mk_comment("@SmartZiw what are the next actions?")
+    server._maybe_start_smart_ziw_chat(chat_comment, _mk_project(), _mk_requester())
+    assert spawned["target"] is server._answer_smart_ziw_mention
+    assert spawned["args"][0] == "p1"
+    assert spawned["args"][3] == chat_comment
+    assert spawned["args"][4] is thread
+    assert spawned["daemon"] is True
+    assert not posted
+    assert "p1" in server._smart_ziw_running

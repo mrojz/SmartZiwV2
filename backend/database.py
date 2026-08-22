@@ -103,6 +103,13 @@ def _normalize_project(doc: dict, geography: dict | None = None, geography_looku
     doc['smart_ziw_error'] = doc.get('smart_ziw_error') or ''
     doc['smart_ziw_folder'] = str(doc.get('smart_ziw_folder') or '')
     doc['smart_ziw_gitlab_pushed'] = bool(doc.get('smart_ziw_gitlab_pushed', False))
+    doc['smart_ziw_analysis_markdown'] = str(doc.get('smart_ziw_analysis_markdown') or '')
+    doc['smart_ziw_next_actions'] = doc.get('smart_ziw_next_actions') or []
+    doc['smart_ziw_research_verdict'] = str(doc.get('smart_ziw_research_verdict') or '')
+    doc['smart_ziw_evidence'] = str(doc.get('smart_ziw_evidence') or '')
+    doc['smart_ziw_confidence'] = str(doc.get('smart_ziw_confidence') or '')
+    doc['smart_ziw_ai_source'] = str(doc.get('smart_ziw_ai_source') or '')
+    doc['smart_ziw_repo_path'] = str(doc.get('smart_ziw_repo_path') or '')
     return doc
 
 
@@ -310,6 +317,13 @@ def update_project_smart_ziw_state_by_db_id(project_db_id: str, updates: dict) -
         'smart_ziw_error',
         'smart_ziw_folder',
         'smart_ziw_gitlab_pushed',
+        'smart_ziw_analysis_markdown',
+        'smart_ziw_next_actions',
+        'smart_ziw_research_verdict',
+        'smart_ziw_evidence',
+        'smart_ziw_confidence',
+        'smart_ziw_ai_source',
+        'smart_ziw_repo_path',
     }
     filtered = {k: v for k, v in updates.items() if k in allowed}
     if not filtered:
@@ -434,23 +448,62 @@ DEFAULT_SMART_ZIW_CONFIG = {
     'smart_ziw_enabled': True,
     'smart_ziw_repo_path': '/home/kali/Smart-Ziw',
     'gitlab_push_enabled': False,
-    'gitlab_url': '',
+    'gitlab_base_url': 'http://localhost:8080',
+    'gitlab_project_path': 'root/Smart-Ziw',
     'gitlab_token': '',
-    'gitlab_project_path': '',
     'gitlab_branch': 'main',
     'gitlab_author_name': 'Smart-Ziw Agent',
     'gitlab_author_email': 'smart-ziw@localhost',
-    'firecrawl_api_key': '',
-    'firecrawl_base_url': 'https://api.firecrawl.dev',
+    'forvis_mazars_presence_countries': [
+        'algeria', 'argentina', 'australia', 'austria', 'belgium', 'brazil', 'canada', 'china',
+        'czech republic', 'denmark', 'egypt', 'finland', 'france', 'germany', 'hong kong',
+        'hungary', 'india', 'ireland', 'israel', 'italy', 'japan', 'luxembourg', 'malaysia',
+        'mauritius', 'mexico', 'morocco', 'netherlands', 'norway', 'poland', 'portugal',
+        'qatar', 'romania', 'russia', 'saudi arabia', 'singapore', 'slovakia', 'south africa',
+        'south korea', 'spain', 'sweden', 'switzerland', 'tunisia', 'turkey', 'united arab emirates',
+        'united kingdom', 'united states',
+    ],
     'smart_ziw_research_enabled': True,
     'smart_ziw_research_timeout_seconds': 900,
+    'smart_ziw_skills_enabled': True,
+    'tempmail_enabled': True,
+    'tempmail_service': 'mail.tm',
+    'tempmail_base_url': 'https://api.mail.tm',
     'smart_ziw_llm_provider': 'auto',
     'lightllm_base_url': '',
     'lightllm_api_key': '',
+    'lightllm_subscription_key': '',
     'lightllm_model': 'default',
     'lightllm_provider': 'openai_compatible',
     'llm_temperature': 0.1,
     'llm_max_tokens': 4000,
+    'ai_verification_system_prompt': """You are a cybersecurity procurement analyst. Your job is to determine whether procurement notices are related to cybersecurity, information security, or IT security.
+
+A project IS cybersecurity-related if it involves:
+- Penetration testing, vulnerability assessments, ethical hacking
+- Security audits, ISMS, ISO 27001, PCI DSS compliance
+- Cybersecurity strategy, frameworks, NIST, CISO advisory
+- SIEM, SOC, CERT, incident response
+- Network security, firewall, endpoint protection
+- Data protection, encryption, privacy (GDPR, etc.)
+- Security awareness, phishing simulations, social engineering
+- OT/ICS security, SCADA security
+- SWIFT CSP, DORA, financial security compliance
+- Digital forensics, threat intelligence, malware analysis
+- Identity & access management (IAM), authentication, MFA
+- Cloud security, application security, DevSecOps
+- Security training and certification programs
+
+A project is NOT cybersecurity-related if it only mentions security in passing (e.g. physical security, food safety, social security, guard services) or is a general IT/digital project with no specific security focus.
+
+You will receive a numbered list of projects. For each project, respond with ONLY a JSON array of objects:
+[{"id": 1, "cyber": true, "reason": "..."}, {"id": 2, "cyber": false}, ...]
+
+For every project where cyber is true, include a concise reason explaining why the tender is cybersecurity-related. If cyber is false, you may omit reason or set it to an empty string.
+
+Do not include any explanation outside the JSON array.""",
+    'ai_verification_expertise': 'Forvis Mazars is a global audit, tax and advisory firm with a strong cybersecurity consulting practice. We are interested in cybersecurity-related consulting, advisory, audit, assessment, governance, incident response, threat intelligence, and managed security services.',
+    'ai_verification_unwanted': 'Software licenses, license renewals, product subscriptions, support renewals, hardware or appliance acquisition, pure SIEM implementation sold as a standalone product, and any project whose ONLY scope is selling or renewing such items.',
 }
 
 

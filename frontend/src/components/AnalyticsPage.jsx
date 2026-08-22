@@ -1,14 +1,15 @@
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import PageHeader from './PageHeader';
 
 export default function AnalyticsPage() {
     return (
         <div className="mx-auto w-full max-w-3xl">
-            <div className="mb-6">
-                <h1 className="text-2xl font-semibold tracking-tight">Analytics</h1>
-                <p className="mt-1.5 text-sm text-muted-foreground">Analytics are coming soon.</p>
-            </div>
+            <PageHeader
+                title="Analytics"
+                subtitle="Analytics are coming soon."
+            />
             <Card>
                 <CardContent className="flex flex-col items-start gap-4 p-6">
                     <Badge variant="secondary">Coming soon</Badge>

@@ -113,7 +113,7 @@ export default function Sidebar({ user, route, onNavigate, collapsed, mobileOpen
                     <SidebarGroup key={group.label}>
                         <Collapsible defaultOpen className="group/collapsible">
                             <SidebarGroupLabel asChild>
-                                <CollapsibleTrigger className="gap-2 text-[11px] font-semibold uppercase tracking-wider text-sidebar-foreground/50">
+                                <CollapsibleTrigger className="gap-2 text-xs font-medium text-muted-foreground/60">
                                     {group.label}
                                     <ChevronDown className="ml-auto h-3.5 w-3.5 transition-transform group-data-[state=open]/collapsible:rotate-180" />
                                 </CollapsibleTrigger>
@@ -126,7 +126,7 @@ export default function Sidebar({ user, route, onNavigate, collapsed, mobileOpen
                                                 <SidebarMenuButton
                                                     isActive={route === item.key}
                                                     tooltip={item.label}
-                                                    className="data-[active=true]:bg-primary/10 data-[active=true]:text-primary data-[active=true]:hover:bg-primary/10 data-[active=true]:hover:text-primary"
+                                                    className="data-[active=true]:bg-sidebar-accent data-[active=true]:text-sidebar-primary data-[active=true]:hover:bg-sidebar-accent data-[active=true]:hover:text-sidebar-primary"
                                                     onClick={() => {
                                                         onNavigate(item.key);
                                                         onCloseMobile();

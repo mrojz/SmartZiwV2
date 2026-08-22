@@ -140,7 +140,7 @@ export default function ClockTimePicker({ hour: initHour, minute: initMinute, on
     const pad = (n) => String(n).padStart(2, '0');
 
     return (
-        <div className="fixed inset-0 z-[1000] grid place-items-center overflow-y-auto bg-slate-950/45 p-4" onClick={onCancel}>
+        <div className="fixed inset-0 z-[1000] grid place-items-center overflow-y-auto bg-black/50 p-4" onClick={onCancel}>
             <div className="flex min-w-[300px] flex-col items-center gap-4 rounded-xl border bg-card p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
                 {/* HH:mm editable header */}
                 <div className="flex items-center gap-1">

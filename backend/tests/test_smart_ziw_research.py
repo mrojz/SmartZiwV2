@@ -41,70 +41,58 @@ def test_url_is_safe_accepts_public_url(monkeypatch):
     assert url_is_safe("https://example.com/tender") is True
 
 
-def test_search_sends_bearer_auth_and_payload():
-    client = FirecrawlClient({"firecrawl_api_key": "KEY123", "firecrawl_base_url": "https://api.firecrawl.dev"})
-    client._session.post = MagicMock(return_value=_response(200, {
-        "data": [{"title": "T", "url": "https://example.com", "description": "D"}],
-    }))
+def test_search_returns_mcp_results(monkeypatch):
+    monkeypatch.setattr(
+        "smart_ziw_research._find_firecrawl_mcp_server",
+        lambda: ("firecrawl", "Firecrawl"),
+    )
+    monkeypatch.setattr(
+        "smart_ziw_research._call_firecrawl_tool",
+        lambda tool, args: {"content": [{"title": "T", "url": "https://example.com", "description": "D"}]},
+    )
+    client = FirecrawlClient({})
     rows = client.search("tender query")
-    client._session.post.assert_called_once()
-    kwargs = client._session.post.call_args.kwargs
-    assert kwargs["json"] == {"query": "tender query", "limit": 10}
-    assert kwargs["headers"]["Authorization"] == "Bearer KEY123"
-    assert client._session.post.call_args.args[0] == "https://api.firecrawl.dev/v1/search"
     assert rows[0]["url"] == "https://example.com"
 
 
-def test_search_retries_on_500_then_succeeds():
-    client = FirecrawlClient({"firecrawl_api_key": "k"})
-    client.retry_sleep = 0
-    client._session.post = MagicMock(side_effect=[
-        _response(500),
-        _response(200, {"data": [{"title": "T", "url": "https://example.com", "description": ""}]}),
-    ])
-    rows = client.search("q")
-    assert client._session.post.call_count == 2
-    assert rows[0]["title"] == "T"
-
-
-def test_search_error_never_leaks_key():
-    import requests
-    client = FirecrawlClient({"firecrawl_api_key": "SECRET-KEY-99"})
-    client.retry_sleep = 0
-    client._session.post = MagicMock(side_effect=requests.RequestException("boom"))
-    rows = client.search("q")
-    assert rows and "_error" in rows[0]
-    assert "SECRET-KEY-99" not in str(rows)
-
-
-def test_scrape_returns_markdown_and_links(monkeypatch):
+def test_scrape_returns_mcp_markdown(monkeypatch):
     monkeypatch.setattr("smart_ziw_research.socket.getaddrinfo", _public_dns)
-    client = FirecrawlClient({"firecrawl_api_key": "k"})
-    client._session.post = MagicMock(return_value=_response(200, {"data": {
-        "markdown": "# Notice", "title": "N", "url": "https://example.com",
-        "links": ["https://example.com/dce.pdf"],
-    }}))
+    monkeypatch.setattr(
+        "smart_ziw_research._find_firecrawl_mcp_server",
+        lambda: ("firecrawl", "Firecrawl"),
+    )
+    monkeypatch.setattr(
+        "smart_ziw_research._call_firecrawl_tool",
+        lambda tool, args: {"content": {"markdown": "# Notice", "title": "N", "url": args["url"], "links": ["https://example.com/dce.pdf"]}},
+    )
+    client = FirecrawlClient({})
     page = client.scrape("https://example.com")
     assert page["markdown"] == "# Notice"
-    payload = client._session.post.call_args.kwargs["json"]
-    assert payload == {"url": "https://example.com", "formats": ["markdown"], "onlyMainContent": True}
 
 
 def test_scrape_blocks_unsafe_url_without_request(monkeypatch):
     monkeypatch.setattr("smart_ziw_research.socket.getaddrinfo", _private_dns)
-    client = FirecrawlClient({"firecrawl_api_key": "k"})
-    client._session.post = MagicMock()
+    monkeypatch.setattr(
+        "smart_ziw_research._find_firecrawl_mcp_server",
+        lambda: ("firecrawl", "Firecrawl"),
+    )
+    called = {"n": 0}
+    def _no_call(tool, args):
+        called["n"] += 1
+        return {}
+    monkeypatch.setattr("smart_ziw_research._call_firecrawl_tool", _no_call)
+    client = FirecrawlClient({})
     result = client.scrape("http://10.0.0.5/internal")
     assert result == {"_error": "blocked (unsafe URL)"}
-    client._session.post.assert_not_called()
+    assert called["n"] == 0
 
 
-def test_search_without_key_returns_config_error():
+def test_search_without_mcp_server_returns_config_error(monkeypatch):
+    monkeypatch.setattr("smart_ziw_research._find_firecrawl_mcp_server", lambda: None)
     client = FirecrawlClient({})
-    client._session.post = MagicMock()
     rows = client.search("q")
-    assert rows == [{"_error": "firecrawl_api_key is not configured"}]
-    client._session.post.assert_not_called()
+    assert len(rows) == 1 and "_error" in rows[0]
+    assert "MCP Servers tab" in rows[0]["_error"]
 
 
 from smart_ziw_research import DocumentStore, is_document_url, EvidenceCorpus
@@ -136,7 +124,7 @@ def test_download_saves_slugged_file(monkeypatch, tmp_path):
     assert error is None
     assert path is not None
     assert path.name == "IS-Security-Audit.pdf"
-    assert path.parent == tmp_path / "documents"
+    assert path.parent == tmp_path / "documents" / "original"
 
 
 def test_download_skips_existing_file(monkeypatch, tmp_path):
@@ -194,10 +182,10 @@ def test_save_extraction_writes_failure_note(monkeypatch, tmp_path):
     monkeypatch.setattr(DocumentStore, "extract", lambda self, path: "")
     doc = store.documents_dir / "locked.pdf"
     doc.write_bytes(b"x")
-    name, ok = store.save_extraction(doc)
+    extracted_path, ok = store.save_extraction(doc)
     assert ok is False
-    assert name == "locked.md"
-    content = (store.artifacts_dir / name).read_text(encoding="utf-8")
+    assert extracted_path == store.extracted_dir / "locked.md"
+    content = extracted_path.read_text(encoding="utf-8")
     assert "Extraction failed" in content
 
 
@@ -206,9 +194,9 @@ def test_save_extraction_writes_text(monkeypatch, tmp_path):
     monkeypatch.setattr(DocumentStore, "extract", lambda self, path: "extracted text")
     doc = store.documents_dir / "dce.pdf"
     doc.write_bytes(b"x")
-    name, ok = store.save_extraction(doc)
+    extracted_path, ok = store.save_extraction(doc)
     assert ok is True
-    assert (store.artifacts_dir / name).read_text(encoding="utf-8") == "extracted text"
+    assert extracted_path.read_text(encoding="utf-8") == "extracted text"
 
 
 def test_corpus_dedupes_and_numbers():
@@ -269,7 +257,6 @@ PROJECT = {
 }
 
 STUB_CONFIG = {
-    "firecrawl_api_key": "k",
     "smart_ziw_repo_path": "/tmp/unused",
     "smart_ziw_research_timeout_seconds": 900,
 }
@@ -288,7 +275,7 @@ def _counting_call(system, user, counters, seed=None, selects=None, rounds=None,
         return rounds.pop(0) if rounds else {"stop": True, "next_queries": []}
     if system == VERDICT_PROMPT:
         counters["verdict"] += 1
-        return verdict or {"recommendation": "MONITOR", "reasoning": "default"}
+        return verdict or {"recommendation": "GO-CONDITIONAL", "reasoning": "default"}
     raise AssertionError(f"unexpected prompt: {system[:60]}")
 
 
@@ -296,6 +283,7 @@ def test_run_research_converges_after_two_stops(monkeypatch, tmp_path):
     class StubClient:
         def __init__(self, config):
             self.api_key = "k"
+            self.available = True
         def search(self, query, limit=10):
             return [{"url": "https://example.com/x", "title": "X", "description": "d"}]
         def scrape(self, url):
@@ -317,7 +305,7 @@ def test_run_research_converges_after_two_stops(monkeypatch, tmp_path):
     assert result.error == ""
     assert result.timed_out is False
     assert counters["round"] == 2
-    assert result.verdict["recommendation"] == "MONITOR"
+    assert result.verdict["recommendation"] == "GO-CONDITIONAL"
     assert result.stats["queries_run"] == 1
     assert (tmp_path / "folder" / "artifacts" / "research-log.md").exists()
 
@@ -326,6 +314,7 @@ def test_run_research_dedupe_exhaustion_stops(monkeypatch, tmp_path):
     class StubClient:
         def __init__(self, config):
             self.api_key = "k"
+            self.available = True
         def search(self, query, limit=10):
             return []
         def scrape(self, url):
@@ -344,13 +333,14 @@ def test_run_research_dedupe_exhaustion_stops(monkeypatch, tmp_path):
     result = run_research(PROJECT, STUB_CONFIG, folder_path=tmp_path / "folder", llm_call=call)
     assert result.error == ""
     assert counters["round"] == 1  # nothing left to try -> exhaustion
-    assert result.verdict["recommendation"] == "MONITOR"
+    assert result.verdict["recommendation"] == "GO-CONDITIONAL"
 
 
 def test_run_research_scrapes_page_and_captures_document(monkeypatch, tmp_path):
     class StubClient:
         def __init__(self, config):
             self.api_key = "k"
+            self.available = True
         def search(self, query, limit=10):
             return [{"url": "https://example.com/notice", "title": "Notice", "description": ""}]
         def scrape(self, url):
@@ -369,9 +359,9 @@ def test_run_research_scrapes_page_and_captures_document(monkeypatch, tmp_path):
         return path, None
 
     def fake_save_extraction(self, doc_path):
-        artifact = self.artifacts_dir / "dce.md"
-        artifact.write_text("extracted text", encoding="utf-8")
-        return "dce.md", True
+        extracted = self.extracted_dir / "dce.md"
+        extracted.write_text("extracted text", encoding="utf-8")
+        return extracted, True
 
     monkeypatch.setattr(DocumentStore, "download", fake_download)
     monkeypatch.setattr(DocumentStore, "save_extraction", fake_save_extraction)
@@ -395,14 +385,15 @@ def test_run_research_scrapes_page_and_captures_document(monkeypatch, tmp_path):
     assert result.citation_map[EvidenceCorpus.normalize_url("https://example.com/notice")] == 1
     assert result.verdict["recommendation"] == "GO"
     assert (tmp_path / "folder" / "artifacts" / "page-1.md").exists()
-    assert (tmp_path / "folder" / "documents" / "dce.pdf").exists()
-    assert (tmp_path / "folder" / "artifacts" / "dce.md").exists()
+    assert (tmp_path / "folder" / "documents" / "original" / "dce.pdf").exists()
+    assert (tmp_path / "folder" / "documents" / "extracted" / "dce.md").exists()
 
 
 def test_run_research_times_out(monkeypatch, tmp_path):
     class StubClient:
         def __init__(self, config):
             self.api_key = "k"
+            self.available = True
         def search(self, query, limit=10):
             return []
         def scrape(self, url):
@@ -421,15 +412,16 @@ def test_run_research_times_out(monkeypatch, tmp_path):
     assert counters["round"] == 0
 
 
-def test_run_research_no_key_returns_error(monkeypatch, tmp_path):
+def test_run_research_no_mcp_server_returns_error(monkeypatch, tmp_path):
     counters = {"seed": 0, "select": 0, "round": 0, "verdict": 0}
 
     def call(system, user):
         counters["seed"] += 1
         return {}
 
+    monkeypatch.setattr("smart_ziw_research._find_firecrawl_mcp_server", lambda: None)
     result = run_research(PROJECT, {"smart_ziw_repo_path": "/tmp/x"}, folder_path=tmp_path / "f", llm_call=call)
-    assert result.error == "firecrawl_api_key is not configured"
+    assert "No Firecrawl MCP server configured" in result.error
     assert counters["seed"] == 0
 
 
@@ -442,12 +434,14 @@ from smart_ziw_research import (
 )
 
 SYNTH_FULL = {
-    "tender_markdown": "## Overview\n\nVerified [1]",
-    "email_draft": "Dear buyer,",
-    "compliance_matrix": [{"requirement": "r", "status": "Compliant", "action": "a", "source": "[1]"}],
-    "drafting_notes": "safe to say: [1]",
-    "next_actions": [{"action": "a", "priority": "HIGH", "owner": "o", "deadline": "d", "notes": "n"}],
-    "source_rows": [{"kind": "official", "url": "https://example.com", "captured": True, "status": "ok"}],
+    "source_markdown": "# Source\n\nVerified [1]",
+    "analysis_markdown": "# Analysis\n\nGO [1]",
+    "eligibility_markdown": "# Eligibility\n\nok",
+    "risks_markdown": "# Risks\n\nlow",
+    "pricing_markdown": "# Pricing\n\nUSD 1000",
+    "recap_markdown": "# Tender Recap\n\nGO",
+    "readme_markdown": "# README\n\nfolder",
+    "documents_notes_markdown": "# Documents\n\nnone",
 }
 
 
@@ -474,10 +468,9 @@ def test_synthesize_chunks_and_returns_coerced_dict():
     result = synthesize(PROJECT, research, llm_call=call)
     assert calls["summarize"] == 2
     assert calls["final"] == 1
-    assert result["tender_markdown"] == "## Overview\n\nVerified [1]"
-    assert result["compliance_matrix"][0]["status"] == "Compliant"
-    assert result["email_draft"] == "Dear buyer,"
-    assert len(result["source_rows"]) == 1
+    assert result["source_markdown"] == "# Source\n\nVerified [1]"
+    assert result["analysis_markdown"] == "# Analysis\n\nGO [1]"
+    assert result["pricing_markdown"] == "# Pricing\n\nUSD 1000"
 
 
 def test_synthesize_coerces_bad_fields_to_safe_defaults():
@@ -487,16 +480,14 @@ def test_synthesize_coerces_bad_fields_to_safe_defaults():
         if system == SUMMARIZE_PROMPT:
             raise AssertionError("no chunks expected")
         if system == SYNTHESIS_PROMPT:
-            return {"compliance_matrix": "not a list", "next_actions": None, "source_rows": "bad"}
+            return {"analysis_markdown": "bad", "source_markdown": ""}
         raise AssertionError(f"unexpected prompt: {system[:60]}")
 
     result = synthesize(PROJECT, research, llm_call=call)
-    assert result["compliance_matrix"] == []
-    assert result["next_actions"] == []
-    assert result["tender_markdown"]  # honest fallback body
-    assert "MONITOR" in result["tender_markdown"]
-    assert isinstance(result["source_rows"], list)
-    assert result["source_rows"] == []  # no corpus items to fall back on
+    assert "# Source" in result["source_markdown"]
+    assert "# Analysis" in result["analysis_markdown"]
+    assert "GO-CONDITIONAL" in result["recap_markdown"]
+    assert "# Eligibility" in result["eligibility_markdown"]
 
 
 def test_synthesize_llm_failure_returns_error_dict():
@@ -554,7 +545,7 @@ def test_download_blocks_redirect_to_private_url(monkeypatch, tmp_path):
     assert get.call_args.kwargs["allow_redirects"] is False
 
 
-def test_run_research_none_timeout_still_returns_config_error(tmp_path):
+def test_run_research_none_timeout_still_returns_config_error(monkeypatch, tmp_path):
     # I3: timeout coercion must not raise when the config value is None.
     counters = {"seed": 0, "select": 0, "round": 0, "verdict": 0}
 
@@ -562,13 +553,14 @@ def test_run_research_none_timeout_still_returns_config_error(tmp_path):
         counters["seed"] += 1
         return {}
 
+    monkeypatch.setattr("smart_ziw_research._find_firecrawl_mcp_server", lambda: None)
     result = run_research(
         PROJECT,
-        {"firecrawl_api_key": "", "smart_ziw_research_timeout_seconds": None},
+        {"smart_ziw_research_timeout_seconds": None},
         folder_path=tmp_path / "f",
         llm_call=call,
     )
-    assert result.error == "firecrawl_api_key is not configured"
+    assert "No Firecrawl MCP server configured" in result.error
     assert counters["seed"] == 0
 
 
@@ -577,6 +569,7 @@ def test_run_research_document_stats_count_only_new_urls(monkeypatch, tmp_path):
     class StubClient:
         def __init__(self, config):
             self.api_key = "k"
+            self.available = True
 
         def search(self, query, limit=10):
             return [{"url": "https://example.com/notice", "title": "Notice", "description": ""}]
@@ -597,9 +590,9 @@ def test_run_research_document_stats_count_only_new_urls(monkeypatch, tmp_path):
         return path, None
 
     def fake_save_extraction(self, doc_path):
-        artifact = self.artifacts_dir / "dce.md"
-        artifact.write_text("extracted text", encoding="utf-8")
-        return "dce.md", True
+        extracted = self.extracted_dir / "dce.md"
+        extracted.write_text("extracted text", encoding="utf-8")
+        return extracted, True
 
     monkeypatch.setattr(DocumentStore, "download", fake_download)
     monkeypatch.setattr(DocumentStore, "save_extraction", fake_save_extraction)
@@ -623,10 +616,11 @@ def test_run_research_document_stats_count_only_new_urls(monkeypatch, tmp_path):
 
 
 def test_run_research_verdict_whitelisted(monkeypatch, tmp_path):
-    # M2: non-GO/NO-GO/MONITOR recommendations collapse to MONITOR.
+    # M2: only GO / NO-GO / GO-CONDITIONAL are valid; others collapse to GO-CONDITIONAL.
     class StubClient:
         def __init__(self, config):
             self.api_key = "k"
+            self.available = True
 
         def search(self, query, limit=10):
             return [{"url": "https://example.com/notice", "title": "Notice", "description": ""}]
@@ -651,7 +645,7 @@ def test_run_research_verdict_whitelisted(monkeypatch, tmp_path):
     result = run_research(PROJECT, STUB_CONFIG, folder_path=tmp_path / "folder", llm_call=call)
     assert result.error == ""
     assert counters["verdict"] == 1
-    assert result.verdict["recommendation"] == "MONITOR"
+    assert result.verdict["recommendation"] == "GO-CONDITIONAL"
     assert result.verdict["reasoning"] == "not sure"
 
 
@@ -660,6 +654,7 @@ def test_run_research_writes_log_on_exception(monkeypatch, tmp_path):
     class StubClient:
         def __init__(self, config):
             self.api_key = "k"
+            self.available = True
 
         def search(self, query, limit=10):
             return [{"url": "https://example.com/notice", "title": "Notice", "description": ""}]
@@ -688,3 +683,59 @@ def test_run_research_writes_log_on_exception(monkeypatch, tmp_path):
     log = tmp_path / "folder" / "artifacts" / "research-log.md"
     assert log.exists()
     assert "Notice" in log.read_text(encoding="utf-8")
+
+
+def test_extract_archive_zip_recursively(tmp_path):
+    import zipfile
+    store = DocumentStore(tmp_path)
+    archive = store.documents_dir / "bundle.zip"
+    with zipfile.ZipFile(archive, "w") as zf:
+        zf.writestr("nested/nested.tar.gz", b"\x1f\x8b\x08\x00" + b"\x00" * 9)  # invalid gzip
+        zf.writestr("readme.txt", "hello")
+    extracted = store.extract_archive(archive)
+    assert any(p.name == "readme.txt" for p in extracted)
+    notes = store.archives
+    assert any(a["name"] == "bundle.zip" for a in notes)
+
+
+def test_document_store_writes_notes_md(tmp_path, monkeypatch):
+    monkeypatch.setattr("smart_ziw_research.socket.getaddrinfo", _public_dns)
+    monkeypatch.setattr("smart_ziw_research.requests.get", lambda *a, **k: _fake_get())
+    store = DocumentStore(tmp_path)
+    path, _ = store.download("https://example.com/file.PDF")
+    store.save_extraction(path)
+    store.write_notes(PROJECT)
+    notes = (tmp_path / "documents" / "notes.md").read_text(encoding="utf-8")
+    assert "file.pdf" in notes.lower()
+    assert "recursive" in notes.lower()
+    assert "files_downloaded" not in notes
+
+
+def test_thread_context_included_in_seed_prompt(monkeypatch, tmp_path):
+    class StubClient:
+        def __init__(self, config):
+            self.api_key = "k"
+            self.available = True
+        def search(self, query, limit=10):
+            return []
+        def scrape(self, url):
+            return {"_error": "not used"}
+
+    monkeypatch.setattr("smart_ziw_research.FirecrawlClient", StubClient)
+    seen = {}
+
+    def call(system, user):
+        if system == SEED_PROMPT:
+            seen["user"] = user
+            return {"queries": [], "official_domains": [], "aggregator_urls": []}
+        if system == SELECT_PROMPT:
+            return {"selected": []}
+        if system == ROUND_PROMPT:
+            return {"stop": True, "next_queries": []}
+        if system == VERDICT_PROMPT:
+            return {"recommendation": "GO-CONDITIONAL", "reasoning": "no sources"}
+        raise AssertionError(f"unexpected prompt: {system[:60]}")
+
+    run_research(PROJECT, STUB_CONFIG, folder_path=tmp_path / "folder", llm_call=call, thread_context="user asked for pricing")
+    assert "user asked for pricing" in seen["user"]
+

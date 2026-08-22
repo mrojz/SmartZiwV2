@@ -5,19 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
-import { ScrollArea } from '@/components/ui/scroll-area';
-
-function setModalScrollLock(locked) {
-  if (typeof document === 'undefined') return;
-  const body = document.body;
-  const html = document.documentElement;
-  const current = Number(body.dataset.modalLockCount || '0');
-  const next = locked ? current + 1 : Math.max(0, current - 1);
-  body.dataset.modalLockCount = String(next);
-  const shouldLock = next > 0;
-  body.classList.toggle('modal-scroll-locked', shouldLock);
-  html.classList.toggle('modal-scroll-locked', shouldLock);
-}
+import { setModalScrollLock } from '../utils/scrollLock';
 
 function buildSyncStreamUrl() {
   const token = localStorage.getItem('pw_access_token');
@@ -41,6 +29,7 @@ const SOURCES = [
   { key: 'eabr', label: 'EABR' },
   { key: 'oas', label: 'OAS' },
   { key: 'africanunion', label: 'African Union' },
+  { key: 'nigermarches', label: 'Niger Marchés' },
 ];
 
 export default function SyncPanel({ open, onClose, onSyncDone, onSyncStart, apiFetch }) {
@@ -57,6 +46,7 @@ export default function SyncPanel({ open, onClose, onSyncDone, onSyncStart, apiF
   const [eabr, setEabr] = useState(true);
   const [oas, setOas] = useState(true);
   const [africanunion, setAfricanunion] = useState(true);
+  const [nigermarches, setNigermarches] = useState(true);
   const [noAi, setNoAi] = useState(false);
   const [includeExpired, setIncludeExpired] = useState(false);
   const [syncing, setSyncing] = useState(false);
@@ -193,6 +183,7 @@ export default function SyncPanel({ open, onClose, onSyncDone, onSyncStart, apiF
     eabr,
     oas,
     africanunion,
+    nigermarches,
   };
 
   const sourceSetters = {
@@ -209,6 +200,7 @@ export default function SyncPanel({ open, onClose, onSyncDone, onSyncStart, apiF
     eabr: setEabr,
     oas: setOas,
     africanunion: setAfricanunion,
+    nigermarches: setNigermarches,
   };
 
   const selectedSourceCount = Object.values(selectedSources).filter(Boolean).length;
@@ -242,6 +234,7 @@ export default function SyncPanel({ open, onClose, onSyncDone, onSyncStart, apiF
           eabr,
           oas,
           africanunion,
+          nigermarches,
           no_ai: noAi,
           include_expired: includeExpired,
         }),
@@ -265,15 +258,15 @@ export default function SyncPanel({ open, onClose, onSyncDone, onSyncStart, apiF
 
   return (
     <Dialog open={open} onOpenChange={(nextOpen) => { if (!nextOpen) onClose(); }}>
-      <DialogContent className="flex max-h-[90dvh] flex-col gap-0 p-0 sm:max-w-[560px]">
-        <DialogHeader className="border-b p-5">
+      <DialogContent className="flex max-h-[90dvh] flex-col gap-0 overflow-hidden p-6 sm:max-w-[560px]">
+        <DialogHeader className="border-b pb-5">
           <DialogTitle>Sync Projects</DialogTitle>
           <DialogDescription>Select the sources and processing options to run a manual sync.</DialogDescription>
         </DialogHeader>
 
-        <ScrollArea className="min-h-0 flex-1">
-          <div className="flex flex-col gap-4 p-5">
-            <div className="flex flex-col gap-4 rounded-lg border bg-card p-4">
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          <div className="flex flex-col gap-4 p-6">
+            <div className="flex flex-col gap-4 rounded-lg border bg-card p-6">
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <div className="flex flex-col gap-1">
                   <h3 className="text-base font-semibold text-foreground">Sources</h3>
@@ -296,7 +289,7 @@ export default function SyncPanel({ open, onClose, onSyncDone, onSyncStart, apiF
               </div>
             </div>
 
-            <div className="flex flex-col gap-4 rounded-lg border bg-card p-4">
+            <div className="flex flex-col gap-4 rounded-lg border bg-card p-6">
               <div className="flex flex-col gap-1">
                 <h3 className="text-base font-semibold text-foreground">Options</h3>
                 <p className="text-sm text-muted-foreground">Adjust processing behavior for this one-off sync.</p>
@@ -314,7 +307,7 @@ export default function SyncPanel({ open, onClose, onSyncDone, onSyncStart, apiF
             </div>
 
             {(logs.length > 0 || syncing) && (
-              <div className="flex flex-col gap-3 rounded-lg border bg-card p-4">
+              <div className="flex flex-col gap-3 rounded-lg border bg-card p-6">
                 <div className="flex flex-col gap-1">
                   <h3 className="text-base font-semibold text-foreground">Live Status</h3>
                   <p className="text-sm text-muted-foreground">Stream output from the active sync process.</p>
@@ -328,8 +321,8 @@ export default function SyncPanel({ open, onClose, onSyncDone, onSyncStart, apiF
             )}
 
             {result && (
-              <div className={`flex flex-col gap-3 rounded-lg border p-4 ${result.success ? 'border-green-700/30 bg-green-50' : 'border-destructive/30 bg-destructive/5'}`}>
-                <span className={`text-sm font-semibold ${result.success ? 'text-green-700' : 'text-destructive'}`}>
+              <div className={`flex flex-col gap-3 rounded-lg border p-6 ${result.success ? 'border-green-600/30 bg-green-600/10' : 'border-destructive/30 bg-destructive/5'}`}>
+                <span className={`text-sm font-semibold ${result.success ? 'text-green-600' : 'text-destructive'}`}>
                   {result.success ? 'Success:' : 'Warning:'} {result.message}
                 </span>
                 {result.summary && (
@@ -342,8 +335,8 @@ export default function SyncPanel({ open, onClose, onSyncDone, onSyncStart, apiF
                     {result.summary.scrapers && (
                       <div className="mt-2 grid gap-2 sm:grid-cols-2">
                         {Object.entries(result.summary.scrapers).map(([key, s]) => (
-                          <div key={key} className={`rounded-lg border px-3 py-2 ${s.error ? 'border-destructive/30 bg-destructive/5' : 'border-green-700/30 bg-card'}`}>
-                            <span className={`text-xs font-semibold ${s.error ? 'text-destructive' : 'text-green-700'}`}>{s.error ? 'Failed' : 'OK'} {s.label}</span>
+                          <div key={key} className={`rounded-lg border px-3 py-2 ${s.error ? 'border-destructive/30 bg-destructive/5' : 'border-green-600/20 bg-green-600/5'}`}>
+                            <span className={`text-xs font-semibold ${s.error ? 'text-destructive' : 'text-green-600'}`}>{s.error ? 'Failed' : 'OK'} {s.label}</span>
                             <span className="block text-xs text-muted-foreground">{s.count} | {s.duration}s</span>
                           </div>
                         ))}
@@ -357,7 +350,7 @@ export default function SyncPanel({ open, onClose, onSyncDone, onSyncStart, apiF
               </div>
             )}
           </div>
-        </ScrollArea>
+        </div>
 
         <DialogFooter className="border-t p-4">
           <div className="flex w-full items-center justify-between gap-3">
@@ -366,7 +359,7 @@ export default function SyncPanel({ open, onClose, onSyncDone, onSyncStart, apiF
               <span className="text-xs text-muted-foreground">Manual run with the current source and processing options.</span>
             </div>
             <div className="flex items-center gap-3">
-              <Button type="button" variant="outline" onClick={onClose} disabled={syncing}>
+              <Button type="button" variant="ghost" onClick={onClose} disabled={syncing}>
                 Close
               </Button>
               <Button type="button" onClick={handleSync} disabled={syncing || selectedSourceCount === 0}>

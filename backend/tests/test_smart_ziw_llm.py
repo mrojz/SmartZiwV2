@@ -1,3 +1,4 @@
+import os
 import sys
 from pathlib import Path
 from unittest.mock import MagicMock
@@ -46,6 +47,13 @@ def _reset_fake_openai():
     _FakeOpenAI.next_models_errors = []
 
 
+@pytest.fixture(autouse=True)
+def _patch_stored_keys(monkeypatch):
+    """Avoid real DB lookups when tests exercise stored-key fallbacks."""
+    monkeypatch.setattr(sll, "_stored_lightllm_api_key", lambda: "")
+    monkeypatch.setattr(sll, "_stored_lightllm_subscription_key", lambda: "")
+
+
 def test_auto_with_blank_base_url_returns_env_call():
     assert getattr(sll, "get_llm_call")({}) is agent._call_llm
     assert getattr(sll, "get_llm_call")({"lightllm_base_url": "  "}) is agent._call_llm
@@ -62,7 +70,7 @@ def test_forced_deepseek_ignores_lightllm_config():
 
 
 def test_unknown_provider_treated_as_auto():
-    assert getattr(sll, "get_llm_call")({"smart_ziw_llm_provider": "mistral"}) is agent._call_llm
+    assert getattr(sll, "get_llm_call")({"smart_ziw_llm_provider": "not-a-preset"}) is agent._call_llm
 
 
 def test_forced_lightllm_raises_on_blank_base_url():
@@ -453,3 +461,283 @@ def test_llm_params_are_clamped(monkeypatch):
     create_kwargs = _FakeOpenAI.instances[0].chat.completions.create.call_args.kwargs
     assert create_kwargs["temperature"] == 2.0
     assert create_kwargs["max_tokens"] == 1
+
+
+# --- provider presets ---
+
+
+def test_openai_preset_builds_client_with_defaults(monkeypatch):
+    _reset_fake_openai()
+    monkeypatch.setattr("smart_ziw_llm.OpenAI", _FakeOpenAI)
+    call = getattr(sll, "get_llm_call")({"smart_ziw_llm_provider": "openai", "lightllm_api_key": "sk-openai"})
+    call("s", "u")
+    client = _FakeOpenAI.instances[0]
+    assert client.kwargs["api_key"] == "sk-openai"
+    assert client.kwargs["base_url"] == "https://api.openai.com/v1"
+    assert client.chat.completions.create.call_args.kwargs["model"] == "gpt-4o-mini"
+
+
+def test_preset_uses_user_model_and_url_override(monkeypatch):
+    _reset_fake_openai()
+    monkeypatch.setattr("smart_ziw_llm.OpenAI", _FakeOpenAI)
+    call = getattr(sll, "get_llm_call")({
+        "smart_ziw_llm_provider": "openai",
+        "lightllm_api_key": "k",
+        "lightllm_base_url": "https://proxy.example/v1",
+        "lightllm_model": "custom-model",
+    })
+    call("s", "u")
+    client = _FakeOpenAI.instances[0]
+    assert client.kwargs["base_url"] == "https://proxy.example/v1"
+    assert client.chat.completions.create.call_args.kwargs["model"] == "custom-model"
+
+
+def test_anthropic_preset_routes_to_messages_endpoint(monkeypatch):
+    captured = {}
+
+    def fake_post(url, **kwargs):
+        captured["url"] = url
+        captured["kwargs"] = kwargs
+        return _http_response(200, {"content": [{"type": "text", "text": "ok"}]})
+
+    monkeypatch.setattr("smart_ziw_llm.requests.post", fake_post)
+    _reset_fake_openai()
+    monkeypatch.setattr("smart_ziw_llm.OpenAI", _FakeOpenAI)
+    call = getattr(sll, "get_llm_call")({
+        "smart_ziw_llm_provider": "anthropic",
+        "lightllm_api_key": "ak",
+        "lightllm_model": "claude-test",
+    }, json_mode=False)
+    assert call("s", "u") == "ok"
+    assert captured["url"] == "https://api.anthropic.com/messages"
+    assert captured["kwargs"]["headers"]["x-api-key"] == "ak"
+    assert captured["kwargs"]["json"]["model"] == "claude-test"
+    assert _FakeOpenAI.instances == []
+
+
+def test_local_preset_uses_default_url_and_keyless_call(monkeypatch):
+    _reset_fake_openai()
+    monkeypatch.setattr("smart_ziw_llm.OpenAI", _FakeOpenAI)
+    call = getattr(sll, "get_llm_call")({"smart_ziw_llm_provider": "local"})
+    call("s", "u")
+    client = _FakeOpenAI.instances[0]
+    assert client.kwargs["base_url"] == "http://localhost:8000/v1"
+    assert client.kwargs["api_key"] == "EMPTY"
+
+
+def test_custom_preset_openai_format(monkeypatch):
+    _reset_fake_openai()
+    monkeypatch.setattr("smart_ziw_llm.OpenAI", _FakeOpenAI)
+    call = getattr(sll, "get_llm_call")({
+        "smart_ziw_llm_provider": "custom",
+        "lightllm_base_url": "https://custom.example/v1",
+        "lightllm_api_key": "ck",
+        "lightllm_model": "m",
+    })
+    call("s", "u")
+    client = _FakeOpenAI.instances[0]
+    assert client.kwargs["base_url"] == "https://custom.example/v1"
+    assert client.kwargs["api_key"] == "ck"
+    assert client.chat.completions.create.call_args.kwargs["model"] == "m"
+
+
+def test_custom_preset_anthropic_format(monkeypatch):
+    captured = {}
+
+    def fake_post(url, **kwargs):
+        captured["url"] = url
+        captured["kwargs"] = kwargs
+        return _http_response(200, {"content": [{"type": "text", "text": "ok"}]})
+
+    monkeypatch.setattr("smart_ziw_llm.requests.post", fake_post)
+    call = getattr(sll, "get_llm_call")({
+        "smart_ziw_llm_provider": "custom",
+        "lightllm_base_url": "https://custom.example/v1",
+        "lightllm_api_key": "ck",
+        "lightllm_model": "claude-custom",
+        "lightllm_provider": "anthropic_compatible",
+    }, json_mode=False)
+    assert call("s", "u") == "ok"
+    assert captured["url"] == "https://custom.example/v1/messages"
+
+
+def test_get_llm_provider_presets_returns_expected_shape():
+    presets = sll.get_llm_provider_presets()
+    ids = {p["id"] for p in presets}
+    assert "openai" in ids
+    assert "anthropic" in ids
+    assert "gemini" in ids
+    assert "groq" in ids
+    assert "together" in ids
+    assert "openrouter" in ids
+    assert "deepseek_api" in ids
+    assert "zai" in ids
+    assert "kimi" in ids
+    assert "local" in ids
+    assert "custom" in ids
+    assert all("id" in p and "name" in p and "base_url" in p for p in presets)
+
+
+# --- preset model discovery ---
+
+
+def test_discover_models_for_preset_unknown_preset():
+    result = sll.discover_models_for_preset("unknown-preset")
+    assert result == {"status": "error", "models": [], "detail": "Unknown provider preset"}
+
+
+def test_discover_models_for_env_preset_is_unsupported():
+    result = sll.discover_models_for_preset("deepseek")
+    assert result["status"] == "unsupported"
+
+
+def test_discover_models_for_openai_preset_uses_openai_sdk(monkeypatch):
+    _reset_fake_openai()
+    monkeypatch.setattr("smart_ziw_llm.OpenAI", _FakeOpenAI)
+    monkeypatch.setattr(sll, "_stored_lightllm_api_key", lambda: "")
+    _FakeOpenAI.next_models_errors = [_status_error(401)]
+    _FakeOpenAI.next_models = [{"id": "gpt-4o", "name": "GPT-4o"}]
+    result = sll.discover_models_for_preset("openai", api_key="sk-openai")
+    assert result == {"status": "ok", "models": [{"id": "gpt-4o", "name": "GPT-4o"}]}
+    assert _FakeOpenAI.instances[0].kwargs["base_url"] == "https://api.openai.com/v1"
+    assert _FakeOpenAI.instances[1].kwargs["api_key"] == "sk-openai"
+
+
+def test_discover_models_for_anthropic_preset_uses_requests(monkeypatch):
+    captured = {}
+
+    def fake_get(url, **kwargs):
+        captured["url"] = url
+        return _http_response(200, {"data": [{"id": "claude-x", "display_name": "Claude X"}]})
+
+    monkeypatch.setattr("smart_ziw_llm.requests.get", fake_get)
+    result = sll.discover_models_for_preset("anthropic", api_key="ak")
+    assert result == {"status": "ok", "models": [{"id": "claude-x", "name": "Claude X"}]}
+    assert captured["url"] == "https://api.anthropic.com/models"
+
+
+def test_discover_models_for_preset_falls_back_to_hardcoded(monkeypatch):
+    _reset_fake_openai()
+    monkeypatch.setattr("smart_ziw_llm.OpenAI", _FakeOpenAI)
+    _FakeOpenAI.next_models_errors = [APIConnectionError(request=MagicMock())]
+    preset = sll._PRESET_MAP["openai"]
+    hardcoded = [{"id": "fallback", "name": "Fallback"}]
+    try:
+        # temporarily attach hardcoded models
+        object.__setattr__(preset, "hardcoded_models", hardcoded)
+        result = sll.discover_models_for_preset("openai", api_key="k")
+        assert result == {"status": "ok", "models": hardcoded}
+    finally:
+        object.__setattr__(preset, "hardcoded_models", [])
+
+
+def test_discover_models_for_preset_uses_user_base_url(monkeypatch):
+    _reset_fake_openai()
+    monkeypatch.setattr("smart_ziw_llm.OpenAI", _FakeOpenAI)
+    monkeypatch.setattr(sll, "_stored_lightllm_api_key", lambda: "")
+    _FakeOpenAI.next_models = [{"id": "m1", "name": "Model 1"}]
+    result = sll.discover_models_for_preset("local", base_url="http://127.0.0.1:9999/v1")
+    assert result["status"] == "ok"
+    assert _FakeOpenAI.instances[0].kwargs["base_url"] == "http://127.0.0.1:9999/v1"
+
+
+# --- preset tool calls ---
+
+
+def test_openai_preset_tool_call_uses_preset_client(monkeypatch):
+    _reset_fake_openai()
+    monkeypatch.setattr("smart_ziw_llm.OpenAI", _FakeOpenAI)
+    tool_call = getattr(sll, "get_llm_tool_call")({
+        "smart_ziw_llm_provider": "openai",
+        "lightllm_api_key": "sk-openai",
+        "lightllm_model": "gpt-4o-mini",
+    })
+    tool_call([{"role": "user", "content": "hi"}], None)
+    client = _FakeOpenAI.instances[0]
+    assert client.kwargs["base_url"] == "https://api.openai.com/v1"
+    assert client.kwargs["api_key"] == "sk-openai"
+    assert client.chat.completions.create.call_args.kwargs["model"] == "gpt-4o-mini"
+
+
+def test_anthropic_preset_tool_call_uses_requests(monkeypatch):
+    captured = {}
+
+    def fake_post(url, **kwargs):
+        captured["url"] = url
+        captured["json"] = kwargs["json"]
+        return _http_response(200, {"content": [{"type": "text", "text": "ok"}]})
+
+    monkeypatch.setattr("smart_ziw_llm.requests.post", fake_post)
+    tool_call = getattr(sll, "get_llm_tool_call")({
+        "smart_ziw_llm_provider": "anthropic",
+        "lightllm_api_key": "ak",
+        "lightllm_model": "claude-test",
+    })
+    tool_call([{"role": "user", "content": "hi"}], None)
+    assert captured["url"] == "https://api.anthropic.com/messages"
+    assert captured["json"]["model"] == "claude-test"
+
+
+def test_preset_tool_call_deepseek_env_still_uses_deepseek_client(monkeypatch):
+    _reset_fake_openai()
+    monkeypatch.setattr("smart_ziw_llm.OpenAI", _FakeOpenAI)
+    created = {}
+
+    def fake_create(**kwargs):
+        created.update(kwargs)
+        return _response('{"ok": true}')
+
+    client = MagicMock()
+    client.chat.completions.create.side_effect = fake_create
+    monkeypatch.setattr(agent, "_deepseek_client", lambda: client)
+    tool_call = getattr(sll, "get_llm_tool_call")({"smart_ziw_llm_provider": "deepseek"})
+    tool_call([{"role": "user", "content": "hi"}], None)
+    assert created["model"] == os.environ.get("DEEPSEEK_MODEL", os.environ.get("DEEPSEEK_WEB_MODEL", "deepseek-chat"))
+    assert _FakeOpenAI.instances == []
+
+
+# --- subscription / secondary key ---
+
+
+def test_lightllm_uses_subscription_key_as_default_header(monkeypatch):
+    _reset_fake_openai()
+    monkeypatch.setattr("smart_ziw_llm.OpenAI", _FakeOpenAI)
+    getattr(sll, "get_llm_call")({"lightllm_base_url": "http://localhost:8000/v1", "lightllm_subscription_key": "sub-123"})("s", "u")
+    client = _FakeOpenAI.instances[0]
+    assert client.kwargs["default_headers"] == {"X-Subscription-Key": "sub-123"}
+
+
+def test_openai_preset_uses_subscription_key(monkeypatch):
+    _reset_fake_openai()
+    monkeypatch.setattr("smart_ziw_llm.OpenAI", _FakeOpenAI)
+    getattr(sll, "get_llm_call")({"smart_ziw_llm_provider": "openai", "lightllm_api_key": "sk", "lightllm_subscription_key": "sub"})("s", "u")
+    client = _FakeOpenAI.instances[0]
+    assert client.kwargs["default_headers"] == {"X-Subscription-Key": "sub"}
+
+
+def test_anthropic_preset_sends_subscription_key_header(monkeypatch):
+    captured = {}
+
+    def fake_post(url, **kwargs):
+        captured["headers"] = kwargs["headers"]
+        return _http_response(200, {"content": [{"type": "text", "text": "ok"}]})
+
+    monkeypatch.setattr("smart_ziw_llm.requests.post", fake_post)
+    call = getattr(sll, "get_llm_call")({
+        "smart_ziw_llm_provider": "anthropic",
+        "lightllm_api_key": "ak",
+        "lightllm_subscription_key": "sub",
+    }, json_mode=False)
+    assert call("s", "u") == "ok"
+    assert captured["headers"]["X-Subscription-Key"] == "sub"
+
+
+def test_discover_lightllm_sends_subscription_key(monkeypatch):
+    _reset_fake_openai()
+    monkeypatch.setattr("smart_ziw_llm.OpenAI", _FakeOpenAI)
+    monkeypatch.setattr(sll, "_stored_lightllm_api_key", lambda: "")
+    monkeypatch.setattr(sll, "_stored_lightllm_subscription_key", lambda: "")
+    _FakeOpenAI.next_models = [{"id": "m1", "name": "Model 1"}]
+    result = sll.discover_lightllm_models("openai_compatible", "http://localhost:8000/v1", api_key="k", subscription_key="sub")
+    assert result["status"] == "ok"
+    assert _FakeOpenAI.instances[0].kwargs["default_headers"] == {"X-Subscription-Key": "sub"}

@@ -28,6 +28,7 @@ import contextlib
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from database import get_all_projects, upsert_projects
+from server import AI_VERIFICATION_BOT_USER, _create_project_comment_and_notify, _project_entity_id
 from shared_excel import save_to_excel, is_expired
 
 
@@ -112,6 +113,11 @@ SCRAPERS = {
         "import": "from utils.africanunion_scraper import run_africanunion_scraper",
         "func": "run_africanunion_scraper",
     },
+    "nigermarches": {
+        "label": "Niger Marchés",
+        "import": "from utils.nigermarches_scraper import run_nigermarches_scraper",
+        "func": "run_nigermarches_scraper",
+    },
 }
 
 
@@ -191,13 +197,14 @@ def main():
     parser.add_argument("--eabr", action="store_true", help="Run only the EABR scraper")
     parser.add_argument("--oas", action="store_true", help="Run only the OAS scraper")
     parser.add_argument("--africanunion", action="store_true", help="Run only the African Union scraper")
+    parser.add_argument("--nigermarches", action="store_true", help="Run only the Niger Marchés scraper")
     parser.add_argument("--no-ai", action="store_true", help="Skip AI cybersecurity verification")
     parser.add_argument("--no-enrich", action="store_true", help="Skip AI enrichment (source detection, doc analysis)")
     parser.add_argument("--include-expired", action="store_true", help="Include projects with past due dates")
     args = parser.parse_args()
 
     # Determine which scrapers to run
-    any_source = args.iadb or args.worldbank or args.globaltenders or args.giz or args.devaid or args.dgmarket or args.africagateway or args.isdb or args.badea or args.bcie or args.eabr or args.oas or args.africanunion
+    any_source = args.iadb or args.worldbank or args.globaltenders or args.giz or args.devaid or args.dgmarket or args.africagateway or args.isdb or args.badea or args.bcie or args.eabr or args.oas or args.africanunion or args.nigermarches
     to_run = {}
     for key, info in SCRAPERS.items():
         if getattr(args, key, False) or not any_source:
@@ -293,6 +300,7 @@ def main():
     # ── 7. AI Cybersecurity Verification ──────────────────────────────────
     ai_verified_count = 0
     ai_rejected_count = 0
+    verified_yes = []
 
     if not args.no_ai:
         from ai_filter import filter_cybersecurity_projects
@@ -313,6 +321,11 @@ def main():
             upsert_projects(unverified)
             ai_verified_count += sum(1 for p in unverified if p.get("ai_verified") == "Yes")
             ai_rejected_count += sum(1 for p in unverified if p.get("ai_verified") == "No")
+
+        verified_yes = [
+            p for p in new_projects + unverified
+            if p.get("ai_verified") == "Yes" and p.get("ai_verification_reason")
+        ]
 
         print(f"[OK] AI verification: {ai_verified_count} validated, {ai_rejected_count} rejected", flush=True)
     else:
@@ -352,6 +365,30 @@ def main():
     elif new_projects:
         result = upsert_projects(new_projects)
         print(f"[OK] Saved: {result['inserted']} inserted, {result['updated']} updated", flush=True)
+
+    # Post AI verification explanation comments after upserts so entity mapping is stable
+    if verified_yes:
+        print(f"[..] Posting {len(verified_yes)} AI verification explanation comments...", flush=True)
+        posted = 0
+        for project in verified_yes:
+            reason = project.get("ai_verification_reason", "")
+            body = f"**AI Verification** — This tender was verified as cybersecurity-related.\n\n**Why:** {reason}"
+            try:
+                _create_project_comment_and_notify(
+                    entity_type="project",
+                    entity_id=_project_entity_id(project),
+                    project=project,
+                    author_user=AI_VERIFICATION_BOT_USER,
+                    body_text=body,
+                )
+                posted += 1
+            except Exception as e:
+                print(
+                    f"    [!] Failed to post AI verification comment for "
+                    f"{project.get('project_name', '')}: {e}",
+                    flush=True,
+                )
+        print(f"[OK] Posted {posted}/{len(verified_yes)} AI verification comments", flush=True)
 
     # Also generate Excel export
     all_projects = get_all_projects()

@@ -33,3 +33,6 @@ projects.xlsx
 
 # Superpowers SDD scratchpad
 .superpowers/
+
+# Claude local files
+.claude/

@@ -27,7 +27,7 @@ DEEPSEEK_MODEL = "deepseek-chat"
 BATCH_SIZE = 2       # Smaller batches for reliability
 MAX_WORKERS = 4      # Concurrent threads
 
-SYSTEM_PROMPT = """You are a cybersecurity procurement analyst. Your job is to determine whether procurement notices are related to cybersecurity, information security, or IT security.
+FALLBACK_SYSTEM_PROMPT = """You are a cybersecurity procurement analyst. Your job is to determine whether procurement notices are related to cybersecurity, information security, or IT security.
 
 A project IS cybersecurity-related if it involves:
 - Penetration testing, vulnerability assessments, ethical hacking
@@ -44,17 +44,36 @@ A project IS cybersecurity-related if it involves:
 - Cloud security, application security, DevSecOps
 - Security training and certification programs
 
-A project is NOT cybersecurity-related if the main procurement is for:
-- software licenses, license renewals, product subscriptions, support renewals, or maintenance renewals
-- hardware, devices, appliances, equipment acquisition, or physical supply of goods
-- generic ICT/security product acquisition where the notice is mainly about buying products rather than cybersecurity services or expertise
-
 A project is NOT cybersecurity-related if it only mentions security in passing (e.g. physical security, food safety, social security, guard services) or is a general IT/digital project with no specific security focus.
 
 You will receive a numbered list of projects. For each project, respond with ONLY a JSON array of objects:
-[{"id": 1, "cyber": true}, {"id": 2, "cyber": false}, ...]
+[{"id": 1, "cyber": true, "reason": "..."}, {"id": 2, "cyber": false}, ...]
 
-Do not include any explanation, just the JSON array."""
+For every project where cyber is true, include a concise reason explaining why the tender is cybersecurity-related. If cyber is false, you may omit reason or set it to an empty string.
+
+Do not include any explanation outside the JSON array."""
+
+
+def _build_system_prompt(config):
+    """Build the final system prompt from config, falling back to defaults."""
+    if config is None:
+        try:
+            from database import get_smart_ziw_config
+            config = get_smart_ziw_config()
+        except Exception:
+            config = {}
+
+    base = config.get('ai_verification_system_prompt') or FALLBACK_SYSTEM_PROMPT
+    expertise = config.get('ai_verification_expertise', '')
+    unwanted = config.get('ai_verification_unwanted', '')
+
+    return (
+        base
+        + "\n\nCompany expertise / focus:\n"
+        + expertise
+        + "\n\nUnwanted services/products (a project that is ONLY about these should NOT be labeled cybersecurity-related):\n"
+        + unwanted
+    )
 
 
 def _build_batch_prompt(projects_batch, start_idx):
@@ -70,10 +89,10 @@ def _build_batch_prompt(projects_batch, start_idx):
     return "\n".join(lines)
 
 
-def verify_batch(client, projects_batch, start_idx, max_retries=3):
-    """Send a batch of projects to DeepSeek and return a list of booleans.
-    
-    Thread-safe: only uses local variables and the shared client (which is safe).
+def verify_batch(client, projects_batch, start_idx, system_prompt, max_retries=3):
+    """Send a batch of projects to DeepSeek and return a list of verdict dicts.
+
+    Each verdict is {"cyber": bool, "reason": str}. Thread-safe.
     """
     prompt = _build_batch_prompt(projects_batch, start_idx)
     batch_size = len(projects_batch)
@@ -86,7 +105,7 @@ def verify_batch(client, projects_batch, start_idx, max_retries=3):
             response = client.chat.completions.create(
                 model=DEEPSEEK_MODEL,
                 messages=[
-                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "system", "content": system_prompt},
                     {"role": "user", "content": prompt},
                 ],
                 temperature=0.0,
@@ -104,16 +123,19 @@ def verify_batch(client, projects_batch, start_idx, max_retries=3):
 
             results = json.loads(content)
 
-            # Build a lookup from id -> cyber bool
+            # Build a lookup from id -> verdict dict
             lookup = {}
             for item in results:
-                lookup[item["id"]] = item.get("cyber", False)
+                lookup[item["id"]] = {
+                    "cyber": bool(item.get("cyber", False)),
+                    "reason": str(item.get("reason", "")).strip(),
+                }
 
             # Map back to batch order
             verdicts = []
             for i in range(batch_size):
                 idx = start_idx + i + 1
-                verdicts.append(lookup.get(idx, False))
+                verdicts.append(lookup.get(idx, {"cyber": False, "reason": ""}))
 
             return verdicts
 
@@ -133,18 +155,21 @@ def verify_batch(client, projects_batch, start_idx, max_retries=3):
     return [None] * batch_size
 
 
-def filter_cybersecurity_projects(projects):
+def filter_cybersecurity_projects(projects, config=None, post_comment_callback=None):
     """Verify projects using DeepSeek AI with concurrent threads.
-    
+
     Args:
         projects: list of NEW project dicts to verify
-    
+        config: optional Smart-Ziw config dict; loaded from DB if None
+        post_comment_callback: optional callable(project, reason) invoked for AI-verified projects
+
     Returns:
-        Same list of projects, each with an 'ai_verified' field added.
+        Same list of projects, each with 'ai_verified' and 'ai_verification_reason' fields added.
     """
     if not projects:
         return []
 
+    system_prompt = _build_system_prompt(config)
     total_batches = (len(projects) + BATCH_SIZE - 1) // BATCH_SIZE
 
     print("\n" + "=" * 60)
@@ -174,23 +199,36 @@ def filter_cybersecurity_projects(projects):
         nonlocal verified_yes, verified_no, completed
         batch_num, batch_start, batch = batch_info
 
-        verdicts = verify_batch(client, batch, batch_start)
+        verdicts = verify_batch(client, batch, batch_start, system_prompt)
 
         batch_yes = 0
         batch_no = 0
         rejected_titles = []
 
         for project, verdict in zip(batch, verdicts):
-            if verdict is True:
+            if verdict is None:
+                project["ai_verified"] = ""
+                project["ai_verification_reason"] = ""
+                continue
+
+            cyber = verdict.get("cyber", False)
+            reason = verdict.get("reason", "")
+
+            if cyber is True:
                 project["ai_verified"] = "Yes"
+                project["ai_verification_reason"] = reason
                 batch_yes += 1
-            elif verdict is False:
+                if post_comment_callback is not None:
+                    try:
+                        post_comment_callback(project, reason)
+                    except Exception as e:
+                        print(f"    [!] post_comment_callback failed for {project.get('project_name', '')}: {e}")
+            else:
                 project["ai_verified"] = "No"
+                project["ai_verification_reason"] = ""
                 batch_no += 1
                 title = (project.get("project_description", "") or project.get("project_name", ""))[:80]
                 rejected_titles.append(title)
-            else:
-                project["ai_verified"] = ""
 
         with lock:
             verified_yes += batch_yes

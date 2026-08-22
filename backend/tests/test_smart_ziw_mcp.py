@@ -1,0 +1,282 @@
+import asyncio
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+import pytest
+
+import smart_ziw_mcp
+import server as server
+
+
+def _mk_admin():
+    return {
+        "id": "a1",
+        "email": "admin@example.com",
+        "name": "Admin",
+        "role": "admin",
+        "passwordHash": "x",
+        "avatarUrl": "",
+        "mustChangePassword": False,
+        "isActive": True,
+    }
+
+
+def _mk_user():
+    return {
+        "id": "u1",
+        "email": "user@example.com",
+        "name": "User",
+        "role": "user",
+        "passwordHash": "x",
+        "avatarUrl": "",
+        "mustChangePassword": False,
+        "isActive": True,
+    }
+
+
+class _FakeConfigCollection:
+    def __init__(self):
+        self._doc = None
+
+    def find_one(self, query):
+        return self._doc
+
+    def update_one(self, query, update, upsert=False):
+        servers = update.get("$set", {}).get("servers", [])
+        if self._doc is None:
+            self._doc = {}
+        self._doc["_type"] = query.get("_type", "smart_ziw_mcp_servers")
+        self._doc["servers"] = list(servers)
+
+
+class _FakeDB:
+    def __init__(self):
+        self.config = _FakeConfigCollection()
+
+
+def test_tools_to_skills_returns_correct_ids_and_parameters():
+    tools = [
+        {"name": "echo", "description": "Echo input", "inputSchema": {"type": "object", "properties": {"msg": {"type": "string"}}}},
+        {"name": "add", "description": "Add numbers", "inputSchema": {"type": "object", "properties": {"a": {"type": "number"}, "b": {"type": "number"}}}},
+    ]
+    skills = smart_ziw_mcp.tools_to_skills("srv1", "My Server", tools)
+    assert len(skills) == 2
+    assert skills[0].id == "mcp:srv1:echo"
+    assert skills[0].name == "My Server/echo"
+    assert skills[0].description == "Echo input"
+    assert skills[0].parameters == tools[0]["inputSchema"]
+    assert skills[0].built_in is False
+    assert skills[0].enabled is True
+    assert skills[1].id == "mcp:srv1:add"
+
+
+def test_call_tool_sync_routes_to_async_impl(monkeypatch):
+    async def fake_call(server_id, tool_name, arguments):
+        return {"content": f"{server_id}:{tool_name}:{arguments}"}
+
+    monkeypatch.setattr(smart_ziw_mcp, "_call_tool_async", fake_call)
+    result = smart_ziw_mcp.call_tool_sync("srv", "echo", {"msg": "hi"})
+    assert result == {"content": "srv:echo:{'msg': 'hi'}"}
+
+
+def test_call_tool_sync_returns_error_on_failure(monkeypatch):
+    async def fake_call(server_id, tool_name, arguments):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(smart_ziw_mcp, "_call_tool_async", fake_call)
+    result = smart_ziw_mcp.call_tool_sync("srv", "echo", {})
+    assert result.get("error") == "boom"
+
+
+def test_load_and_save_mcp_servers(monkeypatch):
+    fake_db = _FakeDB()
+    monkeypatch.setattr("database.get_db", lambda: fake_db)
+
+    assert smart_ziw_mcp.load_mcp_servers() == []
+
+    smart_ziw_mcp.save_mcp_servers(fake_db, [{"id": "s1", "name": "Server 1"}])
+    assert smart_ziw_mcp.load_mcp_servers() == [{"id": "s1", "name": "Server 1"}]
+
+    smart_ziw_mcp.save_mcp_servers(fake_db, [{"id": "s1", "name": "Server 1"}, {"id": "s2", "name": "Server 2"}])
+    servers = smart_ziw_mcp.load_mcp_servers()
+    assert len(servers) == 2
+    assert servers[1]["id"] == "s2"
+
+
+def test_test_mcp_server_reports_unsupported_transport():
+    result = asyncio.run(smart_ziw_mcp.test_mcp_server({"transport": "ws"}))
+    assert result["status"] == "error"
+    assert "Unsupported transport" in result["detail"]
+    assert result["tools"] == []
+
+
+def test_get_mcp_skills_skips_disabled_and_empty_servers(monkeypatch):
+    fake_db = _FakeDB()
+    fake_db.config._doc = {
+        "_type": "smart_ziw_mcp_servers",
+        "servers": [
+            {"id": "enabled", "name": "Enabled", "enabled": True, "tools": [{"name": "t1", "description": "", "inputSchema": {}}]},
+            {"id": "disabled", "name": "Disabled", "enabled": False, "tools": [{"name": "t2", "description": "", "inputSchema": {}}]},
+            {"id": "empty", "name": "Empty", "enabled": True, "tools": []},
+        ],
+    }
+    monkeypatch.setattr("database.get_db", lambda: fake_db)
+    skills = smart_ziw_mcp.get_mcp_skills()
+    assert len(skills) == 1
+    assert skills[0].id == "mcp:enabled:t1"
+
+
+# ---------------------------------------------------------------------------
+# Server endpoint tests
+# ---------------------------------------------------------------------------
+
+
+def _client_with_admin(monkeypatch, fake_db=None):
+    monkeypatch.setattr(server, "_get_request_user", lambda req: _mk_admin())
+    if fake_db is not None:
+        monkeypatch.setattr("database.get_db", lambda: fake_db)
+        monkeypatch.setattr(server, "get_db", lambda: fake_db)
+    return server.app
+
+
+def test_admin_list_mcp_servers_requires_admin(monkeypatch):
+    monkeypatch.setattr(server, "_get_request_user", lambda req: _mk_user())
+    from fastapi.testclient import TestClient
+    client = TestClient(server.app)
+    r = client.get("/api/admin/smart-ziw-mcp-servers")
+    assert r.status_code == 403
+
+
+def test_admin_list_mcp_servers_redacts_env(monkeypatch):
+    fake_db = _FakeDB()
+    fake_db.config._doc = {
+        "_type": "smart_ziw_mcp_servers",
+        "servers": [{"id": "s1", "name": "S1", "env": {"SECRET": "hidden"}, "enabled": True, "tools": []}],
+    }
+    app = _client_with_admin(monkeypatch, fake_db)
+    from fastapi.testclient import TestClient
+    client = TestClient(app)
+    r = client.get("/api/admin/smart-ziw-mcp-servers")
+    assert r.status_code == 200
+    data = r.json()
+    assert data[0]["env"] == {"SECRET": "***"}
+
+
+def test_admin_create_mcp_server_tests_and_caches_tools(monkeypatch):
+    fake_db = _FakeDB()
+    app = _client_with_admin(monkeypatch, fake_db)
+
+    async def fake_test(config):
+        return {
+            "status": "ok",
+            "tools": [{"name": "hello", "description": "Say hi", "inputSchema": {"type": "object", "properties": {}}}],
+            "detail": "ok",
+        }
+
+    monkeypatch.setattr(server.smart_ziw_mcp, "test_mcp_server", fake_test)
+
+    from fastapi.testclient import TestClient
+    client = TestClient(app)
+    r = client.post("/api/admin/smart-ziw-mcp-servers", json={
+        "name": "Test Server",
+        "transport": "stdio",
+        "command": "python",
+        "args": ["-m", "server"],
+        "env": {"KEY": "value"},
+    })
+    assert r.status_code == 200
+    data = r.json()
+    assert len(data) == 1
+    assert data[0]["id"] == "test-server"
+    assert data[0]["tools"][0]["name"] == "hello"
+    assert data[0]["env"] == {"KEY": "***"}
+
+    # persisted unredacted
+    raw = fake_db.config._doc["servers"][0]
+    assert raw["env"] == {"KEY": "value"}
+    assert raw["tools"][0]["name"] == "hello"
+
+
+def test_admin_create_mcp_server_fails_when_test_fails(monkeypatch):
+    fake_db = _FakeDB()
+    app = _client_with_admin(monkeypatch, fake_db)
+
+    async def fake_test(config):
+        return {"status": "error", "tools": [], "detail": "connection refused"}
+
+    monkeypatch.setattr(server.smart_ziw_mcp, "test_mcp_server", fake_test)
+
+    from fastapi.testclient import TestClient
+    client = TestClient(app)
+    r = client.post("/api/admin/smart-ziw-mcp-servers", json={
+        "name": "Bad Server",
+        "transport": "sse",
+        "url": "http://localhost:9999",
+    })
+    assert r.status_code == 400
+    assert "connection refused" in r.json()["detail"]
+
+
+def test_admin_update_preserves_redacted_env(monkeypatch):
+    fake_db = _FakeDB()
+    fake_db.config._doc = {
+        "_type": "smart_ziw_mcp_servers",
+        "servers": [{"id": "s1", "name": "S1", "transport": "stdio", "command": "c", "env": {"SECRET": "keep-me"}, "enabled": True, "tools": []}],
+    }
+    app = _client_with_admin(monkeypatch, fake_db)
+
+    async def fake_test(config):
+        return {"status": "ok", "tools": [{"name": "t", "description": "", "inputSchema": {}}], "detail": "ok"}
+
+    monkeypatch.setattr(server.smart_ziw_mcp, "test_mcp_server", fake_test)
+
+    from fastapi.testclient import TestClient
+    client = TestClient(app)
+    r = client.put("/api/admin/smart-ziw-mcp-servers/s1", json={
+        "name": "S1 updated",
+        "transport": "stdio",
+        "command": "c2",
+        "env": {"SECRET": "***"},
+    })
+    assert r.status_code == 200
+    raw = fake_db.config._doc["servers"][0]
+    assert raw["name"] == "S1 updated"
+    assert raw["command"] == "c2"
+    assert raw["env"] == {"SECRET": "keep-me"}
+
+
+def test_admin_delete_mcp_server(monkeypatch):
+    fake_db = _FakeDB()
+    fake_db.config._doc = {
+        "_type": "smart_ziw_mcp_servers",
+        "servers": [{"id": "s1", "name": "S1"}, {"id": "s2", "name": "S2"}],
+    }
+    app = _client_with_admin(monkeypatch, fake_db)
+    from fastapi.testclient import TestClient
+    client = TestClient(app)
+    r = client.delete("/api/admin/smart-ziw-mcp-servers/s1")
+    assert r.status_code == 200
+    assert [s["id"] for s in r.json()] == ["s2"]
+
+
+def test_admin_test_mcp_server_endpoint(monkeypatch):
+    fake_db = _FakeDB()
+    app = _client_with_admin(monkeypatch, fake_db)
+
+    async def fake_test(config):
+        return {"status": "ok", "tools": [{"name": "echo", "description": "", "inputSchema": {}}], "detail": "ok"}
+
+    monkeypatch.setattr(server.smart_ziw_mcp, "test_mcp_server", fake_test)
+
+    from fastapi.testclient import TestClient
+    client = TestClient(app)
+    r = client.post("/api/admin/smart-ziw-mcp-servers/test", json={
+        "name": "Probe",
+        "transport": "stdio",
+        "command": "python",
+    })
+    assert r.status_code == 200
+    assert r.json()["status"] == "ok"
+    assert r.json()["tools"][0]["name"] == "echo"

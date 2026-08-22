@@ -74,7 +74,7 @@ function FilterPopover({ label, options, value, onChange, searchable = true }) {
                     type="button"
                     variant={isActive ? 'secondary' : 'outline'}
                     size="sm"
-                    className="h-8 gap-1 text-sm"
+                    className="h-9 gap-1 text-sm"
                     aria-pressed={isActive}
                 >
                     <span className="max-w-44 truncate">{currentLabel ? `${label}: ${currentLabel}` : label}</span>
@@ -86,9 +86,9 @@ function FilterPopover({ label, options, value, onChange, searchable = true }) {
                             className="rounded-sm p-0.5 hover:bg-foreground/10"
                             onMouseDown={(e) => { e.stopPropagation(); onChange(''); setOpen(false); setQuery(''); }}
                         >
-                            <X className="h-3.5 w-3.5" />
+                            <X className="h-4 w-4" />
                         </span>
-                    ) : <ChevronDown className="h-3.5 w-3.5 opacity-60" />}
+                    ) : <ChevronDown className="h-4 w-4 opacity-60" />}
                 </Button>
             </PopoverTrigger>
             <PopoverContent align="start" className="w-60 p-0">
@@ -157,7 +157,7 @@ function DateRangePopover({ label, from, to, onFromChange, onToChange }) {
                     type="button"
                     variant={isActive ? 'secondary' : 'outline'}
                     size="sm"
-                    className="h-8 gap-1 text-sm"
+                    className="h-9 gap-1 text-sm"
                 >
                     <span className="max-w-48 truncate">{activeLabel ? `${label}: ${activeLabel}` : label}</span>
                     {isActive ? (
@@ -168,9 +168,9 @@ function DateRangePopover({ label, from, to, onFromChange, onToChange }) {
                             className="rounded-sm p-0.5 hover:bg-foreground/10"
                             onMouseDown={(e) => { e.stopPropagation(); clear(); }}
                         >
-                            <X className="h-3.5 w-3.5" />
+                            <X className="h-4 w-4" />
                         </span>
-                    ) : <ChevronDown className="h-3.5 w-3.5 opacity-60" />}
+                    ) : <ChevronDown className="h-4 w-4 opacity-60" />}
                 </Button>
             </PopoverTrigger>
             <PopoverContent align="start" className="w-64">
@@ -201,8 +201,8 @@ function SavedSearchesPopover({ savedSearches, onSave, onApply, onDelete }) {
     return (
         <Popover open={open} onOpenChange={setOpen}>
             <PopoverTrigger asChild>
-                <Button type="button" variant="outline" size="sm" className="h-8 gap-1" title="Saved searches">
-                    <Bookmark className="h-3.5 w-3.5" />
+                <Button type="button" variant="outline" size="sm" className="h-9 gap-1" title="Saved searches">
+                    <Bookmark className="h-4 w-4" />
                     {savedSearches.length > 0 && (
                         <span className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-semibold text-primary-foreground">{savedSearches.length}</span>
                     )}
@@ -230,7 +230,7 @@ function SavedSearchesPopover({ savedSearches, onSave, onApply, onDelete }) {
                 ))}
                 <div className="mt-2 flex gap-2 border-t pt-2">
                     <Input
-                        className="h-8"
+                        className="h-9"
                         type="text"
                         placeholder="Name this search…"
                         value={newName}
@@ -286,9 +286,6 @@ export default function UnifiedSearchBar({
     onClearAll,
     // data for autocomplete
     allProjects,
-    // auto-filter
-    autoFilterActive,
-    onClearAutoFilter,
 }) {
     const [input, setInput] = useState('');
     const [showDrop, setShowDrop] = useState(false);
@@ -485,14 +482,10 @@ export default function UnifiedSearchBar({
         });
     }
     if (scrapedFrom || scrapedTo) {
-        const label = autoFilterActive
-            ? 'Last 7 days'
-            : `Scraped: ${formatShortDate(scrapedFrom) || 'Any'} → ${formatShortDate(scrapedTo) || 'Any'}`;
         activeFilterChips.push({
             id: 'scraped',
-            label,
-            isAuto: autoFilterActive,
-            onRemove: () => { if (autoFilterActive) onClearAutoFilter(); else { onScrapedFromChange(''); onScrapedToChange(''); } },
+            label: `Scraped: ${formatShortDate(scrapedFrom) || 'Any'} → ${formatShortDate(scrapedTo) || 'Any'}`,
+            onRemove: () => { onScrapedFromChange(''); onScrapedToChange(''); },
         });
     }
     if (expiringSoonOnly) {
@@ -504,13 +497,13 @@ export default function UnifiedSearchBar({
     }
 
     return (
-        <div className="usb-root rounded-lg border bg-card p-4 shadow-sm">
+        <div className="usb-root rounded-lg border bg-card p-6 shadow-sm">
 
             {/* ── Primary row ─────────────────────────────────────── */}
             <div className="flex flex-wrap items-center gap-2">
                 {/* Search input */}
                 <div
-                    className="usb-search-area flex h-9 min-w-[260px] flex-1 cursor-text items-center gap-1 rounded-lg border border-input bg-white px-2.5 transition-[border-color,box-shadow] duration-150 focus-within:border-primary focus-within:shadow-[0_0_0_3px_rgba(31,123,246,0.1)]"
+                    className="usb-search-area flex h-9 min-w-[260px] flex-1 cursor-text items-center gap-1 rounded-lg border border-input bg-background px-2.5 transition-[border-color,box-shadow] duration-150 focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/15"
                     ref={inputAreaRef}
                     onClick={() => inputRef.current?.focus()}
                 >
@@ -563,7 +556,7 @@ export default function UnifiedSearchBar({
                             title="Clear all filters"
                             aria-label="Clear all filters"
                         >
-                            <X className="h-3.5 w-3.5" />
+                            <X className="h-4 w-4" />
                         </button>
                     )}
                 </div>
@@ -584,7 +577,7 @@ export default function UnifiedSearchBar({
                     />
 
                     {/* Expiring soon toggle */}
-                    <label className={`flex h-8 items-center gap-1.5 rounded-md border px-2.5 text-sm transition-colors${expiringSoonOnly ? ' border-primary/40 bg-primary/5' : ' border-input bg-background'}`}>
+                    <label className={`flex h-9 items-center gap-1.5 rounded-md border px-2.5 text-sm transition-colors${expiringSoonOnly ? ' border-primary/40 bg-primary/5' : ' border-input bg-background'}`}>
                         <input
                             type="number"
                             className="w-12 bg-transparent text-xs outline-none"
@@ -634,8 +627,8 @@ export default function UnifiedSearchBar({
                     {activeFilterChips.map((chip) => (
                         <Badge
                             key={chip.id}
-                            variant={chip.isAuto ? 'default' : 'outline'}
-                            className={`h-6 gap-0.5 rounded-full pr-1 font-medium${chip.isAuto ? ' bg-amber-600 text-white hover:bg-amber-600' : ''}`}
+                            variant="outline"
+                            className="h-7 gap-0.5 rounded-full pr-1 font-medium"
                         >
                             <span className="pl-1">{chip.label}</span>
                             <button

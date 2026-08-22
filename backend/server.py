@@ -14,6 +14,7 @@ import sys
 import threading
 import time
 import uuid
+from typing import Any
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
@@ -42,6 +43,7 @@ from database import (
     update_project_smart_ziw_state_by_db_id,
     get_smart_ziw_config,
     save_smart_ziw_config,
+    DEFAULT_SMART_ZIW_CONFIG,
     upsert_projects,
     delete_project_by_index,
     delete_project_by_db_id,
@@ -78,7 +80,14 @@ from database import (
     mark_all_notifications_viewed,
 )
 from smart_ziw_agent import run as run_smart_ziw_agent, CHAT_PROMPT
-from smart_ziw_llm import discover_lightllm_models, get_llm_call
+from smart_ziw_llm import (
+    discover_lightllm_models,
+    discover_models_for_preset,
+    get_llm_call,
+    get_llm_provider_presets,
+)
+import smart_ziw_skill_store
+import smart_ziw_mcp
 from concurrent.futures import ThreadPoolExecutor
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -466,7 +475,7 @@ def _format_smart_ziw_comment(result: dict) -> str:
         lines.extend([
             "",
             f"Web research: {stats.get('queries_run', 0)} queries, {stats.get('pages_scraped', 0)} pages scraped, {stats.get('documents_captured', 0)} documents captured",
-            f"Recommendation: {result.get('research_verdict', 'MONITOR')}",
+            f"Recommendation: {result.get('research_verdict', 'GO-CONDITIONAL')}",
         ])
         documents = result.get("documents") or []
         if documents:
@@ -479,11 +488,12 @@ def _format_smart_ziw_comment(result: dict) -> str:
 
 
 SMART_ZIW_BOT_USER = {"id": "bot:smart-ziw", "name": "Smart-Ziw Bot", "email": "", "avatarUrl": ""}
+AI_VERIFICATION_BOT_USER = {"id": "bot:ai-verification", "name": "AI Verification", "email": "", "avatarUrl": ""}
 _SMART_ZIW_MENTION_TOKEN = "@smartziw"
 _SMART_ZIW_REPLY_MAX_CHARS = 2000
 
 
-def _run_smart_ziw(project_db_id: str, actor_user: dict):
+def _run_smart_ziw(project_db_id: str, actor_user: dict, thread_comments: list[dict] | None = None):
     try:
         config = get_smart_ziw_config()
         project = update_project_smart_ziw_state_by_db_id(project_db_id, {
@@ -492,7 +502,9 @@ def _run_smart_ziw(project_db_id: str, actor_user: dict):
         })
         if not project:
             return
-        result = run_smart_ziw_agent(project, config)
+        thread = thread_comments if thread_comments is not None else list_comments("project", _project_entity_id(project))
+        thread_text = _build_thread_text(thread)
+        result = run_smart_ziw_agent(project, config, thread_context=thread_text)
         comment_body = _format_smart_ziw_comment(result)
         _create_project_comment_and_notify(
             entity_type="project",
@@ -506,12 +518,33 @@ def _run_smart_ziw(project_db_id: str, actor_user: dict):
         if config.get("gitlab_push_enabled") and not result.get("gitlab_pushed"):
             push_error = result.get("gitlab_message") or "GitLab push failed"
         error = enrichment_error or push_error
+        ai_source = "Web research" if result.get("research") else "LLM enrichment"
+        if result.get("research"):
+            if result.get("research_timed_out") or (result.get("research_stats", {}).get("pages_scraped", 0) == 0):
+                confidence = "medium"
+            else:
+                confidence = "high"
+        else:
+            confidence = "low"
+        evidence = ""
+        verdict_dict = result.get("verdict") or {}
+        if isinstance(verdict_dict, dict):
+            evidence = str(verdict_dict.get("reasoning") or "").strip()
+        if not evidence and result.get("research_verdict"):
+            evidence = f"Recommendation: {result['research_verdict']}"
         update_project_smart_ziw_state_by_db_id(project_db_id, {
             "smart_ziw_status": "error" if error else "completed",
             "smart_ziw_completed_at": now_iso(),
             "smart_ziw_error": (str(error)[:1000] if error else ""),
             "smart_ziw_folder": result.get("folder", ""),
             "smart_ziw_gitlab_pushed": bool(result.get("gitlab_pushed")),
+            "smart_ziw_analysis_markdown": str(result.get("analysis_markdown") or ""),
+            "smart_ziw_next_actions": result.get("next_actions") if isinstance(result.get("next_actions"), list) else [],
+            "smart_ziw_research_verdict": str(result.get("research_verdict") or ""),
+            "smart_ziw_evidence": evidence,
+            "smart_ziw_confidence": confidence,
+            "smart_ziw_ai_source": ai_source,
+            "smart_ziw_repo_path": str(result.get("repo_path") or ""),
         })
     except Exception as exc:
         project = get_project_by_db_id(project_db_id)
@@ -533,6 +566,17 @@ def _run_smart_ziw(project_db_id: str, actor_user: dict):
             _smart_ziw_running.discard(project_db_id)
 
 
+def _build_thread_text(thread_comments: list[dict]) -> str:
+    lines = []
+    for c in thread_comments:
+        author = c.get("authorName") or "Unknown"
+        body = str(c.get("body") or "").strip()
+        if not body:
+            continue
+        lines.append(f"{author}: {body}")
+    return "\n".join(lines)
+
+
 def _build_smart_ziw_chat_prompt(project: dict, comment: dict, thread_comments: list[dict]) -> str:
     body = re.sub(_SMART_ZIW_MENTION_TOKEN, "", str(comment.get("body") or ""), flags=re.IGNORECASE).strip()
     lines = [
@@ -547,7 +591,7 @@ def _build_smart_ziw_chat_prompt(project: dict, comment: dict, thread_comments: 
         "",
         "Previous comments (oldest first):",
     ]
-    previous = [c for c in thread_comments if c.get("id") != comment.get("id")][-10:]
+    previous = [c for c in thread_comments if c.get("id") != comment.get("id")][-30:]
     for previous_comment in previous:
         body_text = str(previous_comment.get("body") or "").strip()
         if not body_text:
@@ -567,15 +611,12 @@ def _smart_ziw_bot_note(project: dict, body_text: str) -> None:
     )
 
 
-def _answer_smart_ziw_mention(project_db_id: str, project: dict, requester: dict, comment: dict) -> None:
+def _answer_smart_ziw_mention(project_db_id: str, project: dict, requester: dict, comment: dict, thread_comments: list[dict] | None = None) -> None:
     try:
         config = get_smart_ziw_config()
         call = get_llm_call(config, json_mode=False)
-        prompt = _build_smart_ziw_chat_prompt(
-            project,
-            comment,
-            list_comments(comment.get("entityType"), comment.get("entityId")),
-        )
+        thread = thread_comments if thread_comments is not None else list_comments(comment.get("entityType"), comment.get("entityId"))
+        prompt = _build_smart_ziw_chat_prompt(project, comment, thread)
         answer = str(call(CHAT_PROMPT, prompt) or "").strip() or "Smart-Ziw has no answer for this question."
         if len(answer) > _SMART_ZIW_REPLY_MAX_CHARS:
             answer = answer[:_SMART_ZIW_REPLY_MAX_CHARS] + "…"
@@ -596,6 +637,15 @@ def _answer_smart_ziw_mention(project_db_id: str, project: dict, requester: dict
     finally:
         with _smart_ziw_lock:
             _smart_ziw_running.discard(project_db_id)
+
+
+def _smart_ziw_mention_is_run_request(comment_body: str) -> bool:
+    text = re.sub(r"[^\w\s]", " ", str(comment_body or "").lower())
+    tokens = set(text.split())
+    return bool(
+        tokens & {"run", "execute", "perform", "start", "do", "process"}
+        and tokens & {"actions", "action", "next", "nextactions", "tasks", "task"}
+    )
 
 
 def _maybe_start_smart_ziw_chat(comment: dict, project: dict | None, requester: dict | None) -> None:
@@ -621,7 +671,12 @@ def _maybe_start_smart_ziw_chat(comment: dict, project: dict | None, requester: 
     if busy:
         _smart_ziw_bot_note(project, "Smart-Ziw is already working on this project. Please wait for the current run to finish.")
         return
-    threading.Thread(target=_answer_smart_ziw_mention, args=(project_db_id, project, requester, comment), daemon=True).start()
+    thread = list_comments(comment.get("entityType"), comment.get("entityId"))
+    if _smart_ziw_mention_is_run_request(comment.get("body")):
+        _smart_ziw_bot_note(project, "Smart-Ziw is starting the next actions run now.")
+        threading.Thread(target=_run_smart_ziw, args=(project_db_id, requester, thread), daemon=True).start()
+    else:
+        threading.Thread(target=_answer_smart_ziw_mention, args=(project_db_id, project, requester, comment, thread), daemon=True).start()
 
 
 # Scheduler/sync
@@ -934,6 +989,7 @@ def _start_sync_with_flags(req_dict: dict):
         "eabr": "--eabr",
         "oas": "--oas",
         "africanunion": "--africanunion",
+        "nigermarches": "--nigermarches",
         "no_ai": "--no-ai",
         "no_enrich": "--no-enrich",
         "include_expired": "--include-expired",
@@ -1013,6 +1069,7 @@ class SyncRequest(BaseModel):
     eabr: bool = False
     oas: bool = False
     africanunion: bool = False
+    nigermarches: bool = False
     no_ai: bool = False
     no_enrich: bool = False
     include_expired: bool = False
@@ -1073,29 +1130,35 @@ class SmartZiwConfigUpdate(BaseModel):
     smart_ziw_enabled: bool = True
     smart_ziw_repo_path: str = "/home/kali/Smart-Ziw"
     gitlab_push_enabled: bool = False
-    gitlab_url: str = ""
+    gitlab_base_url: str = "http://localhost:8080"
+    gitlab_project_path: str = "root/Smart-Ziw"
     gitlab_token: str = ""
-    gitlab_project_path: str = ""
     gitlab_branch: str = "main"
     gitlab_author_name: str = "Smart-Ziw Agent"
     gitlab_author_email: str = "smart-ziw@localhost"
-    firecrawl_api_key: str = ""
-    firecrawl_base_url: str = "https://api.firecrawl.dev"
+    forvis_mazars_presence_countries: list[str] = Field(default_factory=list)
     smart_ziw_research_enabled: bool = True
     smart_ziw_research_timeout_seconds: int = 900
     smart_ziw_llm_provider: str = "auto"
     lightllm_base_url: str = ""
     lightllm_api_key: str = ""
+    lightllm_subscription_key: str = ""
     lightllm_model: str = "default"
     lightllm_provider: str = "openai_compatible"
     llm_temperature: float = 0.1
     llm_max_tokens: int = 4000
+    tempmail_enabled: bool = False
+    ai_verification_system_prompt: str = DEFAULT_SMART_ZIW_CONFIG["ai_verification_system_prompt"]
+    ai_verification_expertise: str = DEFAULT_SMART_ZIW_CONFIG["ai_verification_expertise"]
+    ai_verification_unwanted: str = DEFAULT_SMART_ZIW_CONFIG["ai_verification_unwanted"]
 
 
 class LlmModelsRequest(BaseModel):
     provider: str = "openai_compatible"
     base_url: str = ""
     api_key: str = ""
+    subscription_key: str = ""
+    preset_id: str = ""
 
 
 class SavedSearchItem(BaseModel):
@@ -1108,6 +1171,32 @@ class SavedSearchItem(BaseModel):
 
 class SavedSearchesUpdate(BaseModel):
     searches: list[SavedSearchItem] = Field(default_factory=list)
+
+
+class SkillFetchRequest(BaseModel):
+    url: str
+
+
+class SkillStateItem(BaseModel):
+    id: str
+    enabled: bool
+
+
+class SkillStateUpdate(BaseModel):
+    skills: list[SkillStateItem]
+
+
+class McpServerConfig(BaseModel):
+    id: str = ""
+    name: str = ""
+    transport: str = "stdio"
+    command: str = ""
+    args: list[str] = Field(default_factory=list)
+    url: str = ""
+    env: dict[str, str] = Field(default_factory=dict)
+    enabled: bool = True
+    timeout: int = 30
+    tools: list[dict] = Field(default_factory=list)
 
 
 # Auth endpoints
@@ -1235,6 +1324,8 @@ def admin_update_user(user_id: str, body: AdminUserUpdateRequest, request: Reque
         raise HTTPException(status_code=404, detail="User not found")
     if target["id"] == admin["id"] and body.role != "admin":
         raise HTTPException(status_code=400, detail="Cannot remove your own admin role")
+    if target["id"] == admin["id"] and not body.isActive:
+        raise HTTPException(status_code=400, detail="Cannot deactivate yourself")
     existing = get_user_by_email(body.email)
     if existing and existing.get("id") != user_id:
         raise HTTPException(status_code=400, detail="Email already used")
@@ -1750,8 +1841,9 @@ def admin_get_smart_ziw_config(request: Request):
     _require_admin(request)
     config = get_smart_ziw_config()
     config["gitlab_token"] = ""
-    config["firecrawl_api_key"] = ""
+    config["github_token"] = ""
     config["lightllm_api_key"] = ""
+    config["lightllm_subscription_key"] = ""
     return config
 
 
@@ -1762,21 +1854,88 @@ def admin_update_smart_ziw_config(body: SmartZiwConfigUpdate, request: Request):
     existing = get_smart_ziw_config()
     if not data.get("gitlab_token"):
         data["gitlab_token"] = existing.get("gitlab_token", "")
-    if not data.get("firecrawl_api_key"):
-        data["firecrawl_api_key"] = existing.get("firecrawl_api_key", "")
     if not data.get("lightllm_api_key"):
         data["lightllm_api_key"] = existing.get("lightllm_api_key", "")
+    if not data.get("lightllm_subscription_key"):
+        data["lightllm_subscription_key"] = existing.get("lightllm_subscription_key", "")
+    if not data.get("forvis_mazars_presence_countries"):
+        data["forvis_mazars_presence_countries"] = existing.get("forvis_mazars_presence_countries", [])
     saved = save_smart_ziw_config(data)
     saved["gitlab_token"] = ""
-    saved["firecrawl_api_key"] = ""
+    saved["github_token"] = ""
     saved["lightllm_api_key"] = ""
+    saved["lightllm_subscription_key"] = ""
     return saved
+
+
+def _serialize_skill(skill) -> dict:
+    return {
+        "id": skill.id,
+        "name": skill.name,
+        "description": skill.description,
+        "source_url": skill.source_url,
+        "built_in": skill.built_in,
+        "enabled": skill.enabled,
+    }
+
+
+@app.get("/api/admin/smart-ziw-skills")
+def admin_list_smart_ziw_skills(request: Request):
+    _require_admin(request)
+    registry = smart_ziw_skill_store.get_registry(get_smart_ziw_config())
+    return [_serialize_skill(skill) for skill in registry._skills]
+
+
+@app.put("/api/admin/smart-ziw-skills")
+def admin_update_smart_ziw_skills(body: SkillStateUpdate, request: Request):
+    _require_admin(request)
+    states = [{"id": item.id, "enabled": item.enabled} for item in body.skills]
+    smart_ziw_skill_store.save_skills_state(get_db(), states)
+    registry = smart_ziw_skill_store.get_registry(get_smart_ziw_config())
+    return [_serialize_skill(skill) for skill in registry._skills]
+
+
+@app.post("/api/admin/smart-ziw-skills/fetch")
+def admin_fetch_smart_ziw_skill(body: SkillFetchRequest, request: Request):
+    _require_admin(request)
+    try:
+        fetched = smart_ziw_skill_store.fetch_skill_from_url(body.url, config=get_smart_ziw_config())
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    states = [smart_ziw_skill_store._skill_to_full_state(skill) for skill in fetched]
+    smart_ziw_skill_store.save_skills_state(get_db(), states)
+    registry = smart_ziw_skill_store.get_registry(get_smart_ziw_config())
+    return [_serialize_skill(skill) for skill in registry._skills]
+
+
+@app.delete("/api/admin/smart-ziw-skills/{skill_id}")
+def admin_delete_smart_ziw_skill(skill_id: str, request: Request):
+    _require_admin(request)
+    # Prevent deletion of built-in skills.
+    registry = smart_ziw_skill_store.get_registry(get_smart_ziw_config())
+    target = registry.by_id(skill_id)
+    if target is None:
+        raise HTTPException(status_code=404, detail="Skill not found")
+    if target.built_in:
+        raise HTTPException(status_code=403, detail="Built-in skills cannot be deleted")
+    if not smart_ziw_skill_store.delete_custom_skill(skill_id):
+        raise HTTPException(status_code=404, detail="Skill not found")
+    registry = smart_ziw_skill_store.get_registry(get_smart_ziw_config())
+    return [_serialize_skill(skill) for skill in registry._skills]
 
 
 @app.post("/api/admin/llm-models")
 def admin_discover_llm_models(body: LlmModelsRequest, request: Request):
     _require_admin(request)
-    return discover_lightllm_models(body.provider, body.base_url, body.api_key)
+    if body.preset_id:
+        return discover_models_for_preset(body.preset_id, body.base_url, body.api_key, body.subscription_key)
+    return discover_lightllm_models(body.provider, body.base_url, body.api_key, body.subscription_key)
+
+
+@app.get("/api/admin/llm-providers")
+def admin_list_llm_providers(request: Request):
+    _require_admin(request)
+    return get_llm_provider_presets()
 
 
 _LLM_TEST_TIMEOUT_SECONDS = 20.0
@@ -1799,6 +1958,8 @@ def admin_test_llm(body: SmartZiwConfigUpdate, request: Request):
     existing = get_smart_ziw_config()
     if not data.get("lightllm_api_key"):
         data["lightllm_api_key"] = existing.get("lightllm_api_key", "")
+    if not data.get("lightllm_subscription_key"):
+        data["lightllm_subscription_key"] = existing.get("lightllm_subscription_key", "")
     call = get_llm_call(data, json_mode=False)
     try:
         with ThreadPoolExecutor(max_workers=1) as pool:
@@ -1808,7 +1969,7 @@ def admin_test_llm(body: SmartZiwConfigUpdate, request: Request):
         return {"status": "error", "detail": f"The provider did not respond within {int(_LLM_TEST_TIMEOUT_SECONDS)} seconds"}
     except Exception as exc:
         detail = str(exc)[:300] or "The provider test failed"
-        for key in (data.get("lightllm_api_key"), existing.get("lightllm_api_key")):
+        for key in (data.get("lightllm_api_key"), data.get("lightllm_subscription_key"), existing.get("lightllm_api_key"), existing.get("lightllm_subscription_key")):
             if key and key in detail:
                 detail = detail.replace(key, "[redacted]")
         return {"status": "error", "detail": detail}
@@ -1903,4 +2064,134 @@ async def notification_stream(request: Request):
                         _notification_queues.remove(item)
 
     return StreamingResponse(event_generator(), media_type="text/event-stream", headers={"Cache-Control": "no-cache", "Connection": "keep-alive", "X-Accel-Buffering": "no"})
+
+
+# ---------------------------------------------------------------------------
+# MCP server admin endpoints
+# ---------------------------------------------------------------------------
+
+
+def _slugify_mcp_name(name: str) -> str:
+    base = re.sub(r"[^a-z0-9]+", "-", (name or "").lower()).strip("-")
+    return base or str(uuid.uuid4())
+
+
+def _redact_mcp_env(server: dict) -> dict:
+    """Return a copy of an MCP server config with env values replaced by ***."""
+    out = dict(server)
+    if out.get("env"):
+        out["env"] = {key: "***" for key in out["env"]}
+    return out
+
+
+def _merge_mcp_env(existing: dict, incoming: dict) -> dict:
+    """Preserve existing env values when the UI sends the redacted placeholder."""
+    merged = dict(existing)
+    for key, value in incoming.items():
+        if value == "***" and key in merged:
+            continue
+        merged[key] = value
+    return merged
+
+
+def _normalize_mcp_server(body: dict, existing: dict | None = None) -> dict:
+    """Build a full server dict from a request body, optionally merging with an existing entry."""
+    existing = existing or {}
+    server_id = body.get("id") or existing.get("id")
+    if not server_id:
+        server_id = _slugify_mcp_name(body.get("name")) or str(uuid.uuid4())
+
+    def _field(key: str, default: Any = "") -> Any:
+        if key in body:
+            return body[key]
+        return existing.get(key, default)
+
+    return {
+        "id": server_id,
+        "name": _field("name") or existing.get("name") or server_id,
+        "transport": _field("transport") or existing.get("transport") or "stdio",
+        "command": _field("command"),
+        "args": list(_field("args", [])),
+        "url": _field("url"),
+        "env": _merge_mcp_env(existing.get("env") or {}, body.get("env") or {}),
+        "enabled": _field("enabled", True),
+        "timeout": int(_field("timeout") or existing.get("timeout") or 30),
+        "tools": list(_field("tools", [])),
+    }
+
+
+@app.get("/api/admin/smart-ziw-mcp-servers")
+def admin_list_mcp_servers(request: Request):
+    _require_admin(request)
+    servers = smart_ziw_mcp.load_mcp_servers()
+    return [_redact_mcp_env(s) for s in servers]
+
+
+@app.post("/api/admin/smart-ziw-mcp-servers/test")
+def admin_test_mcp_server(body: McpServerConfig, request: Request):
+    _require_admin(request)
+    try:
+        result = asyncio.run(smart_ziw_mcp.test_mcp_server(body.model_dump()))
+    except Exception as exc:
+        return {"status": "error", "tools": [], "detail": str(exc)}
+    return result
+
+
+@app.post("/api/admin/smart-ziw-mcp-servers")
+def admin_create_mcp_server(body: McpServerConfig, request: Request):
+    _require_admin(request)
+    data = body.model_dump()
+    db = get_db()
+    servers = smart_ziw_mcp.load_mcp_servers()
+
+    if data.get("id") and any(s.get("id") == data["id"] for s in servers):
+        raise HTTPException(status_code=409, detail="MCP server id already exists")
+
+    server = _normalize_mcp_server(data)
+    if not server.get("tools"):
+        result = asyncio.run(smart_ziw_mcp.test_mcp_server(server))
+        if result.get("status") != "ok":
+            raise HTTPException(status_code=400, detail=result.get("detail") or "Test failed")
+        server["tools"] = result.get("tools") or []
+
+    servers.append(server)
+    smart_ziw_mcp.save_mcp_servers(db, servers)
+    return [_redact_mcp_env(s) for s in smart_ziw_mcp.load_mcp_servers()]
+
+
+@app.put("/api/admin/smart-ziw-mcp-servers/{server_id}")
+def admin_update_mcp_server(server_id: str, body: McpServerConfig, request: Request):
+    _require_admin(request)
+    data = body.model_dump()
+    db = get_db()
+    servers = smart_ziw_mcp.load_mcp_servers()
+
+    index = next((i for i, s in enumerate(servers) if s.get("id") == server_id), None)
+    if index is None:
+        raise HTTPException(status_code=404, detail="MCP server not found")
+
+    existing = servers[index]
+    server = _normalize_mcp_server(data, existing)
+
+    if not server.get("tools"):
+        result = asyncio.run(smart_ziw_mcp.test_mcp_server(server))
+        if result.get("status") != "ok":
+            raise HTTPException(status_code=400, detail=result.get("detail") or "Test failed")
+        server["tools"] = result.get("tools") or []
+
+    servers[index] = server
+    smart_ziw_mcp.save_mcp_servers(db, servers)
+    return [_redact_mcp_env(s) for s in smart_ziw_mcp.load_mcp_servers()]
+
+
+@app.delete("/api/admin/smart-ziw-mcp-servers/{server_id}")
+def admin_delete_mcp_server(server_id: str, request: Request):
+    _require_admin(request)
+    db = get_db()
+    servers = smart_ziw_mcp.load_mcp_servers()
+    new_servers = [s for s in servers if s.get("id") != server_id]
+    if len(new_servers) == len(servers):
+        raise HTTPException(status_code=404, detail="MCP server not found")
+    smart_ziw_mcp.save_mcp_servers(db, new_servers)
+    return [_redact_mcp_env(s) for s in smart_ziw_mcp.load_mcp_servers()]
 

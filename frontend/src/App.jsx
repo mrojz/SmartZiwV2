@@ -1,13 +1,15 @@
 
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import ProjectTable from './components/ProjectTable';
+import TendersPage from './pages/TendersPage';
+import TenderDetailPage from './pages/TenderDetailPage';
+import ErrorBoundary from './components/ErrorBoundary';
 import DemoWalkthrough from './components/DemoWalkthrough';
 import SyncPanel from './components/SyncPanel';
-import ConfigPanel from './components/ConfigPanel';
-import SchedulePanel from './components/SchedulePanel';
+import SettingsPage from './components/SettingsPage';
+import SchedulePage from './components/SchedulePage';
 import Sidebar, { Avatar, NAV_GROUPS } from './components/Sidebar';
 import AnalyticsPage from './components/AnalyticsPage';
-import { Search, Bell, RefreshCw, User, Shield, Settings, CalendarClock, LogOut, Mail, Lock, X, Paperclip, Send, ArrowUp, ArrowDown, ArrowUpDown, MoreVertical, PenLine, KeyRound, UserCheck, UserX, ChevronDown, CircleHelp } from 'lucide-react';
+import { Search, Bell, RefreshCw, User, Shield, Settings, CalendarClock, LogOut, Mail, Lock, X, Paperclip, Send, ArrowUp, ArrowDown, ArrowUpDown, MoreVertical, PenLine, KeyRound, UserCheck, UserX, ChevronDown, CircleHelp, Link, Trash2 } from 'lucide-react';
 import { SidebarProvider } from '@/components/ui/sidebar';
 import { Command, CommandDialog, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { toast } from 'sonner';
@@ -20,6 +22,15 @@ import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/componen
 import { Label } from '@/components/ui/label';
 import { Input as ShadcnInput } from '@/components/ui/input';
 import { Sheet, SheetClose, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { setModalScrollLock } from './utils/scrollLock';
+import {
+    getTenderIdFromHash,
+    buildTenderHash,
+    buildTenderShareUrl,
+    buildDashboardHash,
+    deserializeFilters,
+} from './utils/tenderRouting';
+import { attachProjectRowIds } from './utils/projects';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { Textarea } from '@/components/ui/textarea';
@@ -31,6 +42,65 @@ import { Switch } from '@/components/ui/switch';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+
+const LLM_PROVIDER_LOGOS = {
+    openai: 'https://cdn.simpleicons.org/openai',
+    anthropic: 'https://cdn.simpleicons.org/anthropic',
+    gemini: 'https://cdn.simpleicons.org/google',
+    groq: 'https://cdn.simpleicons.org/groq',
+    together: 'https://cdn.simpleicons.org/togetherai',
+    openrouter: 'https://cdn.simpleicons.org/openrouter',
+    deepseek: 'https://cdn.simpleicons.org/deepseek',
+    deepseek_api: 'https://cdn.simpleicons.org/deepseek',
+    zai: 'https://cdn.simpleicons.org/zhipu',
+    kimi: 'https://cdn.simpleicons.org/moonshotai',
+};
+
+const LLM_PROVIDER_COLORS = {
+    openai: '#412991',
+    anthropic: '#D97757',
+    gemini: '#4285F4',
+    groq: '#F55036',
+    together: '#0F6FFF',
+    openrouter: '#111827',
+    deepseek: '#4D6BFA',
+    deepseek_api: '#4D6BFA',
+    zai: '#1A1A1A',
+    kimi: '#007FFF',
+    local: '#6B7280',
+    custom: '#9CA3AF',
+    auto: '#9CA3AF',
+};
+
+function ProviderLogo({ id, name, className = '' }) {
+    const [failed, setFailed] = useState(false);
+    const url = LLM_PROVIDER_LOGOS[id];
+    const initials = useMemo(() => {
+        const parts = (name || id || '?').split(/[\s()]+/).filter(Boolean);
+        return parts.slice(0, 2).map((s) => s[0]).join('').toUpperCase();
+    }, [name, id]);
+    const color = LLM_PROVIDER_COLORS[id] || '#6B7280';
+    if (failed || !url) {
+        return (
+            <span
+                className={`inline-flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full text-[10px] font-bold text-white ${className}`}
+                style={{ backgroundColor: color }}
+                aria-hidden="true"
+            >
+                {initials}
+            </span>
+        );
+    }
+    return (
+        <img
+            src={url}
+            alt=""
+            className={`h-5 w-5 flex-shrink-0 object-contain ${className}`}
+            onError={() => setFailed(true)}
+            aria-hidden="true"
+        />
+    );
+}
 
 const API = '/api';
 const APP_RELEASE_VERSION = '1.6';
@@ -64,7 +134,7 @@ const DEFAULT_RELEASE_NOTES = [
             'Added Firecrawl-powered web research with unlimited page and document discovery.',
             'Tender documents are downloaded and converted to readable markdown (markitdown).',
             'Smart-Ziw reports now include a GO/NO-GO/MONITOR recommendation with numbered source citations.',
-            'Added admin settings for the Firecrawl API key, research toggle, and time limit.',
+            'Added admin settings for the research toggle, time limit, and Firecrawl MCP server support.',
         ],
     },
     {
@@ -131,33 +201,18 @@ function buildNotificationStreamUrl() {
     return query ? `${API}/notifications/stream?${query}` : `${API}/notifications/stream`;
 }
 
-const ADMIN_ROUTES = ['admin', 'users', 'smart-ziw', 'llm-config'];
+const ADMIN_ROUTES = ['admin', 'users', 'smart-ziw', 'llm-config', 'skills'];
 
 const DEMO_STEPS = [
-    { target: '.usb-root', title: 'Filter bar', body: 'Narrow the list by source, region, deadline, or scrape date. The list defaults to the last 7 days.' },
+    { target: '.usb-root', title: 'Filter bar', body: 'Narrow the list by source, region, deadline, or scrape date. The list is sorted by the most recent scrape date.' },
     { target: '.app-table tbody tr:first-child', title: 'Tender rows', body: 'Each row is a tender. Open it to see the full analysis, discussion, and next actions.' },
     { target: '.project-inspector-actions button', title: 'Smart-Ziw agent', body: 'Ask the agent in a tender\'s discussion with @SmartZiw, or run the full analysis from here.' },
 ];
 
 function normalizeRoute(rawRoute = '') {
     const route = String(rawRoute || '').replace(/^#/, '').replace(/^\//, '');
-    if (route === 'comments' || route.startsWith('tenders/')) return 'dashboard';
+    if (route === 'comments' || route === 'tenders' || route.startsWith('tenders/')) return 'dashboard';
     return route || 'dashboard';
-}
-
-function getTenderIdFromHash(rawHash = '') {
-    const hash = String(rawHash || '').replace(/^#/, '').replace(/^\//, '');
-    const match = hash.match(/^tenders\/([^/?#]+)/);
-    return match ? decodeURIComponent(match[1]) : '';
-}
-
-function buildTenderHash(projectDbId = '') {
-    return projectDbId ? `#/tenders/${encodeURIComponent(projectDbId)}` : '#dashboard';
-}
-
-function buildTenderShareUrl(projectDbId = '') {
-    if (!projectDbId || typeof window === 'undefined') return '';
-    return `${window.location.origin}${window.location.pathname}${window.location.search}${buildTenderHash(projectDbId)}`;
 }
 
 function formatActorList(names = []) {
@@ -366,34 +421,6 @@ function colorFromSeed(seed = '') {
     return `hsl(${hash} 45% 46%)`;
 }
 
-function getProjectSeedKey(project = {}) {
-    return [
-        project?.source || '',
-        project?.project_id || '',
-        project?.project_url || '',
-        project?.document_url || '',
-        project?.project_name || '',
-        project?.project_description || '',
-        project?.project_sponsor || '',
-        project?.project_end_date || '',
-    ].join('::');
-}
-
-function attachProjectRowIds(items = []) {
-    const seen = new Map();
-    return items.map((project) => {
-        if (project?.__rowId) return project;
-        const seed = getProjectSeedKey(project);
-        const occurrence = (seen.get(seed) || 0) + 1;
-        seen.set(seed, occurrence);
-        return {
-            ...project,
-            __rowId: `${seed}__${occurrence}`,
-        };
-    });
-}
-
-
 function formatDisplayDate(value) {
     if (!value) return '-';
     const direct = new Date(value);
@@ -439,18 +466,6 @@ function toInputDate(value) {
         return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
     }
     return '';
-}
-
-function setModalScrollLock(locked) {
-    if (typeof document === 'undefined') return;
-    const body = document.body;
-    const html = document.documentElement;
-    const current = Number(body.dataset.modalLockCount || '0');
-    const next = locked ? current + 1 : Math.max(0, current - 1);
-    body.dataset.modalLockCount = String(next);
-    const shouldLock = next > 0;
-    body.classList.toggle('modal-scroll-locked', shouldLock);
-    html.classList.toggle('modal-scroll-locked', shouldLock);
 }
 
 
@@ -545,7 +560,7 @@ function ForcePasswordPage({ onSubmit, error }) {
         muted: 'text-muted-foreground',
         weak: 'text-destructive',
         medium: 'text-foreground',
-        strong: 'text-green-700',
+        strong: 'text-green-600',
     };
 
     return (
@@ -736,13 +751,11 @@ function ReleaseNotesModal({ open, releases, onClose, onOpenFull }) {
 function ReleaseNotesPage({ releases, onBack }) {
     return (
         <div className="mx-auto w-full max-w-3xl">
-            <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
-                <div>
-                    <h1 className="text-2xl font-semibold tracking-tight">Release Notes</h1>
-                    <p className="text-sm text-muted-foreground">Track major platform updates and newly delivered capabilities.</p>
-                </div>
-                <ShadcnButton type="button" variant="outline" onClick={onBack}>Back</ShadcnButton>
-            </div>
+            <PageHeader
+                title="Release Notes"
+                subtitle="Track major platform updates and newly delivered capabilities."
+                action={<ShadcnButton type="button" variant="outline" onClick={onBack}>Back</ShadcnButton>}
+            />
             <div className="flex flex-col gap-4">
                 {releases.map((note) => (
                     <ReleaseChangelogCard
@@ -793,7 +806,7 @@ function NotificationsPanel({ open, notifications, unreadCount, onClose, onOpenN
                         <button
                             key={item.id}
                             type="button"
-                            className={`mb-2.5 w-full rounded-lg border p-3 text-left transition-colors ${item.read ? 'border-border bg-slate-50 opacity-80 hover:opacity-100' : 'border-blue-200 bg-gradient-to-b from-blue-50 to-blue-100 shadow-[0_6px_16px_rgba(31,111,235,0.08)]'} ${item.viewed ? '' : 'shadow-[inset_3px_0_0_var(--color-primary)]'}`}
+                            className={`mb-2.5 w-full rounded-lg border p-3 text-left transition-colors ${item.read ? 'border-border bg-secondary opacity-80 hover:opacity-100' : 'border-l-4 border-primary bg-muted shadow-sm'} ${item.viewed ? '' : 'shadow-[inset_3px_0_0_var(--color-primary)]'}`}
                             onClick={() => onOpenNotification(item)}
                         >
                             <div className="flex flex-col gap-1">
@@ -826,798 +839,6 @@ function PageHeader({ title, subtitle, action, className = '' }) {
     );
 }
 
-function CommentsPanel({
-    open,
-    entity,
-    project,
-    projectRegion,
-    comments,
-    mine,
-    setMine,
-    body,
-    setBody,
-    onSubmit,
-    onClose,
-    currentUser,
-    apiFetch,
-    onDecisionChange,
-    onDeadlineSave,
-    availableUsers,
-    onAssignmentsChange,
-    onVoteChange,
-    onSmartZiwSearch,
-    shareUrl,
-}) {
-    const listRef = useRef(null);
-    const fileInputRef = useRef(null);
-    const textAreaRef = useRef(null);
-    const [pendingFiles, setPendingFiles] = useState([]);
-    const [uploading, setUploading] = useState(false);
-    const [composerFocused, setComposerFocused] = useState(false);
-    const [searchOpen, setSearchOpen] = useState(false);
-    const [search, setSearch] = useState('');
-    const [deadlineInput, setDeadlineInput] = useState('');
-    const [savingDeadline, setSavingDeadline] = useState(false);
-    const [previewAttachment, setPreviewAttachment] = useState(null);
-    const [selectedMentions, setSelectedMentions] = useState([]);
-    const [mentionState, setMentionState] = useState({ open: false, query: '', start: -1, end: -1, index: 0 });
-    const [savingAssignments, setSavingAssignments] = useState(false);
-    const [runningSmartZiw, setRunningSmartZiw] = useState(false);
-    const [mentionUsers, setMentionUsers] = useState([]);
-    const [shareCopied, setShareCopied] = useState(false);
-
-    useEffect(() => {
-        const onKey = (e) => {
-            if (e.key === 'Escape') onClose();
-        };
-        window.addEventListener('keydown', onKey);
-        return () => window.removeEventListener('keydown', onKey);
-    }, [open, onClose]);
-
-    useEffect(() => {
-        if (listRef.current) {
-            listRef.current.scrollTop = listRef.current.scrollHeight;
-        }
-    }, [comments]);
-
-    useEffect(() => {
-        if (open) {
-            setPendingFiles([]);
-            setComposerFocused(false);
-            setSearch('');
-            setSearchOpen(false);
-            setDeadlineInput(toInputDate(project?.manual_deadline));
-            setPreviewAttachment(null);
-            setSelectedMentions([]);
-            setMentionState({ open: false, query: '', start: -1, end: -1, index: 0 });
-            setRunningSmartZiw(false);
-            setShareCopied(false);
-        }
-    }, [open, entity?.id, project?.manual_deadline]);
-
-    useEffect(() => {
-        if (!open) return;
-        if (Array.isArray(availableUsers) && availableUsers.length) {
-            setMentionUsers(availableUsers);
-            return;
-        }
-        let cancelled = false;
-        apiFetch('/api/users')
-            .then((res) => (res.ok ? res.json() : []))
-            .then((data) => {
-                if (!cancelled) setMentionUsers(Array.isArray(data) ? data : []);
-            })
-            .catch(() => {
-                if (!cancelled) setMentionUsers([]);
-            });
-        return () => {
-            cancelled = true;
-        };
-    }, [open, availableUsers, apiFetch]);
-
-    useEffect(() => {
-        const el = textAreaRef.current;
-        if (!el) return;
-        el.style.height = '42px';
-        const nextHeight = Math.min(Math.max(el.scrollHeight, 42), 132);
-        el.style.height = `${nextHeight}px`;
-        el.style.overflowY = el.scrollHeight > 132 ? 'auto' : 'hidden';
-    }, [body]);
-
-    const normalizedComments = useMemo(
-        () => comments.map(normalizeComment),
-        [comments],
-    );
-
-    const canEditDeadline = currentUser?.role === 'admin' || currentUser?.role === 'manager';
-    const canManageDecision = currentUser?.role === 'manager';
-    const assignedUserIds = project?.assigned_user_ids || [];
-    const assignedUsers = project?.assigned_users || [];
-    const voteSummary = project?.vote_summary || { up: 0, down: 0 };
-    const currentUserVote = project?.current_user_vote || '';
-    const mentionCandidates = useMemo(() => {
-        const query = mentionState.query.trim().toLowerCase();
-        if (!mentionState.open) return [];
-        return (mentionUsers || [])
-            .filter((user) => user.id !== currentUser?.id)
-            .filter((user) => {
-                if (!query) return true;
-                return `${user.name || ''} ${user.email || ''}`.toLowerCase().includes(query);
-            })
-            .slice(0, 6);
-    }, [mentionUsers, currentUser?.id, mentionState]);
-
-    if (!open) return null;
-
-    const keywords = (project?.matched_keywords || '')
-        .split(',')
-        .map((k) => k.trim())
-        .filter(Boolean);
-
-    const currentUserName = currentUser?.name || '';
-    const projectTitle = project?.project_name || project?.project_description || 'No project selected';
-    const projectDescription = project?.project_description && project?.project_description !== projectTitle
-        ? project.project_description
-        : '';
-    const projectDecision = project?.decision || '';
-    const projectVerified = project?.ai_verified === 'Yes';
-    const effectiveDeadline = project?.effective_deadline || project?.manual_deadline || project?.scraped_deadline || project?.project_end_date || '';
-
-    const updateMentionState = (value, caret) => {
-        const nextCaret = typeof caret === 'number' ? caret : value.length;
-        const beforeCaret = value.slice(0, nextCaret);
-        const match = beforeCaret.match(/(^|\s)@([A-Za-z0-9._-]*)$/);
-        if (!match) {
-            setMentionState({ open: false, query: '', start: -1, end: -1, index: 0 });
-            return;
-        }
-        const query = match[2] || '';
-        setMentionState({
-            open: true,
-            query,
-            start: nextCaret - query.length - 1,
-            end: nextCaret,
-            index: 0,
-        });
-    };
-
-    const insertMention = (user) => {
-        const label = user?.name || user?.email || '';
-        if (!label || mentionState.start < 0) return;
-        const start = mentionState.start;
-        const end = mentionState.end < 0 ? body.length : mentionState.end;
-        const nextValue = `${body.slice(0, start)}@${label} ${body.slice(end)}`;
-        setBody(nextValue);
-        setSelectedMentions((prev) => {
-            const next = prev.filter((item) => item.userId !== user.id);
-            next.push({ userId: user.id, name: user.name, email: user.email });
-            return next;
-        });
-        setMentionState({ open: false, query: '', start: -1, end: -1, index: 0 });
-        requestAnimationFrame(() => {
-            if (!textAreaRef.current) return;
-            const cursorPos = start + label.length + 2;
-            textAreaRef.current.focus();
-            textAreaRef.current.setSelectionRange(cursorPos, cursorPos);
-        });
-    };
-
-    const handleKeyDown = (e) => {
-        if (mentionState.open && mentionCandidates.length) {
-            if (e.key === 'ArrowDown') {
-                e.preventDefault();
-                setMentionState((prev) => ({ ...prev, index: (prev.index + 1) % mentionCandidates.length }));
-                return;
-            }
-            if (e.key === 'ArrowUp') {
-                e.preventDefault();
-                setMentionState((prev) => ({ ...prev, index: (prev.index - 1 + mentionCandidates.length) % mentionCandidates.length }));
-                return;
-            }
-            if (e.key === 'Enter' || e.key === 'Tab') {
-                e.preventDefault();
-                insertMention(mentionCandidates[mentionState.index] || mentionCandidates[0]);
-                return;
-            }
-            if (e.key === 'Escape') {
-                e.preventDefault();
-                setMentionState({ open: false, query: '', start: -1, end: -1, index: 0 });
-                return;
-            }
-        }
-        if (e.key === 'Enter' && !e.shiftKey) {
-            e.preventDefault();
-            if ((body.trim() || pendingFiles.length) && entity?.id) handleSubmit();
-        }
-    };
-
-    const handleSubmit = () => {
-        const mentions = selectedMentions.filter((mention) => body.includes(`@${mention.name || mention.email}`));
-        return onSubmit(pendingFiles, mentions, () => {
-            setPendingFiles([]);
-            setSelectedMentions([]);
-            setMentionState({ open: false, query: '', start: -1, end: -1, index: 0 });
-        });
-    };
-
-    const handleDeadlineSave = async () => {
-        if (!canEditDeadline) return;
-        setSavingDeadline(true);
-        try {
-            await onDeadlineSave(deadlineInput || null);
-        } finally {
-            setSavingDeadline(false);
-        }
-    };
-
-    const handleSmartZiwSearch = async () => {
-        if (!project?.db_id || runningSmartZiw) return;
-        setRunningSmartZiw(true);
-        try {
-            await onSmartZiwSearch?.(project.db_id);
-        } catch (error) {
-            window.alert(error?.message || 'Failed to start Smart-Ziw Agent');
-        } finally {
-            setRunningSmartZiw(false);
-        }
-    };
-
-    const handleCopyShareUrl = async () => {
-        if (!shareUrl) return;
-        try {
-            if (navigator.clipboard?.writeText) {
-                await navigator.clipboard.writeText(shareUrl);
-            } else {
-                const tempInput = document.createElement('input');
-                tempInput.value = shareUrl;
-                tempInput.setAttribute('readonly', '');
-                tempInput.style.position = 'fixed';
-                tempInput.style.opacity = '0';
-                document.body.appendChild(tempInput);
-                tempInput.select();
-                document.execCommand('copy');
-                document.body.removeChild(tempInput);
-            }
-            setShareCopied(true);
-            window.setTimeout(() => setShareCopied(false), 1800);
-        } catch {
-            window.prompt('Copy tender link', shareUrl);
-        }
-    };
-
-    const toggleAssignment = async (userId) => {
-        if (!project?.db_id) return;
-        const next = assignedUserIds.includes(userId)
-            ? assignedUserIds.filter((item) => item !== userId)
-            : [...assignedUserIds, userId];
-        setSavingAssignments(true);
-        try {
-            await onAssignmentsChange(project.db_id, next);
-        } finally {
-            setSavingAssignments(false);
-        }
-    };
-
-    const handleFileChange = async (e) => {
-        const files = Array.from(e.target.files || []);
-        if (!files.length || !entity?.id) return;
-        setUploading(true);
-        try {
-            for (const file of files) {
-                let uploadFile = await prepareCommentUploadFile(file);
-
-                const sendUpload = async (currentFile) => {
-                    const fd = new FormData();
-                    fd.append('entityType', entity.type || 'project');
-                    fd.append('entityId', entity.id);
-                    fd.append('file', currentFile);
-                    return apiFetch('/api/comments/upload', {
-                        method: 'POST',
-                        body: fd,
-                    });
-                };
-
-                let res = await sendUpload(uploadFile);
-
-                if (res.status === 413 && isCompressibleImage(file)) {
-                    uploadFile = await prepareCommentUploadFile(file, COMMENT_IMAGE_UPLOAD_RETRY_BYTES);
-                    res = await sendUpload(uploadFile);
-                }
-
-                if (res.ok) {
-                    const att = await res.json();
-                    setPendingFiles((prev) => [...prev, att]);
-                    continue;
-                }
-
-                const err = await res.json().catch(() => ({}));
-                const message = res.status === 413
-                    ? `File is too large. Uploads are limited to ${COMMENT_FILE_UPLOAD_LIMIT_MB} MB.`
-                    : (err.detail || `Upload failed (${res.status})`);
-                window.alert(message);
-            }
-        } finally {
-            setUploading(false);
-            if (fileInputRef.current) fileInputRef.current.value = '';
-        }
-    };
-
-    const removeFile = (fileId) => setPendingFiles((prev) => prev.filter((f) => f.fileId !== fileId));
-
-    const filteredComments = search
-        ? normalizedComments.filter((c) => {
-            const q = search.toLowerCase();
-            if ((c.body || '').toLowerCase().includes(q)) return true;
-            return (c.attachments || []).some((a) => (a.originalName || '').toLowerCase().includes(q));
-        })
-        : normalizedComments;
-
-    return (
-        <>
-        <Sheet open={open} onOpenChange={(next) => { if (!next) onClose(); }}>
-            <SheetContent side="right" showCloseButton={false} className="w-full gap-0 p-0 sm:max-w-[480px]">
-                <SheetHeader className="flex flex-row items-start justify-between gap-4 border-b p-5">
-                    <div className="min-w-0">
-                        <SheetDescription className="text-xs font-medium uppercase tracking-wide">Project inspector</SheetDescription>
-                        <SheetTitle className="mt-1 text-lg leading-snug">{projectTitle}</SheetTitle>
-                    </div>
-                    <div className="flex shrink-0 items-center gap-2">
-                        <ShadcnButton
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            onClick={handleCopyShareUrl}
-                            disabled={!shareUrl}
-                        >
-                            {shareCopied ? 'Copied' : 'Copy link'}
-                        </ShadcnButton>
-                        <SheetClose asChild>
-                            <ShadcnButton variant="ghost" size="icon-sm" aria-label="Close project inspector">
-                                <X />
-                            </ShadcnButton>
-                        </SheetClose>
-                    </div>
-                </SheetHeader>
-
-                <ScrollArea className="min-h-0 flex-1">
-                    <div className="flex flex-col gap-4 p-5">
-                    <section className="flex flex-col gap-4 rounded-lg border bg-card p-4">
-                        <div className="flex flex-wrap items-center gap-2">
-                            <Badge className={projectDecision === 'Go' ? 'bg-green-700 text-white' : projectDecision === 'No Go' ? 'bg-red-700 text-white' : 'bg-muted text-muted-foreground'}>
-                                {projectDecision || 'Pending'}
-                            </Badge>
-                            <Badge className={projectVerified ? 'bg-green-700 text-white' : 'bg-muted text-muted-foreground'}>
-                                {projectVerified ? 'Verified' : 'Not verified'}
-                            </Badge>
-                            {project?.source ? <Badge variant="outline">{project.source}</Badge> : null}
-                        </div>
-
-                        {projectDescription ? (
-                            <div className="flex flex-col gap-2 rounded-lg border bg-muted/50 p-4">
-                                <h3 className="text-sm font-semibold text-foreground">Description</h3>
-                                <p className="whitespace-pre-wrap text-sm leading-6 text-muted-foreground">{projectDescription}</p>
-                            </div>
-                        ) : null}
-
-                        <div className="grid gap-4 sm:grid-cols-2">
-                            <div className="flex flex-col gap-3">
-                                <div>
-                                    <h3 className="text-sm font-semibold text-foreground">Team signal</h3>
-                                    <p className="mt-0.5 text-xs text-muted-foreground">Upvote or downvote the tender without changing the formal decision.</p>
-                                </div>
-                                <div className="flex gap-2">
-                                    <ShadcnButton
-                                        type="button"
-                                        variant="outline"
-                                        size="sm"
-                                        className={`gap-1.5 ${currentUserVote === 'up' ? 'border-green-600 bg-green-50 text-green-700 hover:bg-green-50 hover:text-green-700' : ''}`}
-                                        onClick={(event) => {
-                                            event.preventDefault();
-                                            event.stopPropagation();
-                                            onVoteChange?.(project?.db_id, currentUserVote === 'up' ? '' : 'up');
-                                        }}
-                                    >
-                                        <VoteUpIcon />
-                                        <span>Upvote</span>
-                                        <strong>{voteSummary.up || 0}</strong>
-                                    </ShadcnButton>
-                                    <ShadcnButton
-                                        type="button"
-                                        variant="outline"
-                                        size="sm"
-                                        className={`gap-1.5 ${currentUserVote === 'down' ? 'border-red-600 bg-red-50 text-red-700 hover:bg-red-50 hover:text-red-700' : ''}`}
-                                        onClick={(event) => {
-                                            event.preventDefault();
-                                            event.stopPropagation();
-                                            onVoteChange?.(project?.db_id, currentUserVote === 'down' ? '' : 'down');
-                                        }}
-                                    >
-                                        <VoteDownIcon />
-                                        <span>Downvote</span>
-                                        <strong>{voteSummary.down || 0}</strong>
-                                    </ShadcnButton>
-                                </div>
-                            </div>
-
-                            <div className="flex flex-col gap-3">
-                                <div>
-                                    <h3 className="text-sm font-semibold text-foreground">Working on this tender</h3>
-                                    <p className="mt-0.5 text-xs text-muted-foreground">Assign teammates to coordinate review and follow-up.</p>
-                                </div>
-                                <div className="flex flex-wrap gap-2">
-                                    {(availableUsers || []).map((user) => {
-                                        const assigned = assignedUserIds.includes(user.id);
-                                        return (
-                                            <button
-                                                key={user.id}
-                                                type="button"
-                                                disabled={savingAssignments}
-                                                onClick={() => toggleAssignment(user.id)}
-                                                className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${assigned ? 'border-primary/30 bg-primary/5 text-primary' : 'border-border bg-card text-muted-foreground hover:bg-muted'}`}
-                                            >
-                                                <span className="flex size-5 items-center justify-center rounded-full bg-muted text-[10px] font-semibold text-muted-foreground">{initials(user.name || '', user.email || '')}</span>
-                                                <span>{user.name || user.email}</span>
-                                            </button>
-                                        );
-                                    })}
-                                </div>
-                            </div>
-                        </div>
-
-                        <Separator />
-                        {canManageDecision ? (
-                            <div className="flex flex-col gap-3">
-                                <div>
-                                    <h3 className="text-sm font-semibold text-foreground">Decision</h3>
-                                    <p className="mt-0.5 text-xs text-muted-foreground">Managers can set the formal Go / No Go decision.</p>
-                                </div>
-                                <div className="grid grid-cols-3 gap-2">
-                                    <ShadcnButton
-                                        type="button"
-                                        variant="outline"
-                                        size="sm"
-                                        className={projectDecision === 'Go' ? 'border-green-600 bg-green-50 text-green-700 hover:bg-green-50 hover:text-green-700' : ''}
-                                        onClick={() => onDecisionChange(projectDecision === 'Go' ? '' : 'Go')}
-                                    >
-                                        Go
-                                    </ShadcnButton>
-                                    <ShadcnButton
-                                        type="button"
-                                        variant="outline"
-                                        size="sm"
-                                        className={projectDecision === 'No Go' ? 'border-red-600 bg-red-50 text-red-700 hover:bg-red-50 hover:text-red-700' : ''}
-                                        onClick={() => onDecisionChange(projectDecision === 'No Go' ? '' : 'No Go')}
-                                    >
-                                        No Go
-                                    </ShadcnButton>
-                                    <ShadcnButton
-                                        type="button"
-                                        variant="outline"
-                                        size="sm"
-                                        className={!projectDecision ? 'border-foreground bg-muted/60 text-foreground hover:bg-muted/60 hover:text-foreground' : ''}
-                                        onClick={() => onDecisionChange('')}
-                                    >
-                                        Undecided
-                                    </ShadcnButton>
-                                </div>
-                            </div>
-                        ) : null}
-
-                        <div className="grid grid-cols-2 gap-3">
-                            <div className="flex flex-col gap-1 rounded-lg bg-muted p-3"><span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Project ID</span><strong className="text-sm font-medium text-foreground">{project?.project_id || '-'}</strong></div>
-                            <div className="flex flex-col gap-1 rounded-lg bg-muted p-3"><span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Region</span><strong className="text-sm font-medium text-foreground">{projectRegion || '-'}</strong></div>
-                            <div className="flex flex-col gap-1 rounded-lg bg-muted p-3"><span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Sponsor</span><strong className="text-sm font-medium text-foreground">{project?.project_sponsor || '-'}</strong></div>
-                            <div className="flex flex-col gap-1 rounded-lg bg-muted p-3"><span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Start date</span><strong className="text-sm font-medium text-foreground">{formatDisplayDate(project?.project_start_date)}</strong></div>
-                            <div className="flex flex-col gap-1 rounded-lg bg-muted p-3"><span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Deadline</span><strong className="text-sm font-medium text-foreground">{formatDisplayDate(effectiveDeadline)}</strong></div>
-                            <div className="flex flex-col gap-1 rounded-lg bg-muted p-3"><span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Source</span><strong className="text-sm font-medium text-foreground">{project?.source || '-'}</strong></div>
-                            <div className="flex flex-col gap-1 rounded-lg bg-muted p-3"><span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Deadline source</span><strong className="text-sm font-medium text-foreground">{project?.deadline_source || '-'}</strong></div>
-                            <div className="flex flex-col gap-1 rounded-lg bg-muted p-3"><span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Scraped deadline</span><strong className="text-sm font-medium text-foreground">{formatDisplayDate(project?.scraped_deadline || project?.project_end_date)}</strong></div>
-                            <div className="flex flex-col gap-1 rounded-lg bg-muted p-3"><span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Manual deadline</span><strong className="text-sm font-medium text-foreground">{formatDisplayDate(project?.manual_deadline)}</strong></div>
-                        </div>
-
-                        <div className="flex flex-col gap-2">
-                            <h3 className="text-sm font-semibold text-foreground">Manual deadline</h3>
-                            <p className="text-xs text-muted-foreground">{canEditDeadline ? 'Override the scraped deadline when analyst review requires a correction.' : 'Only admins and managers can edit the deadline.'}</p>
-                            <div className="flex items-end gap-2">
-                                <ShadcnInput
-                                    type="date"
-                                    name="manualDeadline"
-                                    aria-label="Manual deadline"
-                                    value={deadlineInput}
-                                    onChange={(e) => setDeadlineInput(e.target.value)}
-                                    disabled={!canEditDeadline || savingDeadline}
-                                    className="w-auto"
-                                />
-                                <ShadcnButton
-                                    type="button"
-                                    size="sm"
-                                    onClick={handleDeadlineSave}
-                                    disabled={!canEditDeadline || savingDeadline}
-                                >
-                                    {savingDeadline ? 'Saving...' : 'Save deadline'}
-                                </ShadcnButton>
-                            </div>
-                            {project?.deadline_updated_by || project?.deadline_updated_at ? (
-                                <p className="text-xs text-muted-foreground">
-                                    {project?.deadline_updated_by ? `Updated by ${project.deadline_updated_by}` : 'Deadline updated'}
-                                    {project?.deadline_updated_at ? ` on ${formatDisplayDate(project.deadline_updated_at)}` : ''}
-                                </p>
-                            ) : null}
-                        </div>
-
-                        <div className="flex flex-col gap-3">
-                            <h3 className="text-sm font-semibold text-foreground">Links</h3>
-                            <div className="flex flex-col gap-2">
-                                {project?.project_url ? <a href={project.project_url} target="_blank" rel="noreferrer" className="flex min-h-9 items-center rounded-lg bg-muted px-3 text-sm font-medium text-foreground hover:text-primary">Open source listing</a> : <span className="flex min-h-9 items-center rounded-lg bg-muted px-3 text-sm text-muted-foreground">No project link</span>}
-                                {project?.document_url ? <a href={project.document_url} target="_blank" rel="noreferrer" className="flex min-h-9 items-center rounded-lg bg-muted px-3 text-sm font-medium text-foreground hover:text-primary">Open document</a> : <span className="flex min-h-9 items-center rounded-lg bg-muted px-3 text-sm text-muted-foreground">No document link</span>}
-                            </div>
-                            <Card>
-                                <CardHeader className="px-4 pb-2 pt-4">
-                                    <CardTitle className="text-sm font-semibold">Smart-Ziw Agent</CardTitle>
-                                </CardHeader>
-                                <CardContent className="flex flex-col items-start gap-2.5 px-4 pb-4">
-                                    <div className="project-inspector-actions mt-3 flex flex-col items-start gap-2.5">
-                                        <ShadcnButton
-                                            type="button"
-                                            onClick={handleSmartZiwSearch}
-                                            disabled={!project?.db_id || runningSmartZiw || project?.smart_ziw_status === 'queued' || project?.smart_ziw_status === 'running'}
-                                        >
-                                            {runningSmartZiw || project?.smart_ziw_status === 'queued' || project?.smart_ziw_status === 'running' ? 'Generating...' : 'Smart-Ziw Agent'}
-                                        </ShadcnButton>
-                                        {project?.smart_ziw_status ? (
-                                            <span className={`text-xs ${project?.smart_ziw_status === 'error' ? 'text-destructive' : project.smart_ziw_status === 'completed' ? 'text-green-600' : project.smart_ziw_status === 'queued' || project.smart_ziw_status === 'running' ? 'text-blue-600' : 'text-muted-foreground'}`}>
-                                                {project?.smart_ziw_status === 'error' && project?.smart_ziw_error
-                                                    ? `Last run failed: ${project.smart_ziw_error}`
-                                                    : `Smart-Ziw status: ${project.smart_ziw_status}`}
-                                            </span>
-                                        ) : null}
-                                    </div>
-                                </CardContent>
-                            </Card>
-                        </div>
-
-                        {keywords.length > 0 ? (
-                            <div className="flex flex-col gap-2">
-                                <h3 className="text-sm font-semibold text-foreground">Signals</h3>
-                                <div className="flex flex-wrap gap-1.5">
-                                    {keywords.map((kw) => (
-                                        <Badge key={kw} variant="secondary" className="font-medium">{kw}</Badge>
-                                    ))}
-                                </div>
-                            </div>
-                        ) : null}
-                    </section>
-
-                    <section className="flex flex-col gap-3">
-                        <Separator />
-                        <div className="flex items-center justify-between gap-2">
-                            <div className="flex items-baseline gap-2">
-                                <h3 className="text-sm font-semibold text-foreground">Discussion</h3>
-                                <span className="text-xs text-muted-foreground">{comments.length} notes</span>
-                            </div>
-                            <ShadcnButton
-                                type="button"
-                                variant="ghost"
-                                size="icon-sm"
-                                className={searchOpen ? 'bg-muted text-foreground' : 'text-muted-foreground'}
-                                aria-label={searchOpen ? 'Hide message search' : 'Search messages'}
-                                onClick={() => {
-                                    if (searchOpen && !search) {
-                                        setSearchOpen(false);
-                                        return;
-                                    }
-                                    setSearchOpen((prev) => !prev);
-                                }}
-                            >
-                                <Search />
-                            </ShadcnButton>
-                        </div>
-                        {searchOpen ? (
-                            <div className="relative">
-                                <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-                                <ShadcnInput
-                                    type="text"
-                                    name="discussionSearch"
-                                    aria-label="Search discussion messages"
-                                    placeholder="Search messages..."
-                                    value={search}
-                                    onChange={(e) => setSearch(e.target.value)}
-                                    className="h-9 pl-8"
-                                />
-                            </div>
-                        ) : null}
-
-                        <div className="flex flex-col gap-3 rounded-lg bg-muted/50 p-3" ref={listRef}>
-                            {!entity?.id ? <p className="text-sm text-muted-foreground">No entity selected.</p> : null}
-                            {entity?.id && filteredComments.length === 0 ? <p className="py-8 text-center text-sm text-muted-foreground">{search ? 'No messages match your search.' : 'No discussion yet. Add the first analyst note.'}</p> : null}
-                            {filteredComments.map((c) => {
-                                const isMe = c.authorName === currentUserName;
-                                const ts = new Date(c.createdAt);
-                                const timeStr = ts.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                                const dateStr = ts.toLocaleDateString([], { month: 'short', day: 'numeric' });
-                                return (
-                                    <div key={c.id} className={`flex max-w-[85%] gap-2 ${isMe ? 'self-end flex-row-reverse' : 'self-start'}`}>
-                                        {!isMe ? (
-                                            <ShadcnAvatar className="mt-0.5 size-7 shrink-0" style={{ background: colorFromSeed(c.authorName || '') }}>
-                                                <AvatarFallback className="bg-transparent text-[10px] font-bold uppercase tracking-wide text-white">
-                                                    {initials(c.authorName || '', '')}
-                                                </AvatarFallback>
-                                            </ShadcnAvatar>
-                                        ) : null}
-                                        <div className="flex min-w-0 flex-col gap-0.5">
-                                            {!isMe ? <span className="px-1 text-[11px] font-semibold text-muted-foreground">{c.authorName}</span> : null}
-                                            <div className={`break-words rounded-2xl px-3 py-2 text-sm leading-relaxed ${isMe ? 'rounded-tr-sm bg-primary text-primary-foreground' : 'rounded-tl-sm bg-muted text-foreground'}`}>
-                                                {c.body ? <p className="m-0">{c.body}</p> : null}
-                                                {(c.attachments || []).map((att) => (
-                                                    isImageAttachment(att) ? (
-                                                        <button
-                                                            key={att.fileId}
-                                                            type="button"
-                                                            className="mt-1.5 block w-full overflow-hidden rounded-lg border border-black/10"
-                                                            onClick={() => setPreviewAttachment({ ...att, kind: 'image' })}
-                                                        >
-                                                            <img
-                                                                className="max-h-64 w-full object-cover"
-                                                                src={att.url}
-                                                                alt={att.originalName || 'attachment'}
-                                                                loading="lazy"
-                                                            />
-                                                        </button>
-                                                    ) : isPdfAttachment(att) ? (
-                                                        <button
-                                                            key={att.fileId}
-                                                            type="button"
-                                                            className="mt-1.5 flex w-full items-center gap-2 rounded-lg border border-black/10 bg-card px-3 py-2 text-left"
-                                                            onClick={() => setPreviewAttachment({ ...att, kind: 'pdf' })}
-                                                        >
-                                                            <Badge className="bg-red-600 text-white">PDF</Badge>
-                                                            <span className="min-w-0 truncate text-sm font-medium text-foreground">{att.originalName}</span>
-                                                        </button>
-                                                    ) : (
-                                                        <a
-                                                            key={att.fileId}
-                                                            className="mt-1.5 flex w-full items-center gap-2 rounded-lg border border-black/10 bg-card px-3 py-2 text-sm font-medium text-foreground hover:bg-muted"
-                                                            href={att.url}
-                                                            target="_blank"
-                                                            rel="noreferrer"
-                                                            download={att.originalName}
-                                                        >
-                                                            {att.originalName}
-                                                        </a>
-                                                    )
-                                                ))}
-                                            </div>
-                                            <span className={`px-1 text-[10px] text-muted-foreground/70 ${isMe ? 'self-end' : ''}`}>{dateStr}{" "}{timeStr}</span>
-                                        </div>
-                                    </div>
-                                );
-                            })}
-                        </div>
-
-                        {pendingFiles.length > 0 ? (
-                            <div className="flex flex-wrap gap-2 border-t pt-3">
-                                {pendingFiles.map((f) => (
-                                    <Badge key={f.fileId} variant="secondary" className="gap-1.5 pr-1 font-normal">
-                                        {f.originalName}
-                                        <button type="button" className="inline-flex size-4 items-center justify-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground" onClick={() => removeFile(f.fileId)} title="Remove">x</button>
-                                    </Badge>
-                                ))}
-                            </div>
-                        ) : null}
-
-                        <div className="relative flex items-end gap-2 border-t pt-3">
-                            <input ref={fileInputRef} type="file" name="discussionAttachments" multiple style={{ display: 'none' }} onChange={handleFileChange} />
-                            <ShadcnButton
-                                type="button"
-                                variant="outline"
-                                size="icon"
-                                className="shrink-0"
-                                onClick={() => fileInputRef.current?.click()}
-                                disabled={uploading}
-                                title="Attach file"
-                                aria-label="Attach file"
-                            >
-                                <Paperclip />
-                            </ShadcnButton>
-                            <Textarea
-                                ref={textAreaRef}
-                                className="min-h-0 flex-1 resize-none px-3.5 py-2.5"
-                                style={{ fieldSizing: 'fixed' }}
-                                name="discussionMessage"
-                                aria-label="Discussion message"
-                                value={body}
-                                onChange={(e) => {
-                                    setBody(e.target.value);
-                                    updateMentionState(e.target.value, e.target.selectionStart);
-                                }}
-                                onKeyDown={handleKeyDown}
-                                onFocus={() => setComposerFocused(true)}
-                                onBlur={() => setComposerFocused(Boolean(body.trim()))}
-                                placeholder="Type a message... Use @ to mention someone"
-                                rows={1}
-                            />
-                            {mentionState.open && mentionCandidates.length ? (
-                                <div className="absolute bottom-full left-0 right-0 z-10 mb-2 flex flex-col gap-1 rounded-lg border bg-popover p-1 shadow-lg">
-                                    {mentionCandidates.map((user, index) => (
-                                        <button
-                                            key={user.id}
-                                            type="button"
-                                            className={`flex items-center justify-between gap-3 rounded-md px-2.5 py-2 text-left ${index === mentionState.index ? 'bg-muted' : 'bg-transparent hover:bg-muted'}`}
-                                            onMouseDown={(event) => {
-                                                event.preventDefault();
-                                                insertMention(user);
-                                            }}
-                                        >
-                                            <span className="text-sm font-semibold text-foreground">{user.name || user.email}</span>
-                                            <span className="text-xs text-muted-foreground">{user.email}</span>
-                                        </button>
-                                    ))}
-                                </div>
-                            ) : null}
-                            <ShadcnButton
-                                type="button"
-                                size="icon"
-                                className="size-9 shrink-0 rounded-full"
-                                onClick={handleSubmit}
-                                disabled={(!body.trim() && !pendingFiles.length) || !entity?.id || uploading}
-                                title="Send"
-                                aria-label="Send message"
-                            >
-                                <Send />
-                            </ShadcnButton>
-                        </div>
-                    </section>
-                    </div>
-                </ScrollArea>
-            </SheetContent>
-        </Sheet>
-        {previewAttachment ? (
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={() => setPreviewAttachment(null)}>
-                <div className={`flex w-full flex-col overflow-hidden rounded-xl bg-card shadow-xl ${previewAttachment.kind === 'pdf' ? 'h-full max-w-4xl' : 'max-w-2xl'}`} onClick={(e) => e.stopPropagation()}>
-                    <div className="flex items-center justify-between gap-2 border-b px-4 py-2.5">
-                        <span className="min-w-0 truncate text-sm font-medium text-foreground">{previewAttachment.originalName || 'Attachment'}</span>
-                        <div className="flex shrink-0 items-center gap-1">
-                            <a
-                                className="inline-flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
-                                href={previewAttachment.url}
-                                download={previewAttachment.originalName || 'attachment'}
-                                aria-label="Download attachment"
-                                title="Download"
-                            >
-                                ↓
-                            </a>
-                            <button
-                                type="button"
-                                className="inline-flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
-                                onClick={() => setPreviewAttachment(null)}
-                                aria-label="Close attachment preview"
-                                title="Close"
-                            >
-                                ×
-                            </button>
-                        </div>
-                    </div>
-                    <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto bg-muted p-4">
-                        {previewAttachment.kind === 'pdf' ? (
-                            <iframe
-                                className="h-full min-h-0 w-full rounded-lg border bg-white"
-                                src={previewAttachment.url}
-                                title={previewAttachment.originalName || 'PDF preview'}
-                            />
-                        ) : (
-                            <img
-                                className="max-h-full max-w-full object-contain"
-                                src={previewAttachment.url}
-                                alt={previewAttachment.originalName || 'attachment'}
-                            />
-                        )}
-                    </div>
-                </div>
-            </div>
-        ) : null}
-        </>
-    );
-}
 
 function ProfilePage({ user, apiFetch, onUserUpdate }) {
     const parts = (user?.name || '').split(/\s+/).filter(Boolean);
@@ -1687,19 +908,19 @@ function ProfilePage({ user, apiFetch, onUserUpdate }) {
                             <div className="flex min-w-0 flex-col items-start gap-1.5">
                                 <h2 className="text-2xl leading-tight font-bold tracking-tight text-foreground">{name}</h2>
                                 <div className="flex flex-wrap items-center gap-2.5">
-                                    <span className={`inline-flex min-h-7 items-center gap-1 rounded-full px-2.5 text-xs font-bold ${user?.role === 'admin' ? 'border border-blue-100 bg-blue-50 text-blue-700' : user?.role === 'manager' ? 'border border-blue-200 bg-blue-100/70 text-blue-700' : 'border border-slate-200 bg-slate-100 text-slate-600'}`}>
+                                    <span className={`inline-flex min-h-7 items-center gap-1 rounded-full px-2.5 text-xs font-bold ${user?.role === 'admin' ? 'border border-primary/20 bg-primary/10 text-primary' : user?.role === 'manager' ? 'border border-primary/20 bg-primary/10 text-primary' : 'border border-border bg-secondary text-secondary-foreground'}`}>
                                         {user?.role === 'admin' ? 'Admin' : user?.role === 'manager' ? 'Manager' : 'User'}
                                     </span>
-                                    <span className={`inline-flex items-center gap-1.5 text-[13px] font-semibold ${user?.isActive !== false ? 'text-green-700' : 'text-muted-foreground'}`}>
+                                    <span className={`inline-flex items-center gap-1.5 text-[13px] font-semibold ${user?.isActive !== false ? 'text-green-600' : 'text-muted-foreground'}`}>
                                         <span className="size-2 rounded-full bg-current opacity-90" />
                                         {user?.isActive !== false ? 'Active' : 'Inactive'}
                                     </span>
                                 </div>
-                                <p className="max-w-full break-words text-sm text-slate-600">{email || 'No email address'}</p>
+                                <p className="max-w-full break-words text-sm text-muted-foreground">{email || 'No email address'}</p>
                             </div>
                         </div>
 
-                        <dl className="m-0 grid grid-cols-3 gap-4 border-t border-slate-200 pt-5 max-sm:grid-cols-1">
+                        <dl className="m-0 grid grid-cols-3 gap-4 border-t border-border pt-5 max-sm:grid-cols-1">
                             <div className="flex min-w-0 flex-col gap-1">
                                 <dt className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">Joined</dt>
                                 <dd className="m-0 text-sm font-bold text-foreground">{formatDate(user?.createdAt)}</dd>
@@ -1714,7 +935,7 @@ function ProfilePage({ user, apiFetch, onUserUpdate }) {
                             </div>
                         </dl>
 
-                        <div className="flex items-start justify-between gap-4 border-b border-slate-200 pb-4">
+                        <div className="flex items-start justify-between gap-4 border-b border-border pb-4">
                             <div>
                                 <h3 className="text-lg font-bold">Personal information</h3>
                                 <p className="mt-1.5 text-sm text-muted-foreground">Update your account details.</p>
@@ -1729,20 +950,20 @@ function ProfilePage({ user, apiFetch, onUserUpdate }) {
                         >
                             <div className="grid grid-cols-2 gap-4 max-sm:grid-cols-1">
                                 <div className="flex flex-col gap-1.5">
-                                    <label className="text-[13px] font-semibold text-slate-600" htmlFor="prof-firstname">First name</label>
+                                    <label className="text-[13px] font-semibold text-muted-foreground" htmlFor="prof-firstname">First name</label>
                                     <ShadcnInput id="prof-firstname" name="firstName" className="h-10" placeholder="First name" value={firstName} onChange={(e) => setFirstName(e.target.value)} />
                                 </div>
                                 <div className="flex flex-col gap-1.5">
-                                    <label className="text-[13px] font-semibold text-slate-600" htmlFor="prof-lastname">Last name</label>
+                                    <label className="text-[13px] font-semibold text-muted-foreground" htmlFor="prof-lastname">Last name</label>
                                     <ShadcnInput id="prof-lastname" name="lastName" className="h-10" placeholder="Last name" value={lastName} onChange={(e) => setLastName(e.target.value)} />
                                 </div>
                                 <div className="col-span-2 flex flex-col gap-1.5 max-sm:col-span-1">
-                                    <label className="text-[13px] font-semibold text-slate-600" htmlFor="prof-email">Email</label>
+                                    <label className="text-[13px] font-semibold text-muted-foreground" htmlFor="prof-email">Email</label>
                                     <ShadcnInput id="prof-email" name="email" className="h-10" type="email" placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} />
                                 </div>
                             </div>
 
-                            <div className="flex items-center justify-end gap-3 border-t border-slate-200 pt-4">
+                            <div className="flex items-center justify-end gap-3 border-t border-border pt-4">
                                 <ShadcnButton type="submit" disabled={savingProfile}>{savingProfile ? 'Saving...' : 'Save changes'}</ShadcnButton>
                             </div>
                         </form>
@@ -1751,7 +972,7 @@ function ProfilePage({ user, apiFetch, onUserUpdate }) {
 
                 <Card>
                     <CardContent className="flex flex-col gap-6 p-6">
-                        <div className="flex items-start justify-between gap-4 border-b border-slate-200 pb-4">
+                        <div className="flex items-start justify-between gap-4 border-b border-border pb-4">
                             <div>
                                 <h3 className="text-lg font-bold">Preferences</h3>
                                 <p className="mt-1.5 text-sm text-muted-foreground">Choose how your public profile appears to others.</p>
@@ -1766,13 +987,13 @@ function ProfilePage({ user, apiFetch, onUserUpdate }) {
                         >
                             <div className="grid grid-cols-2 gap-4 max-sm:grid-cols-1">
                                 <div className="col-span-2 flex flex-col gap-1.5 max-sm:col-span-1">
-                                    <label className="text-[13px] font-semibold text-slate-600" htmlFor="prof-avatar">Profile photo URL</label>
+                                    <label className="text-[13px] font-semibold text-muted-foreground" htmlFor="prof-avatar">Profile photo URL</label>
                                     <ShadcnInput id="prof-avatar" name="avatarUrl" className="h-10" placeholder="https://..." value={avatarUrl} onChange={(e) => setAvatarUrl(e.target.value)} />
                                     <span className="text-[13px] text-muted-foreground">Use a direct image link to update the profile photo preview.</span>
                                 </div>
                             </div>
 
-                            <div className="flex items-center justify-between gap-3 border-t border-slate-200 pt-4">
+                            <div className="flex items-center justify-between gap-3 border-t border-border pt-4">
                                 <ShadcnButton type="button" variant="outline" onClick={() => setAvatarUrl('')}>Remove avatar</ShadcnButton>
                                 <ShadcnButton type="submit" disabled={savingProfile}>{savingProfile ? 'Saving...' : 'Save changes'}</ShadcnButton>
                             </div>
@@ -1782,7 +1003,7 @@ function ProfilePage({ user, apiFetch, onUserUpdate }) {
 
                 <Card>
                     <CardContent className="flex flex-col gap-6 p-6">
-                        <div className="flex items-start justify-between gap-4 border-b border-slate-200 pb-4">
+                        <div className="flex items-start justify-between gap-4 border-b border-border pb-4">
                             <div>
                                 <h3 className="text-lg font-bold">Security</h3>
                                 <p className="mt-1.5 text-sm text-muted-foreground">Change your password and keep your account secure.</p>
@@ -1798,24 +1019,24 @@ function ProfilePage({ user, apiFetch, onUserUpdate }) {
                         >
                             <div className="flex flex-col gap-4">
                                 <div className="flex flex-col gap-1.5">
-                                    <label className="text-[13px] font-semibold text-slate-600" htmlFor="prof-curpwd">Current password</label>
+                                    <label className="text-[13px] font-semibold text-muted-foreground" htmlFor="prof-curpwd">Current password</label>
                                     <ShadcnInput id="prof-curpwd" name="currentPassword" className="h-10" type="password" placeholder="Current password" autoComplete="current-password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} />
                                 </div>
                                 <div className="grid grid-cols-2 gap-4 max-sm:grid-cols-1">
                                     <div className="flex flex-col gap-1.5">
-                                        <label className="text-[13px] font-semibold text-slate-600" htmlFor="prof-newpwd">New password</label>
+                                        <label className="text-[13px] font-semibold text-muted-foreground" htmlFor="prof-newpwd">New password</label>
                                         <ShadcnInput id="prof-newpwd" name="newPassword" className="h-10" type="password" placeholder="New password" autoComplete="new-password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} />
                                         <span className="text-[13px] text-muted-foreground">Minimum 8 characters.</span>
                                     </div>
                                     <div className="flex flex-col gap-1.5">
-                                        <label className="text-[13px] font-semibold text-slate-600" htmlFor="prof-confirmpwd">Confirm new password</label>
+                                        <label className="text-[13px] font-semibold text-muted-foreground" htmlFor="prof-confirmpwd">Confirm new password</label>
                                         <ShadcnInput id="prof-confirmpwd" name="confirmPassword" className="h-10" type="password" placeholder="Confirm new password" autoComplete="new-password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} />
-                                        {passwordMismatch ? <span className="text-[13px] text-red-600">Passwords do not match.</span> : <span className="text-[13px] text-muted-foreground">Re-enter the new password to confirm it.</span>}
+                                        {passwordMismatch ? <span className="text-[13px] text-destructive">Passwords do not match.</span> : <span className="text-[13px] text-muted-foreground">Re-enter the new password to confirm it.</span>}
                                     </div>
                                 </div>
                             </div>
 
-                            <div className="flex items-center justify-end gap-3 border-t border-slate-200 pt-4">
+                            <div className="flex items-center justify-end gap-3 border-t border-border pt-4">
                                 <ShadcnButton
                                     type="submit"
                                     disabled={savingPassword || !currentPassword || !newPassword || passwordMismatch}
@@ -1828,7 +1049,7 @@ function ProfilePage({ user, apiFetch, onUserUpdate }) {
                 </Card>
             </div>
 
-            {msg ? <p className="m-0 rounded-xl border border-green-200 bg-green-50 p-3 text-sm font-bold text-green-700">{msg}</p> : null}
+            {msg ? <p className="m-0 rounded-xl border border-green-600/20 bg-green-600/10 p-3 text-sm font-bold text-green-600">{msg}</p> : null}
         </div>
     );
 }
@@ -1992,7 +1213,7 @@ function ResetPasswordModal({ open, user, onClose, onReset, saving, result }) {
     );
 }
 
-function AdminPage({ apiFetch, initialTab = 'users' }) {
+function AdminPage({ apiFetch, authUser, initialTab = 'users' }) {
     const [adminTab, setAdminTab] = useState(initialTab);
     const [users, setUsers] = useState([]);
     const [q, setQ] = useState('');
@@ -2006,6 +1227,10 @@ function AdminPage({ apiFetch, initialTab = 'users' }) {
     const [togglingUserId, setTogglingUserId] = useState('');
     const [resetModal, setResetModal] = useState({ open: false, user: null });
     const [resetResult, setResetResult] = useState('');
+    const [createResult, setCreateResult] = useState('');
+    const [deleteModal, setDeleteModal] = useState({ open: false, user: null });
+    const [deletingUserId, setDeletingUserId] = useState('');
+    const [toggleModal, setToggleModal] = useState({ open: false, user: null });
     const [sortCol, setSortCol] = useState(null);
     const [sortDir, setSortDir] = useState('asc');
     const [page, setPage] = useState(0);
@@ -2018,32 +1243,58 @@ function AdminPage({ apiFetch, initialTab = 'users' }) {
         smart_ziw_enabled: true,
         smart_ziw_repo_path: '/home/kali/Smart-Ziw',
         gitlab_push_enabled: false,
-        gitlab_url: '',
+        gitlab_base_url: 'http://localhost:8080',
+        gitlab_project_path: 'root/Smart-Ziw',
         gitlab_token: '',
-        gitlab_project_path: '',
         gitlab_branch: 'main',
         gitlab_author_name: 'Smart-Ziw Agent',
         gitlab_author_email: 'smart-ziw@localhost',
-        firecrawl_api_key: '',
-        firecrawl_base_url: 'https://api.firecrawl.dev',
         smart_ziw_research_enabled: true,
         smart_ziw_research_timeout_seconds: 900,
         smart_ziw_llm_provider: 'auto',
         lightllm_base_url: '',
         lightllm_api_key: '',
+        lightllm_subscription_key: '',
         lightllm_model: 'default',
         lightllm_provider: 'openai_compatible',
         llm_temperature: 0.1,
         llm_max_tokens: 4000,
+        tempmail_enabled: false,
+        ai_verification_system_prompt: '',
+        ai_verification_expertise: '',
+        ai_verification_unwanted: '',
     });
     const [savingSmartZiwConfig, setSavingSmartZiwConfig] = useState(false);
+    const [savingSystemPrompts, setSavingSystemPrompts] = useState(false);
+    const [skills, setSkills] = useState([]);
+    const [skillsLoading, setSkillsLoading] = useState(false);
+    const [skillUrl, setSkillUrl] = useState('');
+    const [fetchingSkill, setFetchingSkill] = useState(false);
+    const [mcpServers, setMcpServers] = useState([]);
+    const [mcpServersLoading, setMcpServersLoading] = useState(false);
+    const [editingMcpId, setEditingMcpId] = useState('');
+    const [mcpForm, setMcpForm] = useState({
+        id: '',
+        name: '',
+        transport: 'stdio',
+        command: '',
+        argsText: '',
+        url: '',
+        envText: '',
+        enabled: true,
+        timeout: 30,
+        tools: [],
+    });
+    const [mcpSaving, setMcpSaving] = useState(false);
+    const [mcpTesting, setMcpTesting] = useState(false);
+    const [mcpTestResult, setMcpTestResult] = useState(null);
     const [testingLlm, setTestingLlm] = useState(false);
-    const llmSource = smartZiwConfig.smart_ziw_llm_provider === 'lightllm' ? 'lightllm'
-        : smartZiwConfig.smart_ziw_llm_provider === 'deepseek' ? 'environment'
-        : (smartZiwConfig.lightllm_base_url.trim() ? 'lightllm' : 'environment');
+    const llmEnvProvider = smartZiwConfig.smart_ziw_llm_provider === 'deepseek';
     const llmDiscoverySeq = useRef(0);
     const [llmModels, setLlmModels] = useState({ status: 'idle', models: [], detail: null });
     const [llmModelsLoading, setLlmModelsLoading] = useState(false);
+    const [llmProviders, setLlmProviders] = useState([]);
+    const [llmProvidersLoading, setLlmProvidersLoading] = useState(false);
     const [llmEnvStatus, setLlmEnvStatus] = useState({ model: '', api_key_set: false });
     const handleSearchChange = useCallback((nextValue) => {
         if (typeof nextValue === 'string') {
@@ -2080,7 +1331,35 @@ function AdminPage({ apiFetch, initialTab = 'users' }) {
         }
     }, [apiFetch]);
 
-    const discoverLlmModels = useCallback(async (provider, baseUrl, apiKey) => {
+    const loadSkills = useCallback(async () => {
+        setSkillsLoading(true);
+        try {
+            const res = await apiFetch('/api/admin/smart-ziw-skills');
+            if (!res.ok) throw new Error('Failed to load skills');
+            const data = await res.json();
+            setSkills(Array.isArray(data) ? data : []);
+        } catch (error) {
+            toast.error(`Failed to load skills: ${error?.message || 'unknown error'}`);
+        } finally {
+            setSkillsLoading(false);
+        }
+    }, [apiFetch]);
+
+    const loadMcpServers = useCallback(async () => {
+        setMcpServersLoading(true);
+        try {
+            const res = await apiFetch('/api/admin/smart-ziw-mcp-servers');
+            if (!res.ok) throw new Error('Failed to load MCP servers');
+            const data = await res.json();
+            setMcpServers(Array.isArray(data) ? data : []);
+        } catch (error) {
+            toast.error(`Failed to load MCP servers: ${error?.message || 'unknown error'}`);
+        } finally {
+            setMcpServersLoading(false);
+        }
+    }, [apiFetch]);
+
+    const discoverLlmModels = useCallback(async (presetId, baseUrl, apiKey, subscriptionKey) => {
         const seq = ++llmDiscoverySeq.current;
         setLlmModelsLoading(true);
         setLlmModels({ status: 'loading', models: [], detail: null });
@@ -2088,7 +1367,7 @@ function AdminPage({ apiFetch, initialTab = 'users' }) {
             const res = await apiFetch('/api/admin/llm-models', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ provider, base_url: baseUrl, api_key: apiKey || '' }),
+                body: JSON.stringify({ preset_id: presetId, base_url: baseUrl || '', api_key: apiKey || '', subscription_key: subscriptionKey || '' }),
             });
             const data = res.ok ? await res.json() : { status: 'error', models: [], detail: null };
             if (seq === llmDiscoverySeq.current) {
@@ -2105,14 +1384,32 @@ function AdminPage({ apiFetch, initialTab = 'users' }) {
 
     useEffect(() => {
         if (adminTab !== 'llm') return;
-        if (llmSource !== 'lightllm' || (smartZiwConfig.lightllm_provider !== 'openai_compatible' && smartZiwConfig.lightllm_provider !== 'anthropic_compatible') || !smartZiwConfig.lightllm_base_url.trim()) {
+        const preset = llmProviders.find((p) => p.id === smartZiwConfig.smart_ziw_llm_provider);
+        if (llmEnvProvider || !preset || preset.format !== 'openai' || !preset.base_url) {
             setLlmModels({ status: 'idle', models: [], detail: null });
             setLlmModelsLoading(false);
             return;
         }
-        discoverLlmModels(smartZiwConfig.lightllm_provider, smartZiwConfig.lightllm_base_url, smartZiwConfig.lightllm_api_key);
+        const effectiveUrl = smartZiwConfig.lightllm_base_url.trim() || preset.base_url;
+        discoverLlmModels(preset.id, effectiveUrl, smartZiwConfig.lightllm_api_key, smartZiwConfig.lightllm_subscription_key);
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [adminTab, llmSource, smartZiwConfig.lightllm_provider]);
+    }, [adminTab, smartZiwConfig.smart_ziw_llm_provider, llmProviders]);
+
+    useEffect(() => {
+        if (adminTab !== 'llm') return;
+        let cancelled = false;
+        setLlmProvidersLoading(true);
+        apiFetch('/api/admin/llm-providers')
+            .then((res) => (res.ok ? res.json() : []))
+            .then((data) => {
+                if (!cancelled) setLlmProviders(Array.isArray(data) ? data : []);
+            })
+            .catch(() => {})
+            .finally(() => {
+                if (!cancelled) setLlmProvidersLoading(false);
+            });
+        return () => { cancelled = true; };
+    }, [adminTab, apiFetch]);
 
     useEffect(() => {
         if (adminTab !== 'llm') return;
@@ -2136,9 +1433,19 @@ function AdminPage({ apiFetch, initialTab = 'users' }) {
     }, [adminTab, loadReleaseNotes]);
 
     useEffect(() => {
-        if (adminTab !== 'smart-ziw' && adminTab !== 'llm') return;
+        if (adminTab !== 'smart-ziw' && adminTab !== 'llm' && adminTab !== 'system-prompts') return;
         loadSmartZiwConfig();
     }, [adminTab, loadSmartZiwConfig]);
+
+    useEffect(() => {
+        if (adminTab !== 'skills') return;
+        loadSkills();
+    }, [adminTab, loadSkills]);
+
+    useEffect(() => {
+        if (adminTab !== 'mcp-servers') return;
+        loadMcpServers();
+    }, [adminTab, loadMcpServers]);
 
     const saveSmartZiwConfig = async () => {
         setSavingSmartZiwConfig(true);
@@ -2150,12 +1457,31 @@ function AdminPage({ apiFetch, initialTab = 'users' }) {
             });
             if (!res.ok) throw new Error('Failed to save');
             const data = await res.json();
-            setSmartZiwConfig((prev) => ({ ...prev, ...data, gitlab_token: prev.gitlab_token, firecrawl_api_key: prev.firecrawl_api_key, lightllm_api_key: '' }));
+            setSmartZiwConfig((prev) => ({ ...prev, ...data, gitlab_token: prev.gitlab_token, lightllm_api_key: '', forvis_mazars_presence_countries: data.forvis_mazars_presence_countries || prev.forvis_mazars_presence_countries }));
             setMessage('Smart-Ziw config saved.');
         } catch (error) {
             setMessage(`Failed to save Smart-Ziw config: ${error?.message || 'unknown error'}`);
         } finally {
             setSavingSmartZiwConfig(false);
+        }
+    };
+
+    const saveSystemPrompts = async () => {
+        setSavingSystemPrompts(true);
+        try {
+            const res = await apiFetch('/api/admin/smart-ziw-config', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(smartZiwConfig),
+            });
+            if (!res.ok) throw new Error('Failed to save');
+            const data = await res.json();
+            setSmartZiwConfig((prev) => ({ ...prev, ...data, gitlab_token: prev.gitlab_token, lightllm_api_key: '', forvis_mazars_presence_countries: data.forvis_mazars_presence_countries || prev.forvis_mazars_presence_countries }));
+            toast.success('System prompts saved.');
+        } catch (error) {
+            toast.error(`Failed to save system prompts: ${error?.message || 'unknown error'}`);
+        } finally {
+            setSavingSystemPrompts(false);
         }
     };
 
@@ -2198,6 +1524,234 @@ function AdminPage({ apiFetch, initialTab = 'users' }) {
         }
     };
 
+    const toggleSkill = async (id, enabled) => {
+        const nextSkills = skills.map((skill) => (skill.id === id ? { ...skill, enabled } : skill));
+        try {
+            const res = await apiFetch('/api/admin/smart-ziw-skills', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ skills: nextSkills.map((skill) => ({ id: skill.id, enabled: skill.enabled })) }),
+            });
+            if (!res.ok) throw new Error('Failed to update skill');
+            await loadSkills();
+            toast.success(enabled ? 'Skill enabled' : 'Skill disabled');
+        } catch (error) {
+            toast.error(`Failed to update skill: ${error?.message || 'unknown error'}`);
+            await loadSkills();
+        }
+    };
+
+    const deleteSkill = async (id) => {
+        try {
+            const res = await apiFetch(`/api/admin/smart-ziw-skills/${encodeURIComponent(id)}`, {
+                method: 'DELETE',
+            });
+            if (!res.ok) throw new Error('Failed to delete skill');
+            await loadSkills();
+            toast.success('Skill deleted');
+        } catch (error) {
+            toast.error(`Failed to delete skill: ${error?.message || 'unknown error'}`);
+        }
+    };
+
+    const fetchSkill = async () => {
+        if (!skillUrl.trim()) return;
+        setFetchingSkill(true);
+        try {
+            const res = await apiFetch('/api/admin/smart-ziw-skills/fetch', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ url: skillUrl.trim() }),
+            });
+            if (!res.ok) {
+                const data = await res.json().catch(() => ({}));
+                throw new Error(data.detail || `Fetch failed (HTTP ${res.status})`);
+            }
+            await loadSkills();
+            setSkillUrl('');
+            toast.success('Skill fetched and added');
+        } catch (error) {
+            toast.error(`Failed to fetch skill: ${error?.message || 'unknown error'}`);
+        } finally {
+            setFetchingSkill(false);
+        }
+    };
+
+    const buildMcpPayload = () => {
+        const args = mcpForm.argsText
+            .split(/\r?\n/)
+            .map((line) => line.trim())
+            .filter(Boolean);
+        const env = {};
+        mcpForm.envText
+            .split(/\r?\n/)
+            .map((line) => line.trim())
+            .filter(Boolean)
+            .forEach((line) => {
+                const idx = line.indexOf('=');
+                if (idx <= 0) return;
+                env[line.slice(0, idx).trim()] = line.slice(idx + 1).trim();
+            });
+        return {
+            id: mcpForm.id || '',
+            name: mcpForm.name.trim(),
+            transport: mcpForm.transport,
+            command: mcpForm.command.trim(),
+            args,
+            url: mcpForm.url.trim(),
+            env,
+            enabled: mcpForm.enabled,
+            timeout: Number.isFinite(Number(mcpForm.timeout)) && Number(mcpForm.timeout) >= 1 ? Number(mcpForm.timeout) : 30,
+            tools: mcpForm.tools || [],
+        };
+    };
+
+    const resetMcpForm = () => {
+        setEditingMcpId('');
+        setMcpTestResult(null);
+        setMcpForm({
+            id: '',
+            name: '',
+            transport: 'stdio',
+            command: '',
+            argsText: '',
+            url: '',
+            envText: '',
+            enabled: true,
+            timeout: 30,
+            tools: [],
+        });
+    };
+
+    const startEditMcpServer = (server) => {
+        setEditingMcpId(server.id || '');
+        setMcpTestResult(null);
+        setMcpForm({
+            id: server.id || '',
+            name: server.name || '',
+            transport: server.transport || 'stdio',
+            command: server.command || '',
+            argsText: (server.args || []).join('\n'),
+            url: server.url || '',
+            envText: Object.entries(server.env || {}).map(([key, value]) => `${key}=${value}`).join('\n'),
+            enabled: server.enabled !== false,
+            timeout: Number.isFinite(Number(server.timeout)) && Number(server.timeout) >= 1 ? Number(server.timeout) : 30,
+            tools: server.tools || [],
+        });
+    };
+
+    const testMcpServer = async () => {
+        if (!mcpForm.name.trim()) {
+            toast.error('Name is required before testing.');
+            return;
+        }
+        if (mcpForm.transport === 'stdio' && !mcpForm.command.trim()) {
+            toast.error('Command is required for stdio servers.');
+            return;
+        }
+        if (mcpForm.transport === 'sse' && !mcpForm.url.trim()) {
+            toast.error('URL is required for SSE servers.');
+            return;
+        }
+        setMcpTesting(true);
+        setMcpTestResult(null);
+        try {
+            const res = await apiFetch('/api/admin/smart-ziw-mcp-servers/test', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(buildMcpPayload()),
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok || data?.status !== 'ok') {
+                setMcpTestResult({ status: 'error', tools: [], detail: data?.detail || `Test failed (HTTP ${res.status})` });
+                toast.error('MCP server test failed.');
+                return;
+            }
+            setMcpTestResult({ status: 'ok', tools: data?.tools || [], detail: data?.detail || '' });
+            setMcpForm((prev) => ({ ...prev, tools: data?.tools || [] }));
+            toast.success(`Connected — discovered ${(data?.tools || []).length} tool(s).`);
+        } catch (error) {
+            setMcpTestResult({ status: 'error', tools: [], detail: `The test could not run: ${error?.message || 'unknown error'}` });
+            toast.error('MCP server test failed.');
+        } finally {
+            setMcpTesting(false);
+        }
+    };
+
+    const saveMcpServer = async () => {
+        if (!mcpForm.name.trim()) {
+            toast.error('Name is required.');
+            return;
+        }
+        if (!mcpTestResult || mcpTestResult.status !== 'ok') {
+            toast.error('Test the server connection first — it must pass before saving.');
+            return;
+        }
+        setMcpSaving(true);
+        try {
+            const isEdit = Boolean(editingMcpId);
+            const res = await apiFetch(
+                isEdit ? `/api/admin/smart-ziw-mcp-servers/${encodeURIComponent(editingMcpId)}` : '/api/admin/smart-ziw-mcp-servers',
+                {
+                    method: isEdit ? 'PUT' : 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(buildMcpPayload()),
+                }
+            );
+            if (!res.ok) {
+                const data = await res.json().catch(() => ({}));
+                throw new Error(data.detail || `Save failed (HTTP ${res.status})`);
+            }
+            await loadMcpServers();
+            resetMcpForm();
+            toast.success(isEdit ? 'MCP server updated.' : 'MCP server added.');
+        } catch (error) {
+            toast.error(`Failed to save MCP server: ${error?.message || 'unknown error'}`);
+        } finally {
+            setMcpSaving(false);
+        }
+    };
+
+    const deleteMcpServer = async (id) => {
+        try {
+            const res = await apiFetch(`/api/admin/smart-ziw-mcp-servers/${encodeURIComponent(id)}`, {
+                method: 'DELETE',
+            });
+            if (!res.ok) throw new Error('Failed to delete MCP server');
+            await loadMcpServers();
+            if (editingMcpId === id) resetMcpForm();
+            toast.success('MCP server deleted');
+        } catch (error) {
+            toast.error(`Failed to delete MCP server: ${error?.message || 'unknown error'}`);
+        }
+    };
+
+    const toggleMcpServer = async (server) => {
+        try {
+            const res = await apiFetch(`/api/admin/smart-ziw-mcp-servers/${encodeURIComponent(server.id)}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    id: server.id,
+                    name: server.name,
+                    transport: server.transport,
+                    command: server.command || '',
+                    args: server.args || [],
+                    url: server.url || '',
+                    env: server.env || {},
+                    enabled: !server.enabled,
+                    timeout: server.timeout || 30,
+                    tools: server.tools || [],
+                }),
+            });
+            if (!res.ok) throw new Error('Failed to update MCP server');
+            await loadMcpServers();
+            toast.success(server.enabled ? 'MCP server disabled' : 'MCP server enabled');
+        } catch (error) {
+            toast.error(`Failed to update MCP server: ${error?.message || 'unknown error'}`);
+        }
+    };
+
     useEffect(() => {
         const note = releaseNotes.find((item) => item.version === selectedReleaseVersion);
         if (!note) return;
@@ -2217,10 +1771,14 @@ function AdminPage({ apiFetch, initialTab = 'users' }) {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ name: form.name, email: form.email, role: form.role, avatarUrl: form.avatarUrl, password: form.password || null }),
             });
+            if (!res.ok) throw new Error((await res.json()).detail || 'Create failed');
             const data = await res.json();
-            setMessage(`User created. Temporary password: ${data.temporaryPassword}`);
+            toast.success(`User created: ${data.user.email}`);
+            setCreateResult(`Temporary password: ${data.temporaryPassword}`);
             setDrawer({ open: false, mode: 'create', user: null });
             loadUsers();
+        } catch (err) {
+            toast.error(err?.message || 'Failed to create user');
         } finally {
             setSavingDrawer(false);
         }
@@ -2228,15 +1786,27 @@ function AdminPage({ apiFetch, initialTab = 'users' }) {
 
     const saveUser = async (form) => {
         if (!drawer.user) return;
+        if (drawer.user.id === authUser?.id && form.role !== 'admin') {
+            toast.error('You cannot remove your own admin role.');
+            return;
+        }
+        if (drawer.user.id === authUser?.id && !form.isActive) {
+            toast.error('You cannot deactivate your own account.');
+            return;
+        }
         setSavingDrawer(true);
         try {
-            await apiFetch(`/api/admin/users/${drawer.user.id}`, {
+            const res = await apiFetch(`/api/admin/users/${drawer.user.id}`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ name: form.name, email: form.email, role: form.role, avatarUrl: form.avatarUrl, isActive: form.isActive }),
             });
+            if (!res.ok) throw new Error((await res.json()).detail || 'Save failed');
+            toast.success('User saved');
             setDrawer({ open: false, mode: 'create', user: null });
             loadUsers();
+        } catch (err) {
+            toast.error(err?.message || 'Failed to save user');
         } finally {
             setSavingDrawer(false);
         }
@@ -2251,25 +1821,68 @@ function AdminPage({ apiFetch, initialTab = 'users' }) {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ newPassword }),
             });
+            if (!res.ok) throw new Error((await res.json()).detail || 'Reset failed');
             const data = await res.json();
             setResetResult(`Temporary password: ${data.temporaryPassword}`);
-            setMessage(`Password reset for ${resetModal.user.email}`);
+            toast.success(`Password reset for ${resetModal.user.email}`);
+        } catch (err) {
+            toast.error(err?.message || 'Failed to reset password');
         } finally {
             setResettingUserId('');
         }
     };
 
-    const toggleUser = async (user) => {
+    const promptToggleUser = (user) => {
+        if (user.id === authUser?.id) {
+            toast.error('You cannot deactivate your own account.');
+            return;
+        }
+        setToggleModal({ open: true, user });
+    };
+
+    const confirmToggleUser = async () => {
+        const user = toggleModal.user;
+        if (!user) return;
         setTogglingUserId(user.id);
         try {
-            await apiFetch(`/api/admin/users/${user.id}`, {
+            const res = await apiFetch(`/api/admin/users/${user.id}`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ name: user.name, email: user.email, role: user.role, avatarUrl: user.avatarUrl || '', isActive: !user.isActive }),
             });
+            if (!res.ok) throw new Error((await res.json()).detail || 'Toggle failed');
+            toast.success(user.isActive ? 'User deactivated' : 'User activated');
+            setToggleModal({ open: false, user: null });
             loadUsers();
+        } catch (err) {
+            toast.error(err?.message || 'Failed to update user status');
         } finally {
             setTogglingUserId('');
+        }
+    };
+
+    const promptDeleteUser = (user) => {
+        if (user.id === authUser?.id) {
+            toast.error('You cannot delete your own account.');
+            return;
+        }
+        setDeleteModal({ open: true, user });
+    };
+
+    const deleteUser = async () => {
+        if (!deleteModal.user) return;
+        const user = deleteModal.user;
+        setDeletingUserId(user.id);
+        try {
+            const res = await apiFetch(`/api/admin/users/${user.id}`, { method: 'DELETE' });
+            if (!res.ok) throw new Error((await res.json()).detail || 'Delete failed');
+            toast.success(`Deleted ${user.email}`);
+            setDeleteModal({ open: false, user: null });
+            loadUsers();
+        } catch (err) {
+            toast.error(err?.message || 'Failed to delete user');
+        } finally {
+            setDeletingUserId('');
         }
     };
 
@@ -2391,7 +2004,7 @@ function AdminPage({ apiFetch, initialTab = 'users' }) {
         <div className="flex flex-col gap-5">
             <PageHeader
                 title="Admin"
-                subtitle={adminTab === 'users' ? 'Create, edit, deactivate users, and reset passwords.' : adminTab === 'release-notes' ? 'Create new release notes or update existing versions.' : adminTab === 'llm' ? 'Configure the LLM backend used by the Smart-Ziw agent.' : 'Configure the Smart-Ziw agent and optional GitLab push.'}
+                subtitle={adminTab === 'users' ? 'Create, edit, deactivate users, and reset passwords.' : adminTab === 'release-notes' ? 'Create new release notes or update existing versions.' : adminTab === 'llm' ? 'Configure the LLM backend used by the Smart-Ziw agent.' : adminTab === 'system-prompts' ? 'Edit the system prompts that guide the AI verification filter.' : adminTab === 'skills' ? 'Enable, disable, and manage Smart-Ziw skills.' : adminTab === 'mcp-servers' ? 'Connect external MCP servers and expose their tools as Smart-Ziw skills.' : 'Configure the Smart-Ziw agent and optional GitHub push.'}
                 action={(
                     <>
                         {adminTab === 'users' ? (
@@ -2440,11 +2053,14 @@ function AdminPage({ apiFetch, initialTab = 'users' }) {
             </div>
 
             <Tabs value={adminTab} onValueChange={setAdminTab} className="w-full">
-                <TabsList className="w-full justify-start overflow-x-auto rounded-lg border bg-card">
+                <TabsList variant="line" className="w-full justify-start">
                     <TabsTrigger value="users">User Management</TabsTrigger>
                     <TabsTrigger value="release-notes">Release Notes</TabsTrigger>
                     <TabsTrigger value="smart-ziw">Smart-Ziw Settings</TabsTrigger>
+                    <TabsTrigger value="skills">Skills</TabsTrigger>
+                    <TabsTrigger value="mcp-servers">MCP Servers</TabsTrigger>
                     <TabsTrigger value="llm">LLM Provider</TabsTrigger>
+                    <TabsTrigger value="system-prompts">System Prompts</TabsTrigger>
                 </TabsList>
 
             <TabsContent value="users" className="mt-4">
@@ -2497,7 +2113,12 @@ function AdminPage({ apiFetch, initialTab = 'users' }) {
                     </div>
                 </div>
 
-                {message ? <div className="border-y border-border bg-primary/5 px-5 py-3 text-sm text-foreground/80">{message}</div> : null}
+                {createResult ? (
+                    <div className="border-y border-border bg-primary/5 px-5 py-3 text-sm text-foreground/80 flex items-center justify-between gap-3">
+                        <span>{createResult}</span>
+                        <ShadcnButton type="button" variant="ghost" size="sm" onClick={() => setCreateResult('')}>Dismiss</ShadcnButton>
+                    </div>
+                ) : null}
 
                 <Table aria-label="Users table">
                     <TableHeader>
@@ -2538,7 +2159,7 @@ function AdminPage({ apiFetch, initialTab = 'users' }) {
                                     </Badge>
                                 </TableCell>
                                 <TableCell>
-                                    <Badge variant="outline" className={u.isActive ? 'gap-1 border-green-700/25 bg-green-700/10 text-green-700' : 'gap-1 bg-secondary text-secondary-foreground'}>
+                                    <Badge variant="outline" className={u.isActive ? 'gap-1 border-green-600/25 bg-green-600/10 text-green-600' : 'gap-1 bg-secondary text-secondary-foreground'}>
                                         <span className="h-1.5 w-1.5 rounded-full bg-current opacity-80" />
                                         {u.isActive ? 'Active' : 'Disabled'}
                                     </Badge>
@@ -2559,9 +2180,17 @@ function AdminPage({ apiFetch, initialTab = 'users' }) {
                                                 <KeyRound className="mr-2 h-4 w-4" />{resettingUserId === u.id ? 'Resetting...' : 'Reset password'}
                                             </DropdownMenuItem>
                                             <DropdownMenuSeparator />
-                                            <DropdownMenuItem onSelect={() => toggleUser(u)}>
+                                            <DropdownMenuItem onSelect={() => promptToggleUser(u)}>
                                                 {u.isActive ? <UserX className="mr-2 h-4 w-4" /> : <UserCheck className="mr-2 h-4 w-4" />}
                                                 {togglingUserId === u.id ? 'Updating...' : (u.isActive ? 'Deactivate' : 'Activate')}
+                                            </DropdownMenuItem>
+                                            <DropdownMenuSeparator />
+                                            <DropdownMenuItem
+                                                className="text-destructive focus:text-destructive"
+                                                onSelect={() => promptDeleteUser(u)}
+                                            >
+                                                <Trash2 className="mr-2 h-4 w-4" />
+                                                {deletingUserId === u.id ? 'Deleting...' : 'Delete user'}
                                             </DropdownMenuItem>
                                         </DropdownMenuContent>
                                     </DropdownMenu>
@@ -2682,16 +2311,16 @@ function AdminPage({ apiFetch, initialTab = 'users' }) {
                             <Switch id="gitlab-push-enabled" checked={smartZiwConfig.gitlab_push_enabled} onCheckedChange={(checked) => setSmartZiwConfig({ ...smartZiwConfig, gitlab_push_enabled: checked })} />
                         </div>
                         <div className="flex flex-col gap-1.5 sm:col-span-2">
-                            <Label htmlFor="gitlab-url" className="text-sm font-medium">GitLab URL</Label>
-                            <ShadcnInput id="gitlab-url" value={smartZiwConfig.gitlab_url} onChange={(e) => setSmartZiwConfig({ ...smartZiwConfig, gitlab_url: e.target.value })} />
-                        </div>
-                        <div className="flex flex-col gap-1.5 sm:col-span-2">
-                            <Label htmlFor="gitlab-token" className="text-sm font-medium">GitLab token</Label>
-                            <ShadcnInput id="gitlab-token" type="password" value={smartZiwConfig.gitlab_token} onChange={(e) => setSmartZiwConfig({ ...smartZiwConfig, gitlab_token: e.target.value })} />
+                            <Label htmlFor="gitlab-base-url" className="text-sm font-medium">GitLab base URL</Label>
+                            <ShadcnInput id="gitlab-base-url" value={smartZiwConfig.gitlab_base_url} onChange={(e) => setSmartZiwConfig({ ...smartZiwConfig, gitlab_base_url: e.target.value })} />
                         </div>
                         <div className="flex flex-col gap-1.5 sm:col-span-2">
                             <Label htmlFor="gitlab-project-path" className="text-sm font-medium">GitLab project path</Label>
                             <ShadcnInput id="gitlab-project-path" value={smartZiwConfig.gitlab_project_path} onChange={(e) => setSmartZiwConfig({ ...smartZiwConfig, gitlab_project_path: e.target.value })} />
+                        </div>
+                        <div className="flex flex-col gap-1.5 sm:col-span-2">
+                            <Label htmlFor="gitlab-token" className="text-sm font-medium">GitLab token</Label>
+                            <ShadcnInput id="gitlab-token" type="password" value={smartZiwConfig.gitlab_token} onChange={(e) => setSmartZiwConfig({ ...smartZiwConfig, gitlab_token: e.target.value })} />
                         </div>
                         <div className="flex flex-col gap-1.5">
                             <Label htmlFor="gitlab-branch" className="text-sm font-medium">Branch</Label>
@@ -2706,17 +2335,14 @@ function AdminPage({ apiFetch, initialTab = 'users' }) {
                             <ShadcnInput id="gitlab-author-email" value={smartZiwConfig.gitlab_author_email} onChange={(e) => setSmartZiwConfig({ ...smartZiwConfig, gitlab_author_email: e.target.value })} />
                         </div>
                         <h4 className="text-sm font-semibold text-foreground sm:col-span-2">Web research</h4>
-                        <div className="flex items-center justify-between rounded-lg border px-4 py-3 sm:col-span-2">
-                            <Label htmlFor="research-enabled" className="text-sm font-semibold">Enable web research (Firecrawl)</Label>
-                            <Switch id="research-enabled" checked={smartZiwConfig.smart_ziw_research_enabled} onCheckedChange={(checked) => setSmartZiwConfig({ ...smartZiwConfig, smart_ziw_research_enabled: checked })} />
-                        </div>
-                        <div className="flex flex-col gap-1.5 sm:col-span-2">
-                            <Label htmlFor="firecrawl-api-key" className="text-sm font-medium">Firecrawl API key</Label>
-                            <ShadcnInput id="firecrawl-api-key" type="password" value={smartZiwConfig.firecrawl_api_key} onChange={(e) => setSmartZiwConfig({ ...smartZiwConfig, firecrawl_api_key: e.target.value })} placeholder="Leave blank to keep the stored key" />
-                        </div>
-                        <div className="flex flex-col gap-1.5 sm:col-span-2">
-                            <Label htmlFor="firecrawl-base-url" className="text-sm font-medium">Firecrawl base URL</Label>
-                            <ShadcnInput id="firecrawl-base-url" value={smartZiwConfig.firecrawl_base_url} onChange={(e) => setSmartZiwConfig({ ...smartZiwConfig, firecrawl_base_url: e.target.value })} />
+                        <div className="flex flex-col gap-2 rounded-lg border px-4 py-3 sm:col-span-2">
+                            <div className="flex items-center justify-between">
+                                <Label htmlFor="research-enabled" className="text-sm font-semibold">Enable web research</Label>
+                                <Switch id="research-enabled" checked={smartZiwConfig.smart_ziw_research_enabled} onCheckedChange={(checked) => setSmartZiwConfig({ ...smartZiwConfig, smart_ziw_research_enabled: checked })} />
+                            </div>
+                            <p className="text-xs text-muted-foreground">
+                                Requires a Firecrawl MCP server in the <strong>MCP Servers</strong> tab.
+                            </p>
                         </div>
                         <div className="flex flex-col gap-1.5">
                             <Label htmlFor="research-timeout" className="text-sm font-medium">Research timeout (seconds)</Label>
@@ -2731,38 +2357,297 @@ function AdminPage({ apiFetch, initialTab = 'users' }) {
                 </Card>
             </TabsContent>
 
+            <TabsContent value="skills" className="mt-4">
+                <Card>
+                    <CardHeader>
+                        <CardTitle>Smart-Ziw Skills</CardTitle>
+                        <p className="text-sm text-muted-foreground">Manage the skills that extend what the Smart-Ziw agent can do.</p>
+                    </CardHeader>
+                    <CardContent className="flex flex-col gap-6">
+                        <div className="flex flex-col gap-2">
+                            <Label htmlFor="skill-url" className="text-sm font-medium">Add skill from URL</Label>
+                            <div className="flex gap-2">
+                                <ShadcnInput
+                                    id="skill-url"
+                                    type="url"
+                                    placeholder="https://example.com/skill.json"
+                                    value={skillUrl}
+                                    onChange={(e) => setSkillUrl(e.target.value)}
+                                    disabled={fetchingSkill}
+                                    className="flex-1"
+                                />
+                                <ShadcnButton onClick={fetchSkill} disabled={fetchingSkill || !skillUrl.trim()}>
+                                    {fetchingSkill ? 'Fetching...' : 'Fetch skill'}
+                                </ShadcnButton>
+                            </div>
+                        </div>
+
+                        {skillsLoading ? (
+                            <p className="text-sm text-muted-foreground">Loading skills...</p>
+                        ) : skills.length === 0 ? (
+                            <p className="text-sm text-muted-foreground">No skills configured.</p>
+                        ) : (
+                            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                                {skills.map((skill) => (
+                                    <Card key={skill.id} className="flex flex-col">
+                                        <CardHeader className="pb-3">
+                                            <div className="flex items-start justify-between gap-3">
+                                                <CardTitle className="text-base">{skill.name}</CardTitle>
+                                                <Badge variant="outline">{skill.built_in ? 'Built-in' : 'Custom'}</Badge>
+                                            </div>
+                                            <p className="text-sm text-muted-foreground">{skill.description || 'No description'}</p>
+                                        </CardHeader>
+                                        <CardContent className="flex flex-1 flex-col gap-3 pt-0">
+                                            {skill.source_url ? (
+                                                <a
+                                                    href={skill.source_url}
+                                                    target="_blank"
+                                                    rel="noreferrer"
+                                                    className="inline-flex items-center gap-1.5 text-sm font-medium text-primary hover:underline"
+                                                >
+                                                    <Link className="h-3.5 w-3.5" />
+                                                    Source
+                                                </a>
+                                            ) : null}
+                                            <div className="mt-auto flex items-center justify-between gap-3">
+                                                <div className="flex items-center gap-2">
+                                                    <Switch
+                                                        id={`skill-enabled-${skill.id}`}
+                                                        checked={skill.enabled}
+                                                        onCheckedChange={(checked) => toggleSkill(skill.id, checked)}
+                                                    />
+                                                    <Label htmlFor={`skill-enabled-${skill.id}`} className="text-sm">{skill.enabled ? 'Enabled' : 'Disabled'}</Label>
+                                                </div>
+                                                {!skill.built_in ? (
+                                                    <ShadcnButton
+                                                        type="button"
+                                                        variant="ghost"
+                                                        size="icon-sm"
+                                                        aria-label={`Delete ${skill.name}`}
+                                                        onClick={() => deleteSkill(skill.id)}
+                                                    >
+                                                        <Trash2 className="h-4 w-4 text-destructive" />
+                                                    </ShadcnButton>
+                                                ) : null}
+                                            </div>
+                                        </CardContent>
+                                    </Card>
+                                ))}
+                            </div>
+                        )}
+                    </CardContent>
+                </Card>
+            </TabsContent>
+
+            <TabsContent value="mcp-servers" className="mt-4">
+                <Card>
+                    <CardHeader>
+                        <CardTitle>MCP Servers</CardTitle>
+                        <p className="text-sm text-muted-foreground">Connect external MCP servers (stdio or SSE). Each server's tools become Smart-Ziw skills when enabled.</p>
+                    </CardHeader>
+                    <CardContent className="flex flex-col gap-6">
+                        <div className="rounded-lg border bg-card p-4">
+                            <div className="mb-3 flex items-center justify-between gap-3">
+                                <h4 className="text-sm font-semibold text-foreground">{editingMcpId ? 'Edit MCP server' : 'Add MCP server'}</h4>
+                                {editingMcpId ? (
+                                    <ShadcnButton type="button" variant="ghost" size="sm" onClick={resetMcpForm}>Cancel edit</ShadcnButton>
+                                ) : null}
+                            </div>
+                            <div className="grid gap-4 sm:grid-cols-2">
+                                <div className="flex flex-col gap-1.5">
+                                    <Label htmlFor="mcp-name" className="text-sm font-medium">Name</Label>
+                                    <ShadcnInput id="mcp-name" value={mcpForm.name} onChange={(e) => setMcpForm({ ...mcpForm, name: e.target.value })} placeholder="My MCP server" />
+                                </div>
+                                <div className="flex flex-col gap-1.5">
+                                    <Label className="text-sm font-medium">Transport</Label>
+                                    <Select value={mcpForm.transport} onValueChange={(value) => setMcpForm({ ...mcpForm, transport: value })}>
+                                        <SelectTrigger className="w-full" aria-label="MCP transport"><SelectValue /></SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="stdio">stdio (local process)</SelectItem>
+                                            <SelectItem value="sse">SSE (remote server)</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                                {mcpForm.transport === 'stdio' ? (
+                                    <>
+                                        <div className="flex flex-col gap-1.5">
+                                            <Label htmlFor="mcp-command" className="text-sm font-medium">Command</Label>
+                                            <ShadcnInput id="mcp-command" value={mcpForm.command} onChange={(e) => setMcpForm({ ...mcpForm, command: e.target.value })} placeholder="npx -y @modelcontextprotocol/server-filesystem" />
+                                        </div>
+                                        <div className="flex flex-col gap-1.5">
+                                            <Label htmlFor="mcp-args" className="text-sm font-medium">Arguments (one per line)</Label>
+                                            <Textarea id="mcp-args" rows={3} value={mcpForm.argsText} onChange={(e) => setMcpForm({ ...mcpForm, argsText: e.target.value })} placeholder={'/path/to/allowed/dir'} />
+                                        </div>
+                                    </>
+                                ) : (
+                                    <div className="flex flex-col gap-1.5 sm:col-span-2">
+                                        <Label htmlFor="mcp-url" className="text-sm font-medium">SSE URL</Label>
+                                        <ShadcnInput id="mcp-url" type="url" value={mcpForm.url} onChange={(e) => setMcpForm({ ...mcpForm, url: e.target.value })} placeholder="https://mcp.example.com/sse" />
+                                    </div>
+                                )}
+                                <div className="flex flex-col gap-1.5">
+                                    <Label htmlFor="mcp-timeout" className="text-sm font-medium">Timeout (seconds)</Label>
+                                    <ShadcnInput id="mcp-timeout" type="number" min={1} value={mcpForm.timeout} onChange={(e) => setMcpForm({ ...mcpForm, timeout: e.target.value })} />
+                                </div>
+                                <div className="flex items-center justify-between rounded-lg border px-4 py-3">
+                                    <Label htmlFor="mcp-enabled" className="text-sm font-semibold">Enabled</Label>
+                                    <Switch id="mcp-enabled" checked={mcpForm.enabled} onCheckedChange={(checked) => setMcpForm({ ...mcpForm, enabled: checked })} />
+                                </div>
+                                <div className="flex flex-col gap-1.5 sm:col-span-2">
+                                    <Label htmlFor="mcp-env" className="text-sm font-medium">Environment variables (KEY=value, one per line)</Label>
+                                    <Textarea id="mcp-env" rows={3} value={mcpForm.envText} onChange={(e) => setMcpForm({ ...mcpForm, envText: e.target.value })} placeholder={'API_KEY=sk-...'} />
+                                </div>
+                                <div className="flex flex-wrap items-center gap-2 sm:col-span-2">
+                                    <ShadcnButton type="button" variant="outline" onClick={testMcpServer} disabled={mcpTesting || mcpSaving}>
+                                        {mcpTesting ? 'Testing...' : 'Test connection'}
+                                    </ShadcnButton>
+                                    <ShadcnButton type="button" onClick={saveMcpServer} disabled={mcpSaving || mcpTesting}>
+                                        {mcpSaving ? 'Saving...' : (editingMcpId ? 'Save changes' : 'Add server')}
+                                    </ShadcnButton>
+                                </div>
+                                {mcpTestResult ? (
+                                    <div className={`rounded-lg border p-4 sm:col-span-2 ${mcpTestResult.status === 'ok' ? 'border-green-600/25 bg-green-600/10' : 'border-destructive/25 bg-destructive/10'}`}>
+                                        <div className="flex items-center gap-2">
+                                            <Badge variant="outline" className={mcpTestResult.status === 'ok' ? 'gap-1 border-green-600/25 bg-green-600/10 text-green-600' : 'gap-1 border-destructive/25 bg-destructive/10 text-destructive'}>
+                                                <span className="h-1.5 w-1.5 rounded-full bg-current opacity-80" />
+                                                {mcpTestResult.status === 'ok' ? 'Connected' : 'Failed'}
+                                            </Badge>
+                                            <span className="text-sm text-muted-foreground">{mcpTestResult.detail}</span>
+                                        </div>
+                                        {mcpTestResult.status === 'ok' && mcpTestResult.tools.length > 0 ? (
+                                            <div className="mt-3 flex flex-wrap gap-1.5">
+                                                {mcpTestResult.tools.map((tool) => (
+                                                    <Badge key={tool.name} variant="secondary">{tool.name}</Badge>
+                                                ))}
+                                            </div>
+                                        ) : null}
+                                    </div>
+                                ) : null}
+                            </div>
+                        </div>
+
+                        <div>
+                            <h4 className="mb-3 text-sm font-semibold text-foreground">Configured servers</h4>
+                            {mcpServersLoading ? (
+                                <p className="text-sm text-muted-foreground">Loading MCP servers...</p>
+                            ) : mcpServers.length === 0 ? (
+                                <p className="text-sm text-muted-foreground">No MCP servers configured yet.</p>
+                            ) : (
+                                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                                    {mcpServers.map((server) => (
+                                        <Card key={server.id} className="flex flex-col">
+                                            <CardHeader className="pb-3">
+                                                <div className="flex items-start justify-between gap-3">
+                                                    <CardTitle className="text-base">{server.name}</CardTitle>
+                                                    <Badge variant="outline">{server.transport === 'sse' ? 'SSE' : 'stdio'}</Badge>
+                                                </div>
+                                                <p className="text-sm text-muted-foreground">
+                                                    {server.transport === 'sse' ? server.url : server.command}
+                                                </p>
+                                            </CardHeader>
+                                            <CardContent className="flex flex-1 flex-col gap-3 pt-0">
+                                                <span className="text-sm text-muted-foreground">{(server.tools || []).length} cached tool{(server.tools || []).length === 1 ? '' : 's'}</span>
+                                                <div className="mt-auto flex items-center justify-between gap-3">
+                                                    <div className="flex items-center gap-2">
+                                                        <Switch
+                                                            id={`mcp-enabled-${server.id}`}
+                                                            checked={server.enabled !== false}
+                                                            onCheckedChange={() => toggleMcpServer(server)}
+                                                        />
+                                                        <Label htmlFor={`mcp-enabled-${server.id}`} className="text-sm">{server.enabled !== false ? 'Enabled' : 'Disabled'}</Label>
+                                                    </div>
+                                                    <div className="flex items-center gap-1">
+                                                        <ShadcnButton
+                                                            type="button"
+                                                            variant="ghost"
+                                                            size="icon-sm"
+                                                            aria-label={`Edit ${server.name}`}
+                                                            onClick={() => startEditMcpServer(server)}
+                                                        >
+                                                            <PenLine className="h-4 w-4" />
+                                                        </ShadcnButton>
+                                                        <ShadcnButton
+                                                            type="button"
+                                                            variant="ghost"
+                                                            size="icon-sm"
+                                                            aria-label={`Delete ${server.name}`}
+                                                            onClick={() => deleteMcpServer(server.id)}
+                                                        >
+                                                            <Trash2 className="h-4 w-4 text-destructive" />
+                                                        </ShadcnButton>
+                                                    </div>
+                                                </div>
+                                            </CardContent>
+                                        </Card>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    </CardContent>
+                </Card>
+            </TabsContent>
+
             <TabsContent value="llm" className="mt-4">
                 <Card>
                     <CardHeader>
-                        <CardTitle>LLM Provider</CardTitle>
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                            <CardTitle>LLM Provider</CardTitle>
+                            <Badge variant="secondary">
+                                {llmEnvProvider
+                                    ? `Environment · ${llmEnvStatus.model || 'default'}`
+                                    : `${llmProviders.find((p) => p.id === smartZiwConfig.smart_ziw_llm_provider)?.name || 'Provider'} · ${smartZiwConfig.lightllm_model || 'not set'}`}
+                            </Badge>
+                        </div>
                         <p className="text-sm text-muted-foreground">Configure the LLM backend used by the Smart-Ziw agent.</p>
                     </CardHeader>
                     {message ? <div className="border-y border-border bg-primary/5 px-5 py-3 text-sm text-foreground/80">{message}</div> : null}
                     <CardContent className="grid gap-4 sm:grid-cols-2">
                         <div className="flex flex-col gap-1.5 sm:col-span-2">
-                            <Label className="text-sm font-medium">Configuration source</Label>
-                            <RadioGroup
-                                value={llmSource}
-                                onValueChange={(value) => { llmDiscoverySeq.current += 1; setLlmModelsLoading(false); setSmartZiwConfig({ ...smartZiwConfig, smart_ziw_llm_provider: value === 'environment' ? 'deepseek' : 'lightllm' }); }}
-                                className="flex flex-col gap-2.5"
+                            <Label htmlFor="llm-provider" className="text-sm font-medium">Provider</Label>
+                            <Select
+                                value={smartZiwConfig.smart_ziw_llm_provider}
+                                onValueChange={(value) => {
+                                    llmDiscoverySeq.current += 1;
+                                    setLlmModelsLoading(false);
+                                    setLlmModels({ status: 'idle', models: [], detail: null });
+                                    const preset = llmProviders.find((p) => p.id === value);
+                                    setSmartZiwConfig((prev) => ({
+                                        ...prev,
+                                        smart_ziw_llm_provider: value,
+                                        lightllm_base_url: value === 'local' ? (prev.lightllm_base_url || preset?.base_url || '') : (value === 'custom' ? prev.lightllm_base_url : ''),
+                                        lightllm_model: preset?.default_model || prev.lightllm_model,
+                                        lightllm_provider: preset?.format === 'anthropic' ? 'anthropic_compatible' : 'openai_compatible',
+                                    }));
+                                }}
+                                disabled={llmProvidersLoading}
                             >
-                                <Label htmlFor="llm-source-environment" className="flex cursor-pointer items-start gap-3 rounded-lg border bg-card p-3 hover:bg-secondary/50">
-                                    <RadioGroupItem value="environment" id="llm-source-environment" className="mt-0.5" />
-                                    <span className="flex flex-col gap-0.5">
-                                        <span className="text-sm font-medium text-foreground">Environment (.env)</span>
-                                        <span className="text-sm text-muted-foreground">Use the DeepSeek settings from the backend .env file.</span>
-                                    </span>
-                                </Label>
-                                <Label htmlFor="llm-source-lightllm" className="flex cursor-pointer items-start gap-3 rounded-lg border bg-card p-3 hover:bg-secondary/50">
-                                    <RadioGroupItem value="lightllm" id="llm-source-lightllm" className="mt-0.5" />
-                                    <span className="flex flex-col gap-0.5">
-                                        <span className="text-sm font-medium text-foreground">LightLLM</span>
-                                        <span className="text-sm text-muted-foreground">Use your own OpenAI- or Anthropic-compatible LLM server.</span>
-                                    </span>
-                                </Label>
-                            </RadioGroup>
+                                <SelectTrigger id="llm-provider" className="w-full" aria-label="LLM provider">
+                                    <SelectValue placeholder="Select a provider">
+                                        {(() => {
+                                            const p = llmProviders.find((x) => x.id === smartZiwConfig.smart_ziw_llm_provider);
+                                            return p ? (
+                                                <span className="flex items-center gap-2">
+                                                    <ProviderLogo id={p.id} name={p.name} />
+                                                    {p.name}
+                                                </span>
+                                            ) : null;
+                                        })()}
+                                    </SelectValue>
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {llmProviders.map((p) => (
+                                        <SelectItem key={p.id} value={p.id}>
+                                            <span className="flex items-center gap-2">
+                                                <ProviderLogo id={p.id} name={p.name} />
+                                                {p.name}
+                                            </span>
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                            {llmProvidersLoading ? <p className="text-sm text-muted-foreground">Loading providers…</p> : null}
                         </div>
-                        {llmSource === 'environment' ? (
+                        {llmEnvProvider ? (
                             <div className="flex flex-col gap-1.5 sm:col-span-2">
                                 <Label className="text-sm font-medium">Environment configuration</Label>
                                 <p className="text-sm text-muted-foreground">
@@ -2773,52 +2658,77 @@ function AdminPage({ apiFetch, initialTab = 'users' }) {
                             </div>
                         ) : (
                             <>
+                                {(smartZiwConfig.smart_ziw_llm_provider === 'local' || smartZiwConfig.smart_ziw_llm_provider === 'custom') && (
+                                    <div className="flex flex-col gap-1.5 sm:col-span-2">
+                                        <Label htmlFor="llm-base-url" className="text-sm font-medium">Base URL</Label>
+                                        <ShadcnInput id="llm-base-url" value={smartZiwConfig.lightllm_base_url} onChange={(e) => { llmDiscoverySeq.current += 1; setLlmModelsLoading(false); setLlmModels({ status: 'idle', models: [], detail: null }); setSmartZiwConfig({ ...smartZiwConfig, lightllm_base_url: e.target.value }); }} placeholder={smartZiwConfig.smart_ziw_llm_provider === 'local' ? 'http://localhost:8000/v1' : 'https://your-server/v1'} />
+                                    </div>
+                                )}
                                 <div className="flex flex-col gap-1.5 sm:col-span-2">
-                                    <Label htmlFor="llm-base-url" className="text-sm font-medium">LightLLM base URL</Label>
-                                    <ShadcnInput id="llm-base-url" value={smartZiwConfig.lightllm_base_url} onChange={(e) => { llmDiscoverySeq.current += 1; setLlmModelsLoading(false); setLlmModels({ status: 'idle', models: [], detail: null }); setSmartZiwConfig({ ...smartZiwConfig, lightllm_base_url: e.target.value }); }} placeholder="http://localhost:8000/v1" />
-                                </div>
-                                <div className="flex flex-col gap-1.5">
-                                    <Label htmlFor="llm-api-key" className="text-sm font-medium">LightLLM API key</Label>
+                                    <Label htmlFor="llm-api-key" className="text-sm font-medium">API key</Label>
                                     <ShadcnInput id="llm-api-key" type="password" value={smartZiwConfig.lightllm_api_key} onChange={(e) => setSmartZiwConfig({ ...smartZiwConfig, lightllm_api_key: e.target.value })} placeholder="Leave blank to keep the stored key" />
                                 </div>
-                                <div className="flex flex-col gap-1.5">
-                                    <Label className="text-sm font-medium">Provider (server type)</Label>
-                                    <Select value={smartZiwConfig.lightllm_provider} onValueChange={(value) => { llmDiscoverySeq.current += 1; setLlmModelsLoading(false); setSmartZiwConfig({ ...smartZiwConfig, lightllm_provider: value }); }}>
-                                        <SelectTrigger className="w-full" aria-label="Provider (server type)"><SelectValue /></SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="openai_compatible">OpenAI-compatible</SelectItem>
-                                            <SelectItem value="anthropic_compatible">Anthropic-compatible</SelectItem>
-                                            <SelectItem value="custom">Custom (enter model manually)</SelectItem>
-                                        </SelectContent>
-                                    </Select>
-                                </div>
                                 <div className="flex flex-col gap-1.5 sm:col-span-2">
-                                    <Label className="text-sm font-medium">LightLLM model</Label>
-                                    {(smartZiwConfig.lightllm_provider === 'openai_compatible' || smartZiwConfig.lightllm_provider === 'anthropic_compatible') && llmModels.status === 'ok' ? (
-                                        <Select value={smartZiwConfig.lightllm_model} onValueChange={(value) => setSmartZiwConfig({ ...smartZiwConfig, lightllm_model: value })}>
-                                            <SelectTrigger className="w-full" aria-label="LightLLM model"><SelectValue placeholder="Select a model" /></SelectTrigger>
+                                    <Label htmlFor="llm-subscription-key" className="text-sm font-medium">Subscription / secondary key</Label>
+                                    <ShadcnInput id="llm-subscription-key" type="password" value={smartZiwConfig.lightllm_subscription_key} onChange={(e) => setSmartZiwConfig({ ...smartZiwConfig, lightllm_subscription_key: e.target.value })} placeholder="Only if your provider requires a separate subscription or project key" />
+                                    <p className="text-sm text-muted-foreground">Provider-specific. Sent as the <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">X-Subscription-Key</code> header when set.</p>
+                                </div>
+                                {smartZiwConfig.smart_ziw_llm_provider === 'custom' && (
+                                    <div className="flex flex-col gap-1.5 sm:col-span-2">
+                                        <Label className="text-sm font-medium">Server type</Label>
+                                        <Select value={smartZiwConfig.lightllm_provider} onValueChange={(value) => { llmDiscoverySeq.current += 1; setLlmModelsLoading(false); setSmartZiwConfig({ ...smartZiwConfig, lightllm_provider: value }); }}>
+                                            <SelectTrigger className="w-full" aria-label="Server type"><SelectValue /></SelectTrigger>
                                             <SelectContent>
-                                                {!llmModels.models.some((m) => m.id === smartZiwConfig.lightllm_model) && smartZiwConfig.lightllm_model ? (
-                                                    <SelectItem value={smartZiwConfig.lightllm_model}>{smartZiwConfig.lightllm_model} (current)</SelectItem>
-                                                ) : null}
-                                                {llmModels.models.map((m) => <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>)}
+                                                <SelectItem value="openai_compatible">OpenAI-compatible</SelectItem>
+                                                <SelectItem value="anthropic_compatible">Anthropic-compatible</SelectItem>
+                                                <SelectItem value="custom">Custom (enter model manually)</SelectItem>
                                             </SelectContent>
                                         </Select>
-                                    ) : (
-                                        <ShadcnInput value={smartZiwConfig.lightllm_model} onChange={(e) => setSmartZiwConfig({ ...smartZiwConfig, lightllm_model: e.target.value })} />
-                                    )}
+                                    </div>
+                                )}
+                                <div className="flex flex-col gap-1.5 sm:col-span-2">
+                                    <Label className="text-sm font-medium">Model</Label>
+                                    {(() => {
+                                        const preset = llmProviders.find((p) => p.id === smartZiwConfig.smart_ziw_llm_provider);
+                                        const hardcoded = Array.isArray(preset?.hardcoded_models) ? preset.hardcoded_models : [];
+                                        const discovered = llmModels.status === 'ok' ? llmModels.models : [];
+                                        const models = discovered.length ? discovered : hardcoded;
+                                        const isCustomManual = smartZiwConfig.smart_ziw_llm_provider === 'custom' && smartZiwConfig.lightllm_provider === 'custom';
+                                        if (models.length && !isCustomManual) {
+                                            return (
+                                                <Select value={smartZiwConfig.lightllm_model} onValueChange={(value) => setSmartZiwConfig({ ...smartZiwConfig, lightllm_model: value })}>
+                                                    <SelectTrigger className="w-full" aria-label="Model"><SelectValue placeholder="Select a model" /></SelectTrigger>
+                                                    <SelectContent>
+                                                        {!models.some((m) => m.id === smartZiwConfig.lightllm_model) && smartZiwConfig.lightllm_model ? (
+                                                            <SelectItem value={smartZiwConfig.lightllm_model}>{smartZiwConfig.lightllm_model} (current)</SelectItem>
+                                                        ) : null}
+                                                        {models.map((m) => <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>)}
+                                                    </SelectContent>
+                                                </Select>
+                                            );
+                                        }
+                                        return <ShadcnInput value={smartZiwConfig.lightllm_model} onChange={(e) => setSmartZiwConfig({ ...smartZiwConfig, lightllm_model: e.target.value })} placeholder="Model name" />;
+                                    })()}
                                     <p className="text-sm text-muted-foreground">
                                         {llmModels.status === 'loading' ? 'Loading available models…'
                                             : llmModels.status === 'ok' ? 'Models loaded.'
-                                            : llmModels.status === 'no_models' ? 'No models available from this server. You can type the model name manually.'
+                                            : llmModels.status === 'no_models' ? 'No models available from this provider. You can type the model name manually.'
                                             : llmModels.status === 'auth_required' ? 'This provider requires an API key to retrieve available models. Enter the API key and refresh.'
                                             : llmModels.status === 'unsupported' ? 'This provider does not support automatic model discovery. Enter the model name manually.'
-                                            : llmModels.status === 'error' ? (llmModels.detail || 'Unable to connect to the LightLLM server. Check the base URL.')
+                                            : llmModels.status === 'error' ? (llmModels.detail || 'Unable to connect to the provider. Check the base URL.')
                                             : ''}
                                     </p>
-                                    <ShadcnButton type="button" variant="outline" size="sm" className="w-fit" onClick={() => discoverLlmModels(smartZiwConfig.lightllm_provider, smartZiwConfig.lightllm_base_url, smartZiwConfig.lightllm_api_key)} disabled={llmModelsLoading || smartZiwConfig.lightllm_provider === 'custom' || !smartZiwConfig.lightllm_base_url.trim()}>
-                                        Refresh models
-                                    </ShadcnButton>
+                                    {(() => {
+                                        const preset = llmProviders.find((p) => p.id === smartZiwConfig.smart_ziw_llm_provider);
+                                        const isCustomManual = smartZiwConfig.smart_ziw_llm_provider === 'custom' && smartZiwConfig.lightllm_provider === 'custom';
+                                        const effectiveUrl = smartZiwConfig.lightllm_base_url.trim() || preset?.base_url || '';
+                                        const canDiscover = preset && (preset.format === 'openai' || preset.format === 'anthropic') && !isCustomManual && effectiveUrl;
+                                        return (
+                                            <ShadcnButton type="button" variant="outline" size="sm" className="w-fit" onClick={() => discoverLlmModels(smartZiwConfig.smart_ziw_llm_provider, effectiveUrl, smartZiwConfig.lightllm_api_key, smartZiwConfig.lightllm_subscription_key)} disabled={llmModelsLoading || !canDiscover}>
+                                                Refresh models
+                                            </ShadcnButton>
+                                        );
+                                    })()}
                                 </div>
                             </>
                         )}
@@ -2852,6 +2762,56 @@ function AdminPage({ apiFetch, initialTab = 'users' }) {
                     </CardFooter>
                 </Card>
             </TabsContent>
+
+            <TabsContent value="system-prompts" className="mt-4">
+                <Card>
+                    <CardHeader>
+                        <CardTitle>AI Verification Prompts</CardTitle>
+                        <p className="text-sm text-muted-foreground">These prompts guide the AI filter when deciding whether a scraped tender is relevant.</p>
+                    </CardHeader>
+                    {message ? <div className="border-y border-border bg-primary/5 px-5 py-3 text-sm text-foreground/80">{message}</div> : null}
+                    <CardContent className="grid gap-6">
+                        <div className="flex flex-col gap-1.5">
+                            <Label htmlFor="ai-verification-system-prompt" className="text-sm font-medium">AI verification system prompt</Label>
+                            <Textarea
+                                id="ai-verification-system-prompt"
+                                rows={8}
+                                className="w-full"
+                                value={smartZiwConfig.ai_verification_system_prompt}
+                                onChange={(e) => setSmartZiwConfig({ ...smartZiwConfig, ai_verification_system_prompt: e.target.value })}
+                                placeholder="Describe the overall role and instructions for the AI verifier..."
+                            />
+                        </div>
+                        <div className="flex flex-col gap-1.5">
+                            <Label htmlFor="ai-verification-expertise" className="text-sm font-medium">Company expertise / focus</Label>
+                            <Textarea
+                                id="ai-verification-expertise"
+                                rows={8}
+                                className="w-full"
+                                value={smartZiwConfig.ai_verification_expertise}
+                                onChange={(e) => setSmartZiwConfig({ ...smartZiwConfig, ai_verification_expertise: e.target.value })}
+                                placeholder="Describe the services, sectors, and geographies the company is interested in..."
+                            />
+                        </div>
+                        <div className="flex flex-col gap-1.5">
+                            <Label htmlFor="ai-verification-unwanted" className="text-sm font-medium">Unwanted services / products</Label>
+                            <Textarea
+                                id="ai-verification-unwanted"
+                                rows={8}
+                                className="w-full"
+                                value={smartZiwConfig.ai_verification_unwanted}
+                                onChange={(e) => setSmartZiwConfig({ ...smartZiwConfig, ai_verification_unwanted: e.target.value })}
+                                placeholder="List services, products, or project types the AI should reject..."
+                            />
+                        </div>
+                    </CardContent>
+                    <CardFooter className="justify-end border-t pt-6">
+                        <ShadcnButton type="button" onClick={saveSystemPrompts} disabled={savingSystemPrompts}>
+                            {savingSystemPrompts ? 'Saving...' : 'Save System Prompts'}
+                        </ShadcnButton>
+                    </CardFooter>
+                </Card>
+            </TabsContent>
             </Tabs>
 
             <UserDrawer
@@ -2870,6 +2830,41 @@ function AdminPage({ apiFetch, initialTab = 'users' }) {
                 saving={resettingUserId === resetModal.user?.id}
                 result={resetResult}
             />
+            <Dialog open={deleteModal.open} onOpenChange={(open) => { if (!open) setDeleteModal({ open: false, user: null }); }}>
+                <DialogContent className="sm:max-w-md">
+                    <DialogHeader>
+                        <DialogTitle>Delete user</DialogTitle>
+                        <DialogDescription>
+                            This will permanently remove {deleteModal.user?.name || deleteModal.user?.email || 'this user'}.
+                            This action cannot be undone.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <DialogFooter className="gap-2 sm:justify-end">
+                        <ShadcnButton variant="outline" onClick={() => setDeleteModal({ open: false, user: null })} disabled={!!deletingUserId}>
+                            Cancel
+                        </ShadcnButton>
+                        <ShadcnButton variant="destructive" onClick={deleteUser} disabled={!!deletingUserId}>
+                            {deletingUserId ? 'Deleting...' : 'Delete user'}
+                        </ShadcnButton>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+            <Dialog open={toggleModal.open} onOpenChange={(open) => { if (!open) setToggleModal({ open: false, user: null }); }}>
+                <DialogContent className="sm:max-w-md">
+                    <DialogHeader>
+                        <DialogTitle>{toggleModal.user?.isActive ? 'Deactivate user?' : 'Activate user?'}</DialogTitle>
+                    </DialogHeader>
+                    <p className="text-sm text-muted-foreground">
+                        This will {toggleModal.user?.isActive ? 'deactivate' : 'activate'} {toggleModal.user?.name || toggleModal.user?.email || 'this user'}.
+                    </p>
+                    <DialogFooter className="mt-2 gap-2 sm:justify-end">
+                        <ShadcnButton variant="outline" onClick={() => setToggleModal({ open: false, user: null })}>Cancel</ShadcnButton>
+                        <ShadcnButton onClick={confirmToggleUser} disabled={!!togglingUserId}>
+                            {togglingUserId === toggleModal.user?.id ? 'Updating…' : 'Confirm'}
+                        </ShadcnButton>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </div>
     );
 }
@@ -2877,23 +2872,11 @@ function AdminPage({ apiFetch, initialTab = 'users' }) {
 export default function App() {
     const [loading, setLoading] = useState(true);
     const [projects, setProjects] = useState([]);
+    const [newProjectIds, setNewProjectIds] = useState(new Set());
+    const [projectsLoading, setProjectsLoading] = useState(false);
+    const [projectsError, setProjectsError] = useState(null);
     const [regions, setRegions] = useState({});
     const [continents, setContinents] = useState([]);
-    const [chips, setChips] = useState([]);
-    const [freeText, setFreeText] = useState('');
-    const [source, setSource] = useState('');
-    const [verified, setVerified] = useState('Yes');
-    const [region, setRegion] = useState('');
-    const [continent, setContinent] = useState('');
-    const [decision, setDecision] = useState('');
-    const [startDateFrom, setStartDateFrom] = useState('');
-    const [startDateTo, setStartDateTo] = useState('');
-    const [endDateFrom, setEndDateFrom] = useState('');
-    const [endDateTo, setEndDateTo] = useState('');
-    const [scrapedFrom, setScrapedFrom] = useState('');
-    const [scrapedTo, setScrapedTo] = useState('');
-    const [autoFilterApplied, setAutoFilterApplied] = useState(false);
-    const [showAutoFilterToast, setShowAutoFilterToast] = useState(false);
     const [demoOpen, setDemoOpen] = useState(false);
 
     const [authUser, setAuthUser] = useState(null);
@@ -2905,23 +2888,13 @@ export default function App() {
     const [releaseNotes, setReleaseNotes] = useState(DEFAULT_RELEASE_NOTES);
 
     const [route, setRoute] = useState(normalizeRoute(window.location.hash.replace('#', '')));
+    const tenderDetailId = getTenderIdFromHash(window.location.hash);
     const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
     const [mobileNavOpen, setMobileNavOpen] = useState(false);
     const [commandOpen, setCommandOpen] = useState(false);
-    const [commentsOpen, setCommentsOpen] = useState(false);
-    const [selectedProject, setSelectedProject] = useState(null);
-    const [selectedProjectIndex, setSelectedProjectIndex] = useState(null);
-    const [commentsMine, setCommentsMine] = useState(false);
-    const [commentsBody, setCommentsBody] = useState('');
-    const [comments, setComments] = useState([]);
     const [syncOpen, setSyncOpen] = useState(false);
-    const [configOpen, setConfigOpen] = useState(false);
-    const [scheduleOpen, setScheduleOpen] = useState(false);
     const [notificationsOpen, setNotificationsOpen] = useState(false);
     const [notifications, setNotifications] = useState([]);
-    const [expiringSoonOnly, setExpiringSoonOnly] = useState(false);
-    const [expiringSoonDays, setExpiringSoonDays] = useState(5);
-    const [savedSearches, setSavedSearches] = useState([]);
     const preSyncIdsRef = useRef(new Set());
     const notificationAudioRef = useRef(null);
     const notificationStreamRef = useRef(null);
@@ -2938,6 +2911,13 @@ export default function App() {
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, []);
+
+    // Admin-only routes fall back to dashboard for non-admins
+    useEffect(() => {
+        if (authUser && authUser.role !== 'admin' && (route === 'settings' || route === 'schedule')) {
+            navigate('dashboard');
+        }
+    }, [authUser, route]);
 
     const focusTenderSearch = () => {
         setTimeout(() => {
@@ -3022,11 +3002,6 @@ export default function App() {
         const onHash = () => {
             const rawHash = window.location.hash.replace('#', '');
             setRoute(normalizeRoute(rawHash));
-            if (!getTenderIdFromHash(window.location.hash)) {
-                setSelectedProject(null);
-                setSelectedProjectIndex(null);
-                setCommentsOpen(false);
-            }
         };
         window.addEventListener('hashchange', onHash);
         return () => window.removeEventListener('hashchange', onHash);
@@ -3148,26 +3123,19 @@ export default function App() {
     }, [authUser, latestReleaseVersion]);
 
     const loadProjects = useCallback(async () => {
-        const res = await apiFetch(`${API}/projects`);
-        const data = await res.json();
-        setProjects(attachProjectRowIds(Array.isArray(data) ? data : []));
+        setProjectsLoading(true);
+        setProjectsError(null);
+        try {
+            const res = await apiFetch(`${API}/projects`);
+            if (!res.ok) throw new Error(`Failed to load tenders (${res.status})`);
+            const data = await res.json();
+            setProjects(attachProjectRowIds(Array.isArray(data) ? data : []));
+        } catch (err) {
+            setProjectsError(err?.message || 'Unable to load tenders');
+        } finally {
+            setProjectsLoading(false);
+        }
     }, [apiFetch]);
-
-    useEffect(() => {
-        if (projects.length === 0 || autoFilterApplied) return;
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        const weekAgo = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
-        const fmt = (d) => d.toISOString().split('T')[0];
-        setScrapedFrom(fmt(weekAgo));
-        setScrapedTo(fmt(today));
-        setAutoFilterApplied(true);
-        setShowAutoFilterToast(true);
-        toast('Showing tenders scraped in the last 7 days.', {
-            action: { label: 'Show all', onClick: clearAutoFilter },
-            closeButton: true,
-        });
-    }, [projects, autoFilterApplied]);
 
     useEffect(() => {
         if (!authUser || authUser.mustChangePassword) return;
@@ -3178,16 +3146,14 @@ export default function App() {
             apiFetch('/api/release-notes').then((r) => (r.ok ? r.json() : { notes: DEFAULT_RELEASE_NOTES })),
             apiFetch('/api/users').then((r) => (r.ok ? r.json() : [])),
             apiFetch('/api/notifications?limit=5000').then((r) => (r.ok ? r.json() : { notifications: [] })),
-            apiFetch('/api/saved-searches').then((r) => (r.ok ? r.json() : { searches: [] })),
         ])
-            .then(([cfg, geography, noteData, userData, notificationData, searchData]) => {
+            .then(([cfg, geography, noteData, userData, notificationData]) => {
                 setRegions(cfg.regions || {});
                 setContinents(geography.continents || []);
                 const notes = Array.isArray(noteData?.notes) && noteData.notes.length ? noteData.notes : DEFAULT_RELEASE_NOTES;
                 setReleaseNotes([...notes].sort((a, b) => compareVersionStrings(b.version, a.version)));
                 setAvailableUsers(Array.isArray(userData) ? userData : []);
                 setNotifications(Array.isArray(notificationData?.notifications) ? notificationData.notifications : []);
-                setSavedSearches(Array.isArray(searchData?.searches) ? searchData.searches : []);
             })
             .catch(() => { });
     }, [authUser, loadProjects, apiFetch]);
@@ -3255,7 +3221,7 @@ export default function App() {
         if (compareVersionStrings(latestReleaseNote?.version || '0', seenVersion) > 0) {
             return latestReleaseNote ? [latestReleaseNote] : [];
         }
-        return latestReleaseNote ? [latestReleaseNote] : [];
+        return [];
     }, [latestReleaseNote]);
 
     const markReleaseNotesSeen = useCallback(() => {
@@ -3295,105 +3261,7 @@ export default function App() {
         await apiFetch('/api/notifications/read-all', { method: 'POST' }).catch(() => {});
     }, [apiFetch]);
 
-    const getRegion = useCallback((sponsor) => {
-        if (!sponsor) return '';
-        const lower = sponsor.toLowerCase();
-        for (const [regionName, countries] of Object.entries(regions || {})) {
-            if (countries.some((c) => lower.includes(c.toLowerCase()))) return regionName;
-        }
-        return '';
-    }, [regions]);
 
-    const filtered = useMemo(() => {
-        const ft = freeText.toLowerCase();
-        const parseFilterDate = (value) => {
-            if (!value) return null;
-            const direct = new Date(value);
-            if (!Number.isNaN(direct.getTime())) return direct;
-            const parts = String(value).split('/');
-            if (parts.length === 3) {
-                const parsed = new Date(parts[2], parts[0] - 1, parts[1]);
-                if (!Number.isNaN(parsed.getTime())) return parsed;
-            }
-            return null;
-        };
-        const chipGroups = chips.reduce((acc, chip) => {
-            const field = String(chip.field || '').toLowerCase();
-            if (!['source', 'region', 'continent', 'country'].includes(field)) return acc;
-            if (!acc[field]) acc[field] = [];
-            acc[field].push(String(chip.value || '').toLowerCase());
-            return acc;
-        }, {});
-        const deadlineFromDate = endDateFrom ? new Date(endDateFrom) : null;
-        const deadlineToDate = endDateTo ? new Date(endDateTo) : null;
-        const scrapedFromDate = scrapedFrom ? new Date(scrapedFrom) : null;
-        const scrapedToDate = scrapedTo ? new Date(scrapedTo) : null;
-        const expiringWindowStart = new Date();
-        expiringWindowStart.setHours(0, 0, 0, 0);
-        const expiringWindowEnd = new Date(expiringWindowStart);
-        expiringWindowEnd.setDate(expiringWindowEnd.getDate() + expiringSoonDays);
-        expiringWindowEnd.setHours(23, 59, 59, 999);
-        if (deadlineToDate) deadlineToDate.setHours(23, 59, 59, 999);
-        if (scrapedToDate) scrapedToDate.setHours(23, 59, 59, 999);
-        return projects.filter((p) => {
-            if (ft && ![p.project_id, p.project_name, p.project_description, p.project_sponsor].join(' ').toLowerCase().includes(ft)) return false;
-            if (source && p.source !== source) return false;
-            if (verified && p.ai_verified !== verified) return false;
-            const projectRegions = (p.region_names || []).map((name) => String(name).toLowerCase());
-            if (region) {
-                const regionValue = String(region).toLowerCase();
-                const sponsor = (p.project_sponsor || '').toLowerCase();
-                const fallbackCountries = (regions[region] || []).map((c) => c.toLowerCase());
-                const regionMatch = projectRegions.includes(regionValue) || (fallbackCountries.length > 0 && fallbackCountries.some((c) => sponsor.includes(c)));
-                if (!regionMatch) return false;
-            }
-            if (continent) {
-                const continentValue = String(continent).toLowerCase();
-                const projectContinents = [
-                    ...(p.continent_codes || []).map((code) => String(code).toLowerCase()),
-                    ...(p.continent_names_en || []).map((name) => String(name).toLowerCase()),
-                    ...(p.continent_names_fr || []).map((name) => String(name).toLowerCase()),
-                ];
-                if (!projectContinents.includes(continentValue)) return false;
-            }
-            if (chipGroups.source?.length) {
-                const projectSource = String(p.source || '').toLowerCase();
-                if (!chipGroups.source.some((value) => projectSource.includes(value))) return false;
-            }
-            if (chipGroups.region?.length) {
-                if (!chipGroups.region.some((value) => projectRegions.includes(value))) return false;
-            }
-            if (chipGroups.continent?.length) {
-                const projectContinents = [
-                    ...(p.continent_codes || []).map((code) => String(code).toLowerCase()),
-                    ...(p.continent_names_en || []).map((name) => String(name).toLowerCase()),
-                    ...(p.continent_names_fr || []).map((name) => String(name).toLowerCase()),
-                ];
-                if (!chipGroups.continent.some((value) => projectContinents.includes(value))) return false;
-            }
-            if (chipGroups.country?.length) {
-                const projectCountries = [
-                    ...(p.country_names_en || []).map((name) => String(name).toLowerCase()),
-                    ...(p.country_names_fr || []).map((name) => String(name).toLowerCase()),
-                    String(p.project_sponsor || '').toLowerCase(),
-                ];
-                if (!chipGroups.country.some((value) => projectCountries.some((countryValue) => countryValue.includes(value)))) return false;
-            }
-            if (decision === 'Undecided' && p.decision) return false;
-            if (decision && decision !== 'Undecided' && p.decision !== decision) return false;
-            const projectDeadline = parseFilterDate(p.effective_deadline || p.manual_deadline || p.scraped_deadline || p.project_end_date);
-            if (deadlineFromDate && (!projectDeadline || projectDeadline < deadlineFromDate)) return false;
-            if (deadlineToDate && (!projectDeadline || projectDeadline > deadlineToDate)) return false;
-            if (expiringSoonOnly) {
-                if (p.ai_verified !== 'Yes') return false;
-                if (!projectDeadline || projectDeadline < expiringWindowStart || projectDeadline > expiringWindowEnd) return false;
-            }
-            const scrapedAt = parseFilterDate(p.scraped_at);
-            if (scrapedFromDate && (!scrapedAt || scrapedAt < scrapedFromDate)) return false;
-            if (scrapedToDate && (!scrapedAt || scrapedAt > scrapedToDate)) return false;
-            return true;
-        });
-    }, [projects, chips, freeText, source, verified, region, continent, regions, decision, endDateFrom, endDateTo, scrapedFrom, scrapedTo, getRegion, expiringSoonOnly, expiringSoonDays]);
 
 
     const sources = useMemo(() => [...new Set(projects.map((p) => p.source).filter(Boolean))].sort(), [projects]);
@@ -3421,395 +3289,18 @@ export default function App() {
         };
     }, [projects, sources]);
 
-    const clearFilters = () => {
-        setChips([]);
-        setFreeText('');
-        setSource('');
-        setVerified('Yes');
-        setRegion('');
-        setContinent('');
-        setDecision('');
-        setStartDateFrom('');
-        setStartDateTo('');
-        setEndDateFrom('');
-        setEndDateTo('');
-        setScrapedFrom('');
-        setScrapedTo('');
-        setExpiringSoonOnly(false);
-        setExpiringSoonDays(5);
-        setShowAutoFilterToast(false);
-    };
-
-    const clearAutoFilter = () => {
-        setScrapedFrom('');
-        setScrapedTo('');
-        setShowAutoFilterToast(false);
-    };
-
-    const buildCurrentFilterState = useCallback(() => ({
-        chips,
-        freeText,
-        source,
-        verified,
-        region,
-        continent,
-        decision,
-        startDateFrom,
-        startDateTo,
-        endDateFrom,
-        endDateTo,
-        scrapedFrom,
-        scrapedTo,
-        expiringSoonOnly,
-        expiringSoonDays,
-    }), [
-        chips,
-        freeText,
-        source,
-        verified,
-        region,
-        continent,
-        decision,
-        startDateFrom,
-        startDateTo,
-        endDateFrom,
-        endDateTo,
-        scrapedFrom,
-        scrapedTo,
-        expiringSoonOnly,
-        expiringSoonDays,
-    ]);
-
-    const applySavedFilterState = useCallback((filters = {}) => {
-        setChips(Array.isArray(filters.chips) ? filters.chips : []);
-        setFreeText(filters.freeText || '');
-        setSource(filters.source || '');
-        setVerified(filters.verified ?? 'Yes');
-        setRegion(filters.region || '');
-        setContinent(filters.continent || '');
-        setDecision(filters.decision || '');
-        setStartDateFrom(filters.startDateFrom || '');
-        setStartDateTo(filters.startDateTo || '');
-        setEndDateFrom(filters.endDateFrom || '');
-        setEndDateTo(filters.endDateTo || '');
-        setScrapedFrom(filters.scrapedFrom || '');
-        setScrapedTo(filters.scrapedTo || '');
-        setExpiringSoonOnly(Boolean(filters.expiringSoonOnly));
-        setExpiringSoonDays(Math.max(1, Math.min(365, Number(filters.expiringSoonDays) || 5)));
-    }, []);
-
-    const persistSavedSearches = useCallback(async (nextSearches) => {
-        const res = await apiFetch('/api/saved-searches', {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ searches: nextSearches }),
-        });
-        if (!res.ok) throw new Error('Failed to save searches');
-        const data = await res.json();
-        setSavedSearches(Array.isArray(data?.searches) ? data.searches : []);
-    }, [apiFetch]);
-
-    const handleSaveCurrentSearch = useCallback(async () => {
-        const name = window.prompt('Saved search name');
-        if (!name || !name.trim()) return;
-        const now = new Date().toISOString();
-        const next = [
-            {
-                id: `search-${Date.now()}`,
-                name: name.trim(),
-                filters: buildCurrentFilterState(),
-                createdAt: now,
-                updatedAt: now,
-            },
-            ...savedSearches.filter((item) => item.name.trim().toLowerCase() !== name.trim().toLowerCase()),
-        ];
-        await persistSavedSearches(next);
-    }, [buildCurrentFilterState, savedSearches, persistSavedSearches]);
-
-    const handleApplySavedSearch = useCallback((searchId) => {
-        const match = savedSearches.find((item) => item.id === searchId);
-        if (!match) return;
-        applySavedFilterState(match.filters || {});
-    }, [savedSearches, applySavedFilterState]);
-
-    const handleDeleteSavedSearch = useCallback(async (searchId) => {
-        const next = savedSearches.filter((item) => item.id !== searchId);
-        await persistSavedSearches(next);
-    }, [savedSearches, persistSavedSearches]);
-
-    const canManageDecision = authUser?.role === 'manager';
-    const canEditDeadline = authUser?.role === 'admin' || authUser?.role === 'manager';
-
-    const handleDecisionChange = async (index, nextDecision) => {
-        if (!canManageDecision) return;
-        const project = projects[index];
-        setProjects((prev) => {
-            const next = [...prev];
-            next[index] = { ...next[index], decision: nextDecision };
-            return next;
-        });
-        if (selectedProjectIndex === index) {
-            setSelectedProject((prev) => (prev ? { ...prev, decision: nextDecision } : prev));
-        }
-        const res = await apiFetch(
-            project?.db_id
-                ? `${API}/projects/by-db-id/${encodeURIComponent(project.db_id)}/decision`
-                : `${API}/projects/${index}/decision`,
-            {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ decision: nextDecision }),
-            }
-        );
-        if (!res.ok) {
-            throw new Error('Failed to update project decision');
-        }
-    };
 
 
-    const handleDeadlineChange = async (index, manualDeadline) => {
-        if (!canEditDeadline) return;
-        const project = projects[index];
-        const res = await apiFetch(
-            project?.db_id
-                ? `${API}/projects/by-db-id/${encodeURIComponent(project.db_id)}/deadline`
-                : `${API}/projects/${index}/deadline`,
-            {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ manualDeadline }),
-            }
-        );
-        if (!res.ok) throw new Error('Failed to update deadline');
-        const updated = await res.json();
-        setProjects((prev) => {
-            const next = [...prev];
-            next[index] = { ...updated, __rowId: prev[index]?.__rowId || updated.__rowId };
-            return next;
-        });
-        if (selectedProjectIndex === index) {
-            setSelectedProject((prev) => ({ ...(prev || {}), ...updated, __rowId: prev?.__rowId || updated.__rowId }));
-        }
-    };
 
-    const handleAssignmentsChange = async (projectDbId, nextUserIds) => {
-        const res = await apiFetch(`${API}/projects/by-db-id/${encodeURIComponent(projectDbId)}/assignments`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ userIds: nextUserIds }),
-        });
-        if (!res.ok) throw new Error('Failed to update assignments');
-        const updated = await res.json();
-        setProjects((prev) => prev.map((item) => (item.db_id === updated.db_id ? { ...item, ...updated, __rowId: item.__rowId } : item)));
-        setSelectedProject((prev) => (prev?.db_id === updated.db_id ? { ...prev, ...updated, __rowId: prev.__rowId } : prev));
-    };
 
-    const handleVoteChange = async (projectDbId, nextValue) => {
-        if (!projectDbId) return;
-        const previousProject = projects.find((item) => item.db_id === projectDbId);
-        const previousVote = previousProject?.current_user_vote || '';
-        const previousSummary = previousProject?.vote_summary || { up: 0, down: 0 };
-        const optimisticSummary = {
-            up: Math.max(0, (previousSummary.up || 0) + (previousVote === 'up' ? -1 : 0) + (nextValue === 'up' ? 1 : 0)),
-            down: Math.max(0, (previousSummary.down || 0) + (previousVote === 'down' ? -1 : 0) + (nextValue === 'down' ? 1 : 0)),
-        };
-        setProjects((prev) => prev.map((item) => (
-            item.db_id === projectDbId
-                ? { ...item, current_user_vote: nextValue, vote_summary: optimisticSummary }
-                : item
-        )));
-        setSelectedProject((prev) => (
-            prev?.db_id === projectDbId
-                ? { ...prev, current_user_vote: nextValue, vote_summary: optimisticSummary }
-                : prev
-        ));
-        const res = await apiFetch(`${API}/projects/by-db-id/${encodeURIComponent(projectDbId)}/vote`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ value: nextValue }),
-        });
-        if (!res.ok) {
-            setProjects((prev) => prev.map((item) => (
-                item.db_id === projectDbId
-                    ? { ...item, current_user_vote: previousVote, vote_summary: previousSummary }
-                    : item
-            )));
-            setSelectedProject((prev) => (
-                prev?.db_id === projectDbId
-                    ? { ...prev, current_user_vote: previousVote, vote_summary: previousSummary }
-                    : prev
-            ));
-            window.alert('Failed to update vote');
-            throw new Error('Failed to update vote');
-        }
-        const updated = await res.json();
-        setProjects((prev) => prev.map((item) => (item.db_id === updated.db_id ? { ...item, ...updated, __rowId: item.__rowId } : item)));
-        setSelectedProject((prev) => (prev?.db_id === updated.db_id ? { ...prev, ...updated, __rowId: prev.__rowId } : prev));
-    };
 
-    const refreshSelectedProject = useCallback(async () => {
-        if (!selectedProject?.db_id) return null;
-        const res = await apiFetch(`${API}/projects/by-db-id/${encodeURIComponent(selectedProject.db_id)}`);
-        if (!res.ok) return null;
-        const updated = await res.json();
-        setProjects((prev) => prev.map((item) => (item.db_id === updated.db_id ? { ...item, ...updated, __rowId: item.__rowId } : item)));
-        setSelectedProject((prev) => (prev?.db_id === updated.db_id ? { ...prev, ...updated, __rowId: prev.__rowId } : prev));
-        return updated;
-    }, [selectedProject?.db_id, apiFetch]);
 
-    const handleSmartZiwSearch = async (projectDbId) => {
-        const res = await apiFetch(`${API}/projects/by-db-id/${encodeURIComponent(projectDbId)}/smart-ziw`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ force: false }),
-        });
-        if (!res.ok) {
-            const errorData = await res.json().catch(() => ({}));
-            throw new Error(errorData?.detail || 'Failed to start Smart-Ziw Agent');
-        }
-        const data = await res.json().catch(() => ({}));
-        const updated = data?.project;
-        if (updated?.db_id) {
-            setProjects((prev) => prev.map((item) => (item.db_id === updated.db_id ? { ...item, ...updated, __rowId: item.__rowId } : item)));
-            setSelectedProject((prev) => (prev?.db_id === updated.db_id ? { ...prev, ...updated, __rowId: prev.__rowId } : prev));
-            return;
-        }
-        await refreshSelectedProject();
-    };
 
-    const handleDelete = async (projectOrIndex, fallbackIndex = null) => {
-        const project = typeof projectOrIndex === 'object' && projectOrIndex !== null ? projectOrIndex : null;
-        const index = typeof projectOrIndex === 'number' ? projectOrIndex : fallbackIndex;
-        const dbId = project?.db_id;
-        const rowId = project?.__rowId;
-        const started = performance.now();
-        const selectedProjectSnapshot = selectedProject;
-        const selectedProjectIndexSnapshot = selectedProjectIndex;
-        const commentsOpenSnapshot = commentsOpen;
-        const removedIndex = dbId
-            ? projects.findIndex((item) => item.db_id === dbId)
-            : (rowId
-                ? projects.findIndex((item) => item.__rowId === rowId)
-                : index);
-        const removedProject = removedIndex >= 0 ? projects[removedIndex] : null;
 
-        if (!removedProject) {
-            console.warn('[delete] unable to resolve row for deletion', { dbId, rowId, index });
-            return;
-        }
 
-        setProjects((prev) => {
-            const removedKey = removedProject?.db_id || removedProject?.__rowId;
-            const next = prev.filter((item, i) => {
-                const itemKey = item?.db_id || item?.__rowId;
-                if (removedKey) return itemKey !== removedKey;
-                return i !== removedIndex;
-            });
-            const selectedKey = selectedProjectSnapshot?.db_id || selectedProjectSnapshot?.__rowId;
 
-            if (selectedKey && removedKey && selectedKey === removedKey) {
-                setSelectedProject(null);
-                setSelectedProjectIndex(null);
-                setCommentsOpen(false);
-            } else if (selectedKey) {
-                const nextIndex = next.findIndex((item) => (item.db_id || item.__rowId) === selectedKey);
-                setSelectedProjectIndex(nextIndex >= 0 ? nextIndex : null);
-                if (nextIndex < 0) {
-                    setSelectedProject(null);
-                    setCommentsOpen(false);
-                }
-            }
-            return next;
-        });
 
-        console.debug('[delete] optimistic row removal', {
-            dbId,
-            rowId,
-            optimisticMs: Math.round(performance.now() - started),
-        });
 
-        const requestStarted = performance.now();
-        try {
-            const res = dbId
-                ? await apiFetch(`${API}/projects/by-db-id/${encodeURIComponent(dbId)}`, { method: 'DELETE' })
-                : await apiFetch(`${API}/projects/${index}`, { method: 'DELETE' });
-
-            if (!res.ok) {
-                const data = await res.json().catch(() => ({}));
-                throw new Error(data?.detail || 'Failed to delete project');
-            }
-
-            console.debug('[delete] server response received', {
-                dbId,
-                rowId,
-                requestMs: Math.round(performance.now() - requestStarted),
-                totalMs: Math.round(performance.now() - started),
-            });
-        } catch (error) {
-            console.error('[delete] rollback after failed delete', {
-                dbId,
-                rowId,
-                error: error?.message || error,
-                requestMs: Math.round(performance.now() - requestStarted),
-            });
-
-            if (removedProject) {
-                setProjects((prev) => {
-                    const exists = prev.some((item) => (item.db_id && removedProject.db_id ? item.db_id === removedProject.db_id : item.__rowId === removedProject.__rowId));
-                    if (exists) return prev;
-                    const next = [...prev];
-                    const insertAt = Math.max(0, Math.min(removedIndex, next.length));
-                    next.splice(insertAt, 0, removedProject);
-                    return next;
-                });
-            }
-
-            setSelectedProject(selectedProjectSnapshot);
-            setSelectedProjectIndex(selectedProjectIndexSnapshot);
-            setCommentsOpen(commentsOpenSnapshot);
-            window.alert(error?.message || 'Failed to delete project');
-        }
-    };
-
-    const handleBulkDelete = async (selectedProjects) => {
-        const projectDbIds = [...new Set((selectedProjects || []).map((project) => project?.db_id).filter(Boolean))];
-        if (!projectDbIds.length) {
-            for (const project of selectedProjects || []) {
-                const projectIndex = projects.findIndex((item) => item.__rowId === project.__rowId);
-                if (projectIndex >= 0) {
-                    // Fallback only when db_id is unavailable.
-                    // eslint-disable-next-line no-await-in-loop
-                    await handleDelete(project, projectIndex);
-                }
-            }
-            return;
-        }
-
-        const res = await apiFetch(`${API}/projects/bulk-delete`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ projectDbIds }),
-        });
-        if (!res.ok) throw new Error('Failed to delete selected projects');
-        const data = await res.json();
-        const deletedIds = new Set((data.deletedIds || []).map(String));
-        setProjects((prev) => {
-            const next = prev.filter((item) => !deletedIds.has(String(item.db_id)));
-            if (selectedProject?.db_id && deletedIds.has(String(selectedProject.db_id))) {
-                setSelectedProject(null);
-                setSelectedProjectIndex(null);
-                setCommentsOpen(false);
-            } else if (selectedProject?.db_id) {
-                const nextIndex = next.findIndex((item) => item.db_id === selectedProject.db_id);
-                setSelectedProjectIndex(nextIndex >= 0 ? nextIndex : null);
-                if (nextIndex < 0) {
-                    setSelectedProject(null);
-                    setCommentsOpen(false);
-                }
-            }
-            return next;
-        });
-    };
 
     const snapshotBeforeSync = useCallback(() => {
         preSyncIdsRef.current = new Set(projects.map((p) => `${p.project_id}__${p.project_name}`));
@@ -3829,193 +3320,39 @@ export default function App() {
         setNewProjectIds(newIds);
     }, [apiFetch]);
 
-    const selectedEntity = useMemo(() => (
-        selectedProject
-            ? {
-                type: 'project',
-                id: selectedProject.project_id || selectedProject.project_name,
-                label: selectedProject.project_name || selectedProject.project_description,
-            }
-            : null
-    ), [selectedProject]);
 
-    const selectedEntityType = selectedEntity?.type || '';
-    const selectedEntityId = selectedEntity?.id || '';
-    const selectedProjectShareUrl = useMemo(
-        () => buildTenderShareUrl(selectedProject?.db_id || ''),
-        [selectedProject?.db_id],
-    );
 
-    useEffect(() => {
-        if (!selectedProject?.db_id || !projects.length) return;
-        const projectIndex = projects.findIndex((item) => String(item.db_id) === String(selectedProject.db_id));
-        if (projectIndex < 0) return;
-        setSelectedProjectIndex(projectIndex);
-        setSelectedProject((prev) => (
-            prev?.db_id === projects[projectIndex]?.db_id
-                ? { ...prev, ...projects[projectIndex], __rowId: projects[projectIndex].__rowId || prev.__rowId }
-                : prev
-        ));
-    }, [projects, selectedProject?.db_id]);
 
-    const refreshComments = useCallback(async () => {
-        if (!commentsOpen || !selectedEntityId) return;
-        const res = await apiFetch(`/api/comments?entityType=${encodeURIComponent(selectedEntityType)}&entityId=${encodeURIComponent(selectedEntityId)}&mine=${commentsMine}`);
-        setComments(await res.json());
-    }, [commentsOpen, selectedEntityType, selectedEntityId, commentsMine, apiFetch]);
 
-    useEffect(() => {
-        let cancelled = false;
 
-        const run = async () => {
-            if (!authUser || !commentsOpen || !selectedEntityId) {
-                setComments([]);
-                return;
-            }
-            const res = await apiFetch(`/api/comments?entityType=${encodeURIComponent(selectedEntityType)}&entityId=${encodeURIComponent(selectedEntityId)}&mine=${commentsMine}`);
-            const data = await res.json();
-            if (!cancelled) setComments(data);
-        };
 
-        run();
-        return () => {
-            cancelled = true;
-        };
-    }, [authUser, commentsOpen, selectedEntityType, selectedEntityId, commentsMine, apiFetch]);
 
-    useEffect(() => {
-        if (!authUser || !commentsOpen || !selectedEntityId) return undefined;
-        const interval = window.setInterval(() => {
-            refreshComments();
-            refreshSelectedProject();
-        }, 5000);
-        return () => window.clearInterval(interval);
-    }, [authUser, commentsOpen, selectedEntityId, refreshComments, refreshSelectedProject]);
 
-    const submitComment = async (pendingFiles = [], mentions = [], onFilesClear = null) => {
-        if ((!commentsBody.trim() && !pendingFiles.length) || !selectedEntityId) return;
-        const attachments = pendingFiles || [];
-        const optimistic = {
-            id: `tmp-${Date.now()}`,
-            authorName: authUser?.name || 'You',
-            body: commentsBody.trim(),
-            attachments,
-            mentions,
-            createdAt: new Date().toISOString(),
-        };
-        setComments((prev) => [...prev, optimistic]);
-        const text = commentsBody;
-        setCommentsBody('');
-        if (onFilesClear) onFilesClear();
-        const res = await apiFetch('/api/comments', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                entityType: selectedEntityType,
-                entityId: selectedEntityId,
-                projectDbId: selectedProject?.db_id || '',
-                body: text || ' ',
-                attachments,
-                mentions,
-            }),
-        });
-        if (!res.ok) throw new Error('Failed to post comment');
-        const created = await res.json().catch(() => null);
-        const attachmentCount = attachments.length;
-        if (selectedProject?.db_id) {
-            setProjects((prev) => prev.map((item) => (
-                item.db_id === selectedProject.db_id
-                    ? {
-                        ...item,
-                        comment_count: (item.comment_count || 0) + 1,
-                        comment_document_count: (item.comment_document_count || 0) + attachmentCount,
-                      }
-                    : item
-            )));
-            setSelectedProject((prev) => (prev ? {
-                ...prev,
-                comment_count: (prev.comment_count || 0) + 1,
-                comment_document_count: (prev.comment_document_count || 0) + attachmentCount,
-              } : prev));
-        }
-        if (created?.comment) {
-            setComments((prev) => prev.map((item) => (item.id === optimistic.id ? created.comment : item)));
-        }
-        await refreshComments();
-    };
 
-    const openProjectByDbId = useCallback(async (projectDbId) => {
-        if (!projectDbId || !authUser || authUser.mustChangePassword) return;
-        const localProject = projects.find((item) => String(item.db_id) === String(projectDbId));
-        let project = localProject;
-        if (!project) {
-            const res = await apiFetch(`${API}/projects/by-db-id/${encodeURIComponent(projectDbId)}`);
-            if (!res.ok) throw new Error('Tender not found');
-            project = await res.json();
-        }
-        const projectIndex = projects.findIndex((item) => String(item.db_id) === String(projectDbId));
-        setRoute('dashboard');
-        setSelectedProject(project);
-        setSelectedProjectIndex(projectIndex >= 0 ? projectIndex : null);
-        setCommentsOpen(true);
-    }, [authUser, projects, apiFetch]);
-
-    useEffect(() => {
-        const tenderId = getTenderIdFromHash(window.location.hash);
-        if (!tenderId || !authUser || authUser.mustChangePassword) return undefined;
-        if (commentsOpen && String(selectedProject?.db_id || '') === String(tenderId)) return undefined;
-
-        let cancelled = false;
-        openProjectByDbId(tenderId).catch(() => {
-            if (!cancelled) window.alert('Tender not found or no longer available.');
-        });
-        return () => {
-            cancelled = true;
-        };
-    }, [authUser, commentsOpen, selectedProject?.db_id, openProjectByDbId]);
-
-    const clearActiveProject = useCallback(() => {
-        setSelectedProject(null);
-        setSelectedProjectIndex(null);
-        setCommentsOpen(false);
-        if (getTenderIdFromHash(window.location.hash)) {
-            window.location.hash = '#dashboard';
-        }
-    }, []);
 
     const openProjectFromNotification = useCallback(async (notification) => {
         if (!notification) return;
+        const projectDbId = notification.projectDbId;
         const project = projects.find((item) => (
-            (notification.projectDbId && item.db_id === notification.projectDbId)
+            (projectDbId && item.db_id === projectDbId)
             || (notification.entityId && (item.project_id === notification.entityId || item.project_name === notification.entityId))
         ));
-        if (!project) {
+        const targetDbId = project?.db_id || projectDbId;
+        if (!targetDbId) {
             window.alert('Project not found for this notification.');
             return;
         }
-        const projectIndex = projects.findIndex((item) => item.db_id === project.db_id);
         if (!notification.read) {
             await markNotificationGroupAsRead(notification.notificationIds || [notification.id]);
         }
         setNotificationsOpen(false);
         setRoute('dashboard');
-        window.location.hash = buildTenderHash(project.db_id);
-        setSelectedProject(project);
-        setSelectedProjectIndex(projectIndex >= 0 ? projectIndex : null);
-        setCommentsOpen(true);
+        window.location.hash = buildTenderHash(targetDbId);
     }, [projects, markNotificationGroupAsRead]);
 
     const navigate = (key) => {
         if (key === 'logout') {
             doLogout();
-            return;
-        }
-        if (key === 'schedule') {
-            setScheduleOpen(true);
-            return;
-        }
-        if (key === 'settings') {
-            setConfigOpen(true);
             return;
         }
         setRoute(key);
@@ -4030,8 +3367,8 @@ export default function App() {
     const handleHeaderMenuAction = (key) => {
         if (key === 'profile') navigate('profile');
         else if (key === 'admin') navigate('admin');
-        else if (key === 'settings') setConfigOpen(true);
-        else if (key === 'schedule') setScheduleOpen(true);
+        else if (key === 'settings') navigate('settings');
+        else if (key === 'schedule') navigate('schedule');
         else if (key === 'logout') doLogout();
     };
 
@@ -4052,13 +3389,13 @@ export default function App() {
                 />
                 <div className="flex min-w-0 flex-1 flex-col">
                 <div className="min-h-0 flex-1 overflow-auto">
-                    <div className="w-full px-6 py-6">
+                    <div className="w-full px-8 py-8">
                         <div className="mb-6 flex items-center justify-end gap-1 border-b border-border pb-4">
                             <TooltipProvider>
                                 <Tooltip>
                                     <TooltipTrigger asChild>
                                         <ShadcnButton variant="ghost" size="icon" className="relative" aria-label="Notifications" onClick={() => setNotificationsOpen(true)}>
-                                            <Bell className="h-5 w-5" />
+                                            <Bell className="h-4 w-4" />
                                             {unreadNotificationCount ? <Badge variant="destructive" className="absolute -right-1 -top-1 h-5 min-w-5 items-center justify-center rounded-full px-1 text-[10px] leading-none">{unreadNotificationCount}</Badge> : null}
                                         </ShadcnButton>
                                     </TooltipTrigger>
@@ -4067,7 +3404,7 @@ export default function App() {
                                 <Tooltip>
                                     <TooltipTrigger asChild>
                                         <ShadcnButton variant="ghost" size="icon" aria-label="Sync now" onClick={() => setSyncOpen(true)}>
-                                            <RefreshCw className="h-5 w-5" />
+                                            <RefreshCw className="h-4 w-4" />
                                         </ShadcnButton>
                                     </TooltipTrigger>
                                     <TooltipContent>Sync now</TooltipContent>
@@ -4075,7 +3412,7 @@ export default function App() {
                                 <Tooltip>
                                     <TooltipTrigger asChild>
                                         <ShadcnButton variant="ghost" size="icon" aria-label="Show me around" onClick={() => setDemoOpen(true)}>
-                                            <CircleHelp className="h-5 w-5" />
+                                            <CircleHelp className="h-4 w-4" />
                                         </ShadcnButton>
                                     </TooltipTrigger>
                                     <TooltipContent>Show me around</TooltipContent>
@@ -4110,149 +3447,56 @@ export default function App() {
                                 </DropdownMenuContent>
                             </DropdownMenu>
                         </div>
-                        {route === 'dashboard' || route === 'tenders' || (ADMIN_ROUTES.includes(route) && authUser.role !== 'admin') ? (
-                            <div className="flex flex-col gap-6">
-                                <div className="flex min-w-0 flex-1 flex-col gap-6">
-                                    <PageHeader
-                                        title="Procurement Watch"
-                                        subtitle="Track tenders, review sources, and manage decisions."
-                                    />
-                                    <div className="mb-5 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                                        <Card>
-                                            <CardContent className="flex flex-col gap-1.5">
-                                                <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Total Tenders</span>
-                                                <span className="text-3xl font-bold tracking-tight text-foreground">{dashboardStats.total}</span>
-                                                <span className="text-sm text-muted-foreground">Across {dashboardStats.sourcesCount} sources</span>
-                                            </CardContent>
-                                        </Card>
-                                        <Card>
-                                            <CardContent className="flex flex-col gap-1.5">
-                                                <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">New This Week</span>
-                                                <span className="text-3xl font-bold tracking-tight text-foreground">{dashboardStats.newThisWeek}</span>
-                                                <span className="text-sm text-muted-foreground">Scraped in last 7 days</span>
-                                            </CardContent>
-                                        </Card>
-                                        <Card>
-                                            <CardContent className="flex flex-col gap-1.5">
-                                                <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Pending Review</span>
-                                                <span className="text-3xl font-bold tracking-tight text-foreground">{dashboardStats.pendingReview}</span>
-                                                <span className="text-sm text-muted-foreground">Awaiting decision</span>
-                                            </CardContent>
-                                        </Card>
-                                        <Card>
-                                            <CardContent className="flex flex-col gap-1.5">
-                                                <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Expiring Soon</span>
-                                                <span className="text-3xl font-bold tracking-tight text-foreground">{dashboardStats.expiringSoon}</span>
-                                                <span className="text-sm text-muted-foreground"><strong className="font-semibold text-primary">30</strong> day window</span>
-                                            </CardContent>
-                                        </Card>
-                                    </div>
-                                    <ProjectTable
-                                        projects={filtered}
-                                        allProjects={projects}
-                                        onDecisionChange={handleDecisionChange}
-                                        onDelete={handleDelete}
-                                        onBulkDelete={handleBulkDelete}
-                                        regions={regions}
-                                        chips={chips}
-                                        onChipsChange={setChips}
-                                        freeText={freeText}
-                                        onFreeTextChange={setFreeText}
-                                        source={source}
-                                        onSourceChange={setSource}
-                                        region={region}
-                                        onRegionChange={setRegion}
-                                        continent={continent}
-                                        onContinentChange={setContinent}
-                                        continents={continents}
-                                        verified={verified}
-                                        onVerifiedChange={setVerified}
-                                        sources={sources}
-                                        decision={decision}
-                                        onDecisionChangeFilter={setDecision}
-                                        deadlineFrom={endDateFrom}
-                                        deadlineTo={endDateTo}
-                                        onDeadlineFromChange={setEndDateFrom}
-                                        onDeadlineToChange={setEndDateTo}
-                                        scrapedFrom={scrapedFrom}
-                                        scrapedTo={scrapedTo}
-                                        onScrapedFromChange={setScrapedFrom}
-                                        onScrapedToChange={setScrapedTo}
-                                        onClearFilters={clearFilters}
-                                        expiringSoonOnly={expiringSoonOnly}
-                                        expiringSoonDays={expiringSoonDays}
-                                        onToggleExpiringSoon={() => setExpiringSoonOnly((prev) => !prev)}
-                                        onExpiringSoonDaysChange={(value) => setExpiringSoonDays(Math.max(1, Math.min(365, Number(value) || 1)))}
-                                        savedSearches={savedSearches}
-                                        onSaveCurrentSearch={handleSaveCurrentSearch}
-                                        onApplySavedSearch={handleApplySavedSearch}
-                                        onDeleteSavedSearch={handleDeleteSavedSearch}
-                                        canManageDecision={canManageDecision}
-                                        activeProjectId={selectedEntityId}
-                                        onClearActiveProject={clearActiveProject}
-                                        autoFilterActive={showAutoFilterToast}
-                                        onClearAutoFilter={clearAutoFilter}
-                                        onStartDemo={() => setDemoOpen(true)}
-                                        onProjectSelect={(project, projectIndex) => {
-                                            setSelectedProject(project);
-                                            setSelectedProjectIndex(projectIndex);
-                                            setCommentsOpen(true);
-                                            if (project?.db_id) {
-                                                window.location.hash = buildTenderHash(project.db_id);
-                                            }
-                                        }}
-                                    />
-                                </div>
-                            </div>
+                        <ErrorBoundary>
+{tenderDetailId ? (
+                            <TenderDetailPage
+                                dbId={tenderDetailId}
+                                apiFetch={apiFetch}
+                                authUser={authUser}
+                                availableUsers={availableUsers}
+                            />
                         ) : null}
+{route === 'dashboard' && !tenderDetailId ? (
+                            <TendersPage
+                                apiFetch={apiFetch}
+                                authUser={authUser}
+                                availableUsers={availableUsers}
+                                regions={regions}
+                                continents={continents}
+                                sources={sources}
+                                dashboardStats={dashboardStats}
+                                projects={projects}
+                                setProjects={setProjects}
+                                projectsLoading={projectsLoading}
+                                projectsError={projectsError}
+                                loadProjects={loadProjects}
+                                newProjectIds={newProjectIds}
+                                onStartDemo={() => setDemoOpen(true)}
+                            />
+                        ) : null}
+                        </ErrorBoundary>
 
                         {ADMIN_ROUTES.includes(route) && authUser.role === 'admin' ? (
                             <AdminPage
                                 key={route}
                                 apiFetch={apiFetch}
-                                initialTab={route === 'llm-config' ? 'llm' : route === 'smart-ziw' ? 'smart-ziw' : 'users'}
+                                authUser={authUser}
+                                initialTab={route === 'llm-config' ? 'llm' : route === 'smart-ziw' ? 'smart-ziw' : route === 'skills' ? 'skills' : 'users'}
                             />
                         ) : null}
                         {route === 'analytics' ? <AnalyticsPage /> : null}
                         {route === 'profile' ? <ProfilePage user={authUser} apiFetch={apiFetch} onUserUpdate={setAuthUser} /> : null}
                         {route === 'release-notes' ? <ReleaseNotesPage releases={releaseNotes} onBack={() => navigate('dashboard')} /> : null}
+                        {route === 'settings' && authUser.role === 'admin' ? <SettingsPage apiFetch={apiFetch} onBack={() => navigate('dashboard')} /> : null}
+                        {route === 'schedule' && authUser.role === 'admin' ? <SchedulePage apiFetch={apiFetch} onBack={() => navigate('dashboard')} /> : null}
                     </div>
                 </div>
             </div>
             </SidebarProvider>
 
-            <CommentsPanel
-                open={commentsOpen}
-                entity={selectedEntity}
-                project={selectedProject}
-                projectRegion={selectedProject ? (selectedProject.primary_region_name || getRegion(selectedProject.project_sponsor)) : ''}
-                comments={comments}
-                mine={commentsMine}
-                setMine={setCommentsMine}
-                body={commentsBody}
-                setBody={setCommentsBody}
-                onSubmit={submitComment}
-                onClose={clearActiveProject}
-                currentUser={authUser}
-                apiFetch={apiFetch}
-                availableUsers={availableUsers}
-                shareUrl={selectedProjectShareUrl}
-                onDecisionChange={(nextDecision) => {
-                    if (selectedProjectIndex !== null) handleDecisionChange(selectedProjectIndex, nextDecision);
-                }}
-                onDeadlineSave={(nextDeadline) => {
-                    if (selectedProjectIndex !== null) return handleDeadlineChange(selectedProjectIndex, nextDeadline);
-                    return Promise.resolve();
-                }}
-                onAssignmentsChange={handleAssignmentsChange}
-                onVoteChange={handleVoteChange}
-                onSmartZiwSearch={handleSmartZiwSearch}
-            />
 
             <SyncPanel open={syncOpen} onClose={() => setSyncOpen(false)} onSyncDone={handleSyncDone} onSyncStart={snapshotBeforeSync} apiFetch={apiFetch} />
             <DemoWalkthrough open={demoOpen} onClose={() => setDemoOpen(false)} steps={DEMO_STEPS} />
-            <ConfigPanel open={configOpen} onClose={() => setConfigOpen(false)} apiFetch={apiFetch} />
-            <SchedulePanel open={scheduleOpen} onClose={() => setScheduleOpen(false)} apiFetch={apiFetch} />
             <ReleaseNotesModal
                 open={releaseNotesOpen}
                 releases={modalReleaseNotes}

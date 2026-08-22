@@ -12,7 +12,11 @@ services:
 
   # ── FastAPI Backend ──────────────────────────────────────
   backend:
-    build: ./backend
+    build:
+      context: ./backend
+      # Host is IPv6-only: build containers on the default bridge get no DNS,
+      # so apt/pip inside builds fail ("Temporary failure resolving ...").
+      network: host
     container_name: procurement-backend
     ports:
       - "8000:8000"
@@ -27,7 +31,10 @@ services:
 
   # ── Vite + React Frontend (production build + Nginx) ───
   frontend:
-    build: ./frontend
+    build:
+      context: ./frontend
+      # Same reason as backend: npm ci needs DNS during build.
+      network: host
     container_name: procurement-frontend
     ports:
       - "8080:80"
