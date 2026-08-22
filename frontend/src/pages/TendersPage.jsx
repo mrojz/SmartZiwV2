@@ -1,6 +1,8 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import ProjectTable from '../components/ProjectTable';
 import ProjectInspector from '../components/ProjectInspector';
+import PageHeader from '../components/PageHeader';
+import SectionCard from '../components/SectionCard';
 import { Button as ShadcnButton } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
@@ -138,20 +140,6 @@ function toInputDate(value) {
         return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
     }
     return '';
-}
-
-function PageHeader({ title, subtitle, action, className = '' }) {
-    return (
-        <div className={`mb-6 ${className}`.trim()}>
-            <div className="flex flex-wrap items-center justify-between gap-4">
-                <div className="min-w-0">
-                    <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
-                </div>
-                {action ? <div className="flex items-center gap-2">{action}</div> : null}
-            </div>
-            {subtitle ? <p className="mt-1.5 text-sm text-muted-foreground">{subtitle}</p> : null}
-        </div>
-    );
 }
 
 function CommentComposer({

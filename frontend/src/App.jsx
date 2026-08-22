@@ -3,6 +3,8 @@ import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import TendersPage from './pages/TendersPage';
 import TenderDetailPage from './pages/TenderDetailPage';
 import ErrorBoundary from './components/ErrorBoundary';
+import PageHeader from './components/PageHeader';
+import SectionCard from './components/SectionCard';
 import DemoWalkthrough from './components/DemoWalkthrough';
 import SyncPanel from './components/SyncPanel';
 import SettingsPage from './components/SettingsPage';
@@ -824,21 +826,6 @@ function NotificationsPanel({ open, notifications, unreadCount, onClose, onOpenN
         </Dialog>
     );
 }
-
-function PageHeader({ title, subtitle, action, className = '' }) {
-    return (
-        <div className={`mb-6 ${className}`.trim()}>
-            <div className="flex flex-wrap items-center justify-between gap-4">
-                <div className="min-w-0">
-                    <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
-                </div>
-                {action ? <div className="flex items-center gap-2">{action}</div> : null}
-            </div>
-            {subtitle ? <p className="mt-1.5 text-sm text-muted-foreground">{subtitle}</p> : null}
-        </div>
-    );
-}
-
 
 function ProfilePage({ user, apiFetch, onUserUpdate }) {
     const parts = (user?.name || '').split(/\s+/).filter(Boolean);
