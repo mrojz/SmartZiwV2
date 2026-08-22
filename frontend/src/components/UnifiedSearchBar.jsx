@@ -497,7 +497,7 @@ export default function UnifiedSearchBar({
     }
 
     return (
-        <div className="usb-root rounded-lg border bg-card p-6 shadow-sm">
+        <div className="usb-root tender-filter-bar rounded-lg border bg-card p-6 shadow-sm">
 
             {/* ── Primary row ─────────────────────────────────────── */}
             <div className="flex flex-wrap items-center gap-2">

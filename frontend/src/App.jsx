@@ -211,9 +211,14 @@ function buildNotificationStreamUrl() {
 const ADMIN_ROUTES = ['admin', 'users', 'smart-ziw', 'llm-config', 'skills'];
 
 const DEMO_STEPS = [
-    { target: '.usb-root', title: 'Filter bar', body: 'Narrow the list by source, region, deadline, or scrape date. The list is sorted by the most recent scrape date.' },
-    { target: '.app-table tbody tr:first-child', title: 'Tender rows', body: 'Each row is a tender. Open it to see the full analysis, discussion, and next actions.' },
-    { target: '.project-inspector-actions button', title: 'Smart-Ziw agent', body: 'Ask the agent in a tender\'s discussion with @SmartZiw, or run the full analysis from here.' },
+    { target: '.app-top-header', title: 'Page title and actions', body: 'The current page title, context, and primary action live in the compact top bar next to notifications, sync, and your account.' },
+    { target: '.tender-stats-cards', title: 'Overview stats', body: 'Quick totals for tenders, new this week, pending review, and deadlines expiring soon.' },
+    { target: '.tender-filter-bar', title: 'Filter bar', body: 'Narrow the list by source, region, deadline, or scrape date. Saved searches let you reuse common filters.' },
+    { target: '.app-table tbody tr:first-child', title: 'Tender rows', body: 'Click any row to open a side sheet with the full analysis, discussion, and next actions.' },
+    { target: '.tender-decision-buttons', title: 'Decision buttons', body: 'Managers can set the formal Go / No Go / Undecided verdict for a tender.' },
+    { target: '.tender-comment-composer', title: 'Discussion', body: 'Post comments, attach files, and mention teammates with @. Use @SmartZiw to ask the agent follow-up questions.' },
+    { target: '.project-inspector-actions button', title: 'Smart-Ziw agent', body: 'Run a full AI analysis on a tender. The agent researches the project and writes a structured recommendation.' },
+    { target: '.admin-sidebar', title: 'Admin settings', body: 'Admins can manage users, release notes, skills, MCP servers, LLM providers, and system prompts from the sidebar.' },
 ];
 
 function normalizeRoute(rawRoute = '') {

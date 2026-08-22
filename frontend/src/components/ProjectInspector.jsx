@@ -132,7 +132,7 @@ function OverviewTab({ project, canManageDecision, onDecisionChange, compact }) 
                                 <h3 className="text-sm font-semibold text-foreground">Decision</h3>
                                 <p className="mt-0.5 text-xs text-muted-foreground">Managers can set the formal Go / No Go decision.</p>
                             </div>
-                            <div className="grid grid-cols-3 gap-2">
+                            <div className="tender-decision-buttons grid grid-cols-3 gap-2">
                                 <ShadcnButton
                                     type="button"
                                     variant="outline"
