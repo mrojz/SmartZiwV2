@@ -92,3 +92,12 @@ def test_admin_cannot_self_deactivate(monkeypatch):
     })
     assert r.status_code == 400
     assert r.json()["detail"] == "Cannot deactivate yourself"
+
+
+def test_admin_cannot_self_delete(monkeypatch):
+    monkeypatch.setattr(server, "_get_request_user", lambda req: _mk_user(role="admin"))
+    monkeypatch.setattr(server, "delete_user", lambda uid: False)
+    client = TestClient(server.app)
+    r = client.delete("/api/admin/users/u1")
+    assert r.status_code == 400
+    assert r.json()["detail"] == "Cannot delete yourself"
