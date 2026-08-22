@@ -8,6 +8,10 @@ import {
     normalizeComment,
     colorFromSeed,
     formatDisplayDate,
+    getVerdictBadgeClasses,
+    getVerdictLabel,
+    getConfidenceClasses,
+    getUnifiedStatus,
 } from './tenderDisplay.js';
 
 describe('initials', () => {
@@ -126,6 +130,40 @@ describe('colorFromSeed', () => {
 
     it('returns a valid HSL string', () => {
         assert.match(colorFromSeed('test'), /^hsl\(\d+ \d+% \d+%\)$/);
+    });
+});
+
+describe('getVerdictBadgeClasses', () => {
+    it('returns green for GO', () => assert.ok(getVerdictBadgeClasses('GO').includes('bg-green-600')));
+    it('returns destructive for NO-GO', () => assert.ok(getVerdictBadgeClasses('NO-GO').includes('bg-destructive')));
+    it('returns amber for GO-CONDITIONAL', () => assert.ok(getVerdictBadgeClasses('GO-CONDITIONAL').includes('bg-amber-600')));
+});
+
+describe('getVerdictLabel', () => {
+    it('normalizes labels', () => {
+        assert.strictEqual(getVerdictLabel('go'), 'GO');
+        assert.strictEqual(getVerdictLabel('no-go'), 'NO-GO');
+        assert.strictEqual(getVerdictLabel('go-conditional'), 'GO-CONDITIONAL');
+        assert.strictEqual(getVerdictLabel(''), 'Pending');
+    });
+});
+
+describe('getConfidenceClasses', () => {
+    it('maps confidence to colors', () => {
+        assert.ok(getConfidenceClasses('high').includes('bg-green-600'));
+        assert.ok(getConfidenceClasses('medium').includes('bg-amber-600'));
+        assert.ok(getConfidenceClasses('low').includes('bg-destructive'));
+    });
+});
+
+describe('getUnifiedStatus', () => {
+    it('prefers Smart-Ziw verdict', () => {
+        const s = getUnifiedStatus({ smart_ziw_research_verdict: 'GO', decision: 'No Go' });
+        assert.strictEqual(s.label, 'GO');
+    });
+    it('falls back to manager decision', () => {
+        const s = getUnifiedStatus({ decision: 'Go' });
+        assert.strictEqual(s.label, 'GO');
     });
 });
 

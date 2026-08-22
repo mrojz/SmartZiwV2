@@ -93,3 +93,44 @@ export function formatDisplayDate(value) {
     }
     return value;
 }
+
+export function getVerdictBadgeClasses(verdict = '') {
+    const v = String(verdict).toUpperCase().trim();
+    if (v === 'GO') return 'bg-green-600 text-primary-foreground hover:bg-green-600/90';
+    if (v === 'NO-GO') return 'bg-destructive text-destructive-foreground hover:bg-destructive/90';
+    if (v === 'GO-CONDITIONAL') return 'bg-amber-600 text-primary-foreground hover:bg-amber-700';
+    return 'bg-muted text-muted-foreground';
+}
+
+export function getVerdictLabel(verdict = '') {
+    const v = String(verdict).toUpperCase().trim();
+    if (v === 'GO-CONDITIONAL') return 'GO-CONDITIONAL';
+    if (v === 'GO') return 'GO';
+    if (v === 'NO-GO') return 'NO-GO';
+    return 'Pending';
+}
+
+export function getConfidenceClasses(confidence = '') {
+    const c = String(confidence).toLowerCase().trim();
+    if (c === 'high') return 'bg-green-600';
+    if (c === 'medium') return 'bg-amber-600';
+    if (c === 'low') return 'bg-destructive';
+    return 'bg-muted-foreground/40';
+}
+
+export function getUnifiedStatus(project = {}) {
+    const verdict = project.smart_ziw_research_verdict || '';
+    const managerDecision = project.decision || '';
+    let effectiveVerdict = verdict;
+    if (!effectiveVerdict && managerDecision === 'Go') effectiveVerdict = 'GO';
+    if (!effectiveVerdict && managerDecision === 'No Go') effectiveVerdict = 'NO-GO';
+    return {
+        verdict: effectiveVerdict,
+        label: getVerdictLabel(effectiveVerdict),
+        classes: getVerdictBadgeClasses(effectiveVerdict),
+        source: project.smart_ziw_ai_source || '',
+        confidence: project.smart_ziw_confidence || '',
+        confidenceClasses: getConfidenceClasses(project.smart_ziw_confidence || ''),
+        smartZiwStatus: project.smart_ziw_status || '',
+    };
+}
