@@ -7,7 +7,25 @@ export function getTenderIdFromHash(rawHash = '') {
 }
 
 export function buildTenderHash(projectDbId = '') {
+    return buildFullPageHash(projectDbId);
+}
+
+export function buildSheetHash(projectDbId = '') {
+    return projectDbId ? `#/tenders/${encodeURIComponent(projectDbId)}/sheet` : '#dashboard';
+}
+
+export function buildFullPageHash(projectDbId = '') {
     return projectDbId ? `#/tenders/${encodeURIComponent(projectDbId)}` : '#dashboard';
+}
+
+export function isTenderSheetHash(rawHash = '') {
+    const hash = String(rawHash || '').replace(/^#/, '').replace(/^\//, '');
+    return /^tenders\/[^/?#]+\/sheet/.test(hash);
+}
+
+export function isTenderFullPageHash(rawHash = '') {
+    const hash = String(rawHash || '').replace(/^#/, '').replace(/^\//, '');
+    return /^tenders\/[^/?#]+(?:\?|$)/.test(hash) && !/^tenders\/[^/?#]+\/sheet/.test(hash);
 }
 
 export function buildTenderShareUrl(projectDbId = '') {

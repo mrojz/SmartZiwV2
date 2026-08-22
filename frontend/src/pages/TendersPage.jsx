@@ -21,10 +21,13 @@ import { Avatar as ShadcnAvatar, AvatarFallback } from '@/components/ui/avatar';
 import { Paperclip, Send, X, Search, ThumbsUp, ThumbsDown } from 'lucide-react';
 import {
     getTenderIdFromHash,
-    buildTenderHash,
+    buildSheetHash,
+    buildFullPageHash,
     buildTenderShareUrl,
     buildDashboardHash,
     deserializeFilters,
+    isTenderSheetHash,
+    isTenderFullPageHash,
 } from '../utils/tenderRouting';
 
 const API = '/api';
@@ -1206,8 +1209,9 @@ export default function TendersPage({
     }, [authUser, projects, apiFetch]);
 
     useEffect(() => {
+        if (!isTenderSheetHash(window.location.hash) || !authUser || authUser.mustChangePassword) return undefined;
         const tenderId = getTenderIdFromHash(window.location.hash);
-        if (!tenderId || !authUser || authUser.mustChangePassword) return undefined;
+        if (!tenderId) return undefined;
         if (commentsOpen && String(selectedProject?.db_id || '') === String(tenderId)) return undefined;
 
         let cancelled = false;
@@ -1223,7 +1227,7 @@ export default function TendersPage({
         setSelectedProject(null);
         setSelectedProjectIndex(null);
         setCommentsOpen(false);
-        if (getTenderIdFromHash(window.location.hash)) {
+        if (isTenderSheetHash(window.location.hash) || isTenderFullPageHash(window.location.hash)) {
             window.location.hash = '#dashboard';
         }
     }, []);
@@ -1365,7 +1369,7 @@ export default function TendersPage({
                     onStartDemo={onStartDemo}
                     onOpenFullPage={(project) => {
                         if (project?.db_id) {
-                            window.location.hash = buildTenderHash(project.db_id);
+                            window.location.hash = buildFullPageHash(project.db_id);
                         }
                     }}
                     onProjectSelect={(project, projectIndex) => {
@@ -1373,7 +1377,7 @@ export default function TendersPage({
                         setSelectedProjectIndex(projectIndex);
                         setCommentsOpen(true);
                         if (project?.db_id) {
-                            window.location.hash = buildTenderHash(project.db_id);
+                            window.location.hash = buildSheetHash(project.db_id);
                         }
                     }}
                     newProjectIds={newProjectIds}
@@ -1549,7 +1553,7 @@ export default function TendersPage({
                                     availableUsers={availableUsers}
                                     canManageDecision={canManageDecision}
                                     onDecisionChange={(nextDecision) => handleDecisionChange(selectedProjectIndex, nextDecision)}
-                                    onOpenFullPage={() => { window.location.hash = buildTenderHash(selectedProject.db_id); }}
+                                    onOpenFullPage={() => { window.location.hash = buildFullPageHash(selectedProject.db_id); }}
                                     onRunSmartZiw={() => handleSmartZiwSearch(selectedProject.db_id)}
                                     compact
                                 />

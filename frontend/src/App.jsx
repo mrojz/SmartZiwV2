@@ -28,12 +28,14 @@ import { setModalScrollLock } from './utils/scrollLock';
 import {
     getTenderIdFromHash,
     buildTenderHash,
+    buildFullPageHash,
+    isTenderFullPageHash,
     buildTenderShareUrl,
     buildDashboardHash,
     deserializeFilters,
 } from './utils/tenderRouting';
 import { attachProjectRowIds } from './utils/projects';
-import { isRequired, isEmail, matchesPassword } from './utils/validation';
+import { isRequired, isEmail, isUrl, isNumberInRange, matchesPassword } from './utils/validation';
 import { useTheme } from './components/ThemeProvider';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
@@ -3574,12 +3576,13 @@ export default function App() {
                             </DropdownMenu>
                         </div>
                         <ErrorBoundary>
-{tenderDetailId ? (
+{tenderDetailId && isTenderFullPageHash(window.location.hash) ? (
                             <TenderDetailPage
                                 dbId={tenderDetailId}
                                 apiFetch={apiFetch}
                                 authUser={authUser}
                                 availableUsers={availableUsers}
+                                navigate={navigate}
                             />
                         ) : null}
 {route === 'dashboard' && !tenderDetailId ? (
