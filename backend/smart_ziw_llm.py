@@ -13,11 +13,13 @@ tests monkeypatching smart_ziw_agent._call_llm keep working through
 this factory, and so smart_ziw_agent can import this module lazily
 inside run() without an import cycle.
 """
+import asyncio
 import os
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
 import requests
+from anthropic import Anthropic
 from openai import APIConnectionError, APITimeoutError, APIStatusError, OpenAI
 
 AUTO = "auto"
@@ -707,3 +709,54 @@ def discover_lightllm_models(provider: str, base_url: str, api_key: str = "", su
         except Exception:
             return {"status": "error", "models": [], "detail": "Failed to discover models from the LightLLM server"}
     return {"status": "auth_required", "models": []}
+
+
+# --- Anthropic-compatible LLM client for the tool-loop ---
+
+
+class LLMClient:
+    """Anthropic-compatible LLM client for Smart-Ziw."""
+
+    def __init__(self, base_url: str, api_key: str, model: str, max_tokens: int = 4096):
+        self.model = model
+        self.max_tokens = max_tokens
+        kwargs: dict[str, Any] = {"api_key": api_key}
+        if base_url:
+            kwargs["base_url"] = base_url
+        self._client = Anthropic(**kwargs)
+
+    async def chat(
+        self,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]],
+        system: str | None = None,
+    ) -> dict[str, Any]:
+        params: dict[str, Any] = {
+            "model": self.model,
+            "max_tokens": self.max_tokens,
+            "messages": messages,
+        }
+        if system:
+            params["system"] = system
+        if tools:
+            params["tools"] = tools
+
+        response = await asyncio.to_thread(self._client.messages.create, **params)
+
+        content_text: str | None = None
+        tool_calls: list[dict[str, Any]] = []
+        for block in response.content or []:
+            if block.type == "text":
+                content_text = (content_text or "") + block.text
+            elif block.type == "tool_use":
+                tool_calls.append({
+                    "name": block.name,
+                    "arguments": block.input,
+                })
+
+        return {
+            "role": "assistant",
+            "content": content_text,
+            "tool_calls": tool_calls,
+            "stop_reason": response.stop_reason,
+        }

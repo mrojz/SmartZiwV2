@@ -707,6 +707,40 @@ def test_lightllm_uses_subscription_key_as_default_header(monkeypatch):
     assert client.kwargs["default_headers"] == {"X-Subscription-Key": "sub-123"}
 
 
+# --- Anthropic-compatible LLM client for the tool-loop ---
+
+
+import asyncio
+
+
+def test_client_calls_anthropic_sdk_with_tools(monkeypatch):
+    from smart_ziw_llm import LLMClient
+
+    calls = []
+    class FakeTextBlock:
+        type = "text"
+        text = "done"
+
+    class FakeMessage:
+        content = [FakeTextBlock()]
+        stop_reason = "end_turn"
+        tool_calls = None
+
+    class FakeMessages:
+        def create(self, **kwargs):
+            calls.append(kwargs)
+            return FakeMessage()
+
+    class FakeClient:
+        messages = FakeMessages()
+
+    client = LLMClient(base_url="https://api.kimi.com/coding", api_key="sk-test", model="kimi3")
+    monkeypatch.setattr(client, "_client", FakeClient())
+    result = asyncio.run(client.chat([{"role": "user", "content": "hello"}], tools=[]))
+    assert result["role"] == "assistant"
+    assert calls[0]["model"] == "kimi3"
+
+
 def test_openai_preset_uses_subscription_key(monkeypatch):
     _reset_fake_openai()
     monkeypatch.setattr("smart_ziw_llm.OpenAI", _FakeOpenAI)
