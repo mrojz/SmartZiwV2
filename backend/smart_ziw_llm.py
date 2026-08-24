@@ -19,7 +19,6 @@ from dataclasses import dataclass, field
 from typing import Any, Callable
 
 import requests
-from anthropic import Anthropic
 from openai import APIConnectionError, APITimeoutError, APIStatusError, OpenAI
 
 AUTO = "auto"
@@ -714,12 +713,18 @@ def discover_lightllm_models(provider: str, base_url: str, api_key: str = "", su
 # --- Anthropic-compatible LLM client for the tool-loop ---
 
 
+class LLMError(Exception):
+    """Raised when an LLM request fails."""
+
+
 class LLMClient:
     """Anthropic-compatible LLM client for Smart-Ziw."""
 
     def __init__(self, base_url: str, api_key: str, model: str, max_tokens: int = 4096):
         self.model = model
         self.max_tokens = max_tokens
+        from anthropic import Anthropic
+
         kwargs: dict[str, Any] = {"api_key": api_key}
         if base_url:
             kwargs["base_url"] = base_url
@@ -741,10 +746,14 @@ class LLMClient:
         if tools:
             params["tools"] = tools
 
-        response = await asyncio.to_thread(self._client.messages.create, **params)
+        try:
+            response = await asyncio.to_thread(self._client.messages.create, **params)
+        except Exception as exc:
+            raise LLMError(f"LLM request failed: {exc}") from exc
 
         content_text: str | None = None
         tool_calls: list[dict[str, Any]] = []
+        # Non-text / non-tool_use content blocks are intentionally ignored.
         for block in response.content or []:
             if block.type == "text":
                 content_text = (content_text or "") + block.text

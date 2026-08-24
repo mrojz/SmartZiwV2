@@ -1,6 +1,7 @@
 import os
 import sys
 from pathlib import Path
+from typing import Callable
 from unittest.mock import MagicMock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -739,6 +740,129 @@ def test_client_calls_anthropic_sdk_with_tools(monkeypatch):
     result = asyncio.run(client.chat([{"role": "user", "content": "hello"}], tools=[]))
     assert result["role"] == "assistant"
     assert calls[0]["model"] == "kimi3"
+
+
+# --- Anthropic-compatible LLMClient for the tool-loop ---
+
+
+class _FakeAnthropicSDK:
+    """Records constructor args and returns configurable message responses."""
+
+    instances: list[dict] = []
+    _messages_create: Callable | None = None
+
+    def __init__(self, **kwargs):
+        self._kwargs = kwargs
+        _FakeAnthropicSDK.instances.append(kwargs)
+
+    @property
+    def messages(self):
+        return self
+
+    def create(self, **kwargs):
+        if _FakeAnthropicSDK._messages_create is None:
+            raise RuntimeError("_FakeAnthropicSDK._messages_create not configured")
+        return _FakeAnthropicSDK._messages_create(**kwargs)
+
+
+def _reset_fake_anthropic_sdk():
+    _FakeAnthropicSDK.instances = []
+    _FakeAnthropicSDK._messages_create = None
+
+
+def _make_text_block(text: str):
+    block = MagicMock()
+    block.type = "text"
+    block.text = text
+    return block
+
+
+def _make_tool_use_block(tool_id: str, name: str, input_data: dict):
+    block = MagicMock()
+    block.type = "tool_use"
+    block.id = tool_id
+    block.name = name
+    block.input = input_data
+    return block
+
+
+def _make_message(content_blocks, stop_reason="end_turn"):
+    msg = MagicMock()
+    msg.content = content_blocks
+    msg.stop_reason = stop_reason
+    return msg
+
+
+def test_llmclient_passes_base_url_and_api_key(monkeypatch):
+    _reset_fake_anthropic_sdk()
+    monkeypatch.setattr("anthropic.Anthropic", _FakeAnthropicSDK)
+    client = sll.LLMClient(base_url="https://api.example.com", api_key="sk-test", model="claude-x")
+    assert _FakeAnthropicSDK.instances == [{"api_key": "sk-test", "base_url": "https://api.example.com"}]
+    assert client._client is not None
+
+
+def test_llmclient_omits_base_url_when_blank(monkeypatch):
+    _reset_fake_anthropic_sdk()
+    monkeypatch.setattr("anthropic.Anthropic", _FakeAnthropicSDK)
+    sll.LLMClient(base_url="", api_key="sk-test", model="claude-x")
+    assert _FakeAnthropicSDK.instances == [{"api_key": "sk-test"}]
+
+
+async def _run_llmclient_chat_returns_tool_calls(monkeypatch):
+    _reset_fake_anthropic_sdk()
+    _FakeAnthropicSDK._messages_create = lambda **kwargs: _make_message([
+        _make_text_block("I will call a tool"),
+        _make_tool_use_block("tu_1", "search", {"query": "hello"}),
+    ])
+    monkeypatch.setattr("anthropic.Anthropic", _FakeAnthropicSDK)
+    client = sll.LLMClient(base_url="https://api.example.com", api_key="sk-test", model="claude-x")
+    result = await client.chat([{"role": "user", "content": "hi"}], tools=[{"name": "search"}])
+    assert result["role"] == "assistant"
+    assert result["content"] == "I will call a tool"
+    assert result["tool_calls"] == [{"name": "search", "arguments": {"query": "hello"}}]
+    assert result["stop_reason"] == "end_turn"
+
+
+def test_llmclient_chat_returns_tool_calls(monkeypatch):
+    asyncio.run(_run_llmclient_chat_returns_tool_calls(monkeypatch))
+
+
+async def _run_llmclient_chat_passes_system_parameter(monkeypatch):
+    _reset_fake_anthropic_sdk()
+    calls = []
+
+    def _create(**kwargs):
+        calls.append(kwargs)
+        return _make_message([_make_text_block("ok")])
+
+    _FakeAnthropicSDK._messages_create = _create
+    monkeypatch.setattr("anthropic.Anthropic", _FakeAnthropicSDK)
+    client = sll.LLMClient(base_url="https://api.example.com", api_key="sk-test", model="claude-x")
+    result = await client.chat([{"role": "user", "content": "hi"}], tools=[], system="Be helpful")
+    assert result["content"] == "ok"
+    assert calls[0]["system"] == "Be helpful"
+
+
+def test_llmclient_chat_passes_system_parameter(monkeypatch):
+    asyncio.run(_run_llmclient_chat_passes_system_parameter(monkeypatch))
+
+
+async def _run_llmclient_chat_raises_llm_error_on_sdk_failure(monkeypatch):
+    _reset_fake_anthropic_sdk()
+
+    def _create(**kwargs):
+        raise RuntimeError("network down")
+
+    _FakeAnthropicSDK._messages_create = _create
+    monkeypatch.setattr("anthropic.Anthropic", _FakeAnthropicSDK)
+    client = sll.LLMClient(base_url="https://api.example.com", api_key="sk-test", model="claude-x")
+    with pytest.raises(sll.LLMError, match="LLM request failed: network down") as exc_info:
+        await client.chat([{"role": "user", "content": "hi"}], tools=[])
+    assert isinstance(exc_info.value.__cause__, RuntimeError)
+
+
+def test_llmclient_chat_raises_llm_error_on_sdk_failure(monkeypatch):
+    asyncio.run(_run_llmclient_chat_raises_llm_error_on_sdk_failure(monkeypatch))
 
 
 def test_openai_preset_uses_subscription_key(monkeypatch):
