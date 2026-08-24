@@ -7,17 +7,19 @@ from __future__ import annotations
 
 import asyncio
 import concurrent.futures
-import os
 import re
 import uuid
 from typing import Any
 
-from mcp import ClientSession, stdio_client, StdioServerParameters
+from mcp import ClientSession
 from mcp.client.sse import sse_client
 
 from smart_ziw_skills.base import Skill
 
 _MCP_SERVERS_DOC = {"_type": "smart_ziw_mcp_servers"}
+
+# Only remote transports are supported (no local processes in the container).
+SUPPORTED_TRANSPORTS = ("sse", "http")
 
 
 def load_mcp_servers() -> list[dict]:
@@ -39,15 +41,12 @@ def save_mcp_servers(db, servers: list[dict]) -> None:
     )
 
 
-def _env_for_server(server: dict) -> dict[str, str] | None:
-    """Merge the server's env vars with the current process environment."""
-    env = server.get("env")
-    if not env:
+def _server_headers(server: dict) -> dict[str, str] | None:
+    """Authentication headers sent with the SSE connection."""
+    headers = server.get("headers")
+    if not headers:
         return None
-    merged = dict(os.environ)
-    for key, value in env.items():
-        merged[str(key)] = str(value)
-    return merged
+    return {str(key): str(value) for key, value in headers.items()}
 
 
 def _serialize_tools(tools: list[Any]) -> list[dict]:
@@ -73,30 +72,22 @@ def _serialize_tools(tools: list[Any]) -> list[dict]:
 
 
 async def test_mcp_server(config: dict) -> dict:
-    """Connect to an MCP server, initialize a session, and discover tools.
+    """Connect to an SSE MCP server, initialize a session, and discover tools.
 
     Returns a dict with ``status`` ("ok" or "error"), ``tools``, and ``detail``.
     """
-    transport = config.get("transport")
+    transport = config.get("transport") or "sse"
     timeout = int(config.get("timeout") or 30)
 
     try:
-        if transport == "stdio":
-            params = StdioServerParameters(
-                command=config.get("command") or "",
-                args=list(config.get("args") or []),
-                env=_env_for_server(config),
-            )
-            client_cm = stdio_client(params)
-        elif transport == "sse":
-            url = config.get("url") or ""
-            client_cm = sse_client(url, timeout=timeout)
-        else:
+        if transport not in SUPPORTED_TRANSPORTS:
             return {
                 "status": "error",
                 "tools": [],
-                "detail": f"Unsupported transport {transport!r}; expected 'stdio' or 'sse'",
+                "detail": f"Unsupported transport {transport!r}; expected 'sse'",
             }
+        url = config.get("url") or ""
+        client_cm = sse_client(url, timeout=timeout, headers=_server_headers(config))
 
         tools: list[dict] = []
         async with asyncio.timeout(timeout):
@@ -201,20 +192,12 @@ async def _call_tool_async(server_id: str, tool_name: str, arguments: dict) -> d
     if server is None:
         raise ValueError(f"MCP server {server_id!r} not found")
 
-    transport = server.get("transport")
+    transport = server.get("transport") or "sse"
     timeout = int(server.get("timeout") or 30)
 
-    if transport == "stdio":
-        params = StdioServerParameters(
-            command=server.get("command") or "",
-            args=list(server.get("args") or []),
-            env=_env_for_server(server),
-        )
-        client_cm = stdio_client(params)
-    elif transport == "sse":
-        client_cm = sse_client(server.get("url") or "", timeout=timeout)
-    else:
+    if transport not in SUPPORTED_TRANSPORTS:
         raise ValueError(f"Unsupported transport {transport!r} for server {server_id!r}")
+    client_cm = sse_client(server.get("url") or "", timeout=timeout, headers=_server_headers(server))
 
     async with asyncio.timeout(timeout):
         async with client_cm as (read_stream, write_stream):

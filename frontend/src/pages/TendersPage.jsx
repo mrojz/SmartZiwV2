@@ -96,6 +96,14 @@ export default function TendersPage({
     const [commentsOpen, setCommentsOpen] = useState(false);
     const [selectedProject, setSelectedProject] = useState(null);
     const [selectedProjectIndex, setSelectedProjectIndex] = useState(null);
+    // Hash as state so direct navigation to a sheet hash re-runs the sheet-open effect.
+    const [sheetHash, setSheetHash] = useState(window.location.hash);
+
+    useEffect(() => {
+        const onHash = () => setSheetHash(window.location.hash);
+        window.addEventListener('hashchange', onHash);
+        return () => window.removeEventListener('hashchange', onHash);
+    }, []);
     const [commentsMine, setCommentsMine] = useState(false);
     const [commentsBody, setCommentsBody] = useState('');
     const [comments, setComments] = useState([]);
@@ -833,8 +841,8 @@ export default function TendersPage({
     }, [authUser, projects, apiFetch]);
 
     useEffect(() => {
-        if (!isTenderSheetHash(window.location.hash) || !authUser || authUser.mustChangePassword) return undefined;
-        const tenderId = getTenderIdFromHash(window.location.hash);
+        if (!isTenderSheetHash(sheetHash) || !authUser || authUser.mustChangePassword) return undefined;
+        const tenderId = getTenderIdFromHash(sheetHash);
         if (!tenderId) return undefined;
         if (commentsOpen && String(selectedProject?.db_id || '') === String(tenderId)) return undefined;
 
@@ -845,7 +853,7 @@ export default function TendersPage({
         return () => {
             cancelled = true;
         };
-    }, [authUser, commentsOpen, selectedProject?.db_id, openProjectByDbId]);
+    }, [authUser, commentsOpen, selectedProject?.db_id, openProjectByDbId, sheetHash]);
 
     const clearActiveProject = useCallback(() => {
         setSelectedProject(null);
@@ -1008,9 +1016,9 @@ export default function TendersPage({
                 <SheetContent
                     side="right"
                     showCloseButton={false}
-                    className="!w-full !max-w-none gap-0 p-0 sm:!w-[50vw] flex flex-col transition-transform duration-300 ease-out data-[state=closed]:translate-x-full data-[state=open]:translate-x-0"
+                    className="!w-full !max-w-none gap-0 p-0 flex flex-col overflow-y-auto overscroll-contain sm:!w-[50vw] transition-transform duration-300 ease-out data-[state=closed]:translate-x-full data-[state=open]:translate-x-0"
                 >
-                    <SheetHeader className="flex flex-row items-start justify-between gap-4 border-b p-5">
+                    <SheetHeader className="sticky top-0 z-10 flex flex-row items-start justify-between gap-4 border-b bg-popover p-5">
                         <div className="min-w-0">
                             <SheetDescription className="text-xs font-medium uppercase tracking-wide">Project inspector</SheetDescription>
                             <SheetTitle className="mt-1 text-lg leading-snug">
@@ -1077,6 +1085,7 @@ export default function TendersPage({
                                 currentUser={authUser}
                                 availableUsers={availableUsers}
                                 apiFetch={apiFetch}
+                                className="bg-popover"
                             />
 
                             {previewAttachment ? (

@@ -2,9 +2,9 @@ import { useMemo, useState } from 'react';
 import TenderTabs from './TenderTabs';
 import { Button as ShadcnButton } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
 import { Avatar as ShadcnAvatar, AvatarFallback } from '@/components/ui/avatar';
+import { Sparkles } from 'lucide-react';
 import {
     initials,
     isImageAttachment,
@@ -14,7 +14,7 @@ import {
     formatDisplayDate,
     getUnifiedStatus,
 } from '@/utils/tenderDisplay';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import CommentMarkdown from './CommentMarkdown';
 
 export default function ProjectInspector({
     project,
@@ -28,10 +28,10 @@ export default function ProjectInspector({
     onRunSmartZiw,
     compact = false,
 }) {
-    const [activeTab, setActiveTab] = useState('overview');
+    const [activeTab, setActiveTab] = useState('activity');
 
     return (
-        <div className="flex h-full flex-col">
+        <div className="flex flex-col">
             <div className={`flex items-start justify-between gap-4 ${compact ? 'p-4 pb-2' : 'p-6 pb-4'}`}>
                 <div>
                     <h2 className={`font-semibold text-foreground ${compact ? 'text-base' : 'text-xl'}`}>
@@ -39,20 +39,23 @@ export default function ProjectInspector({
                     </h2>
                     <p className="mt-1 text-sm text-muted-foreground">{project.project_id || '-'}</p>
                 </div>
-                {onOpenFullPage ? (
-                    <button
-                        type="button"
-                        onClick={onOpenFullPage}
-                        className="text-sm font-medium text-primary transition-colors duration-200 hover:underline"
-                    >
-                        Open full page
-                    </button>
-                ) : null}
+                <div className="flex shrink-0 items-center gap-2">
+                    <SmartZiwRunButton project={project} onRun={onRunSmartZiw} compact={compact} />
+                    {onOpenFullPage ? (
+                        <button
+                            type="button"
+                            onClick={onOpenFullPage}
+                            className="text-sm font-medium text-primary transition-colors duration-200 hover:underline"
+                        >
+                            Open full page
+                        </button>
+                    ) : null}
+                </div>
             </div>
 
             <TenderTabs activeTab={activeTab} onChange={setActiveTab} compact={compact} />
 
-            <div className="min-h-0 flex-1 overflow-auto">
+            <div className="min-h-0 flex-1">
                 {activeTab === 'overview' && (
                     <div role="tabpanel" id="panel-overview" aria-labelledby="tab-overview">
                         <OverviewTab
@@ -79,15 +82,60 @@ export default function ProjectInspector({
                         />
                     </div>
                 )}
-                {activeTab === 'smart-ziw' && (
-                    <div role="tabpanel" id="panel-smart-ziw" aria-labelledby="tab-smart-ziw">
-                        <SmartZiwTab project={project} onRun={onRunSmartZiw} compact={compact} />
-                    </div>
-                )}
             </div>
         </div>
     );
 }
+
+function SmartZiwRunButton({ project, onRun, compact }) {
+    const [running, setRunning] = useState(false);
+
+    const handleClick = async () => {
+        if (running || project?.smart_ziw_status === 'queued' || project?.smart_ziw_status === 'running') return;
+        setRunning(true);
+        try {
+            await onRun?.();
+        } catch (error) {
+            window.alert(error?.message || 'Failed to start Smart-Ziw Agent');
+        } finally {
+            setRunning(false);
+        }
+    };
+
+    const isBusy = running || project?.smart_ziw_status === 'queued' || project?.smart_ziw_status === 'running';
+    const status = project?.smart_ziw_status;
+
+    return (
+        <div className="flex items-center gap-2">
+            <ShadcnButton
+                type="button"
+                size={compact ? 'sm' : 'default'}
+                onClick={handleClick}
+                disabled={!project?.db_id || isBusy}
+                className="gap-1.5"
+            >
+                <Sparkles className="h-4 w-4" />
+                {isBusy ? 'Analysing…' : 'Run Smart-Ziw'}
+            </ShadcnButton>
+            {status ? (
+                <Badge
+                    variant={
+                        status === 'error'
+                            ? 'destructive'
+                            : status === 'completed'
+                                ? 'default'
+                                : 'secondary'
+                    }
+                    className="text-[10px]"
+                >
+                    {status}
+                </Badge>
+            ) : null}
+        </div>
+    );
+}
+
+
 
 function OverviewTab({ project, canManageDecision, onDecisionChange, compact }) {
     const projectDecision = project?.decision || '';
@@ -171,7 +219,21 @@ function OverviewTab({ project, canManageDecision, onDecisionChange, compact }) 
                     <div className="flex flex-col gap-1 rounded-lg bg-muted p-3"><span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Sponsor</span><strong className="text-sm font-medium text-foreground">{project?.project_sponsor || '-'}</strong></div>
                     <div className="flex flex-col gap-1 rounded-lg bg-muted p-3"><span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Start date</span><strong className="text-sm font-medium text-foreground">{formatDisplayDate(project?.project_start_date)}</strong></div>
                     <div className="flex flex-col gap-1 rounded-lg bg-muted p-3"><span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Deadline</span><strong className="text-sm font-medium text-foreground">{formatDisplayDate(effectiveDeadline)}</strong></div>
-                    <div className="flex flex-col gap-1 rounded-lg bg-muted p-3"><span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Source</span><strong className="text-sm font-medium text-foreground">{project?.source || '-'}</strong></div>
+                    <div className="flex flex-col gap-1 rounded-lg bg-muted p-3">
+                        <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Source</span>
+                        {project?.project_url ? (
+                            <a
+                                href={project.project_url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="break-all text-sm font-medium text-primary transition-colors duration-200 hover:underline"
+                            >
+                                {project.source || project.project_url}
+                            </a>
+                        ) : (
+                            <strong className="text-sm font-medium text-foreground">{project?.source || '-'}</strong>
+                        )}
+                    </div>
                     <div className="flex flex-col gap-1 rounded-lg bg-muted p-3"><span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Deadline source</span><strong className="text-sm font-medium text-foreground">{project?.deadline_source || '-'}</strong></div>
                     <div className="flex flex-col gap-1 rounded-lg bg-muted p-3"><span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Scraped deadline</span><strong className="text-sm font-medium text-foreground">{formatDisplayDate(project?.scraped_deadline || project?.project_end_date)}</strong></div>
                     <div className="flex flex-col gap-1 rounded-lg bg-muted p-3"><span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Manual deadline</span><strong className="text-sm font-medium text-foreground">{formatDisplayDate(project?.manual_deadline)}</strong></div>
@@ -188,6 +250,7 @@ function OverviewTab({ project, canManageDecision, onDecisionChange, compact }) 
                     </div>
                 ) : null}
             </section>
+
         </div>
     );
 }
@@ -258,18 +321,16 @@ function ActivityTab({ comments, loading, authUser, availableUsers, compact }) {
                             const timeStr = ts.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
                             const dateStr = ts.toLocaleDateString([], { month: 'short', day: 'numeric' });
                             return (
-                                <div key={c.id} className={`flex max-w-[85%] gap-2 ${isMe ? 'self-end flex-row-reverse' : 'self-start'}`}>
-                                    {!isMe ? (
-                                        <ShadcnAvatar className="mt-0.5 size-7 shrink-0" style={{ background: colorFromSeed(c.authorName || '') }}>
-                                            <AvatarFallback className="bg-transparent text-[10px] font-bold uppercase tracking-wide text-white">
-                                                {initials(c.authorName || '', '')}
-                                            </AvatarFallback>
-                                        </ShadcnAvatar>
-                                    ) : null}
-                                    <div className="flex min-w-0 flex-col gap-0.5">
-                                        {!isMe ? <span className="px-1 text-[11px] font-semibold text-muted-foreground">{c.authorName}</span> : null}
-                                        <div className={`break-words rounded-2xl px-3 py-2 text-sm leading-relaxed ${isMe ? 'rounded-tr-sm bg-primary text-primary-foreground' : 'rounded-tl-sm bg-muted text-foreground'}`}>
-                                            {c.body ? <p className="m-0">{c.body}</p> : null}
+                                <div key={c.id} className={`flex w-full gap-2 ${isMe ? 'flex-row-reverse' : ''}`}>
+                                    <ShadcnAvatar className="mt-0.5 size-7 shrink-0" style={{ background: colorFromSeed(c.authorName || '') }}>
+                                        <AvatarFallback className="bg-transparent text-[10px] font-bold uppercase tracking-wide text-white">
+                                            {initials(c.authorName || '', '')}
+                                        </AvatarFallback>
+                                    </ShadcnAvatar>
+                                    <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                                        <span className={`px-1 text-[11px] font-semibold text-muted-foreground ${isMe ? 'self-end' : ''}`}>{isMe ? 'You' : c.authorName}</span>
+                                        <div className={`w-full break-words rounded-2xl px-3 py-2 text-sm leading-relaxed ${isMe ? 'rounded-tr-sm bg-primary text-primary-foreground' : 'rounded-tl-sm bg-muted text-foreground'}`}>
+                                            {c.body ? <CommentMarkdown body={c.body} /> : null}
                                             {(c.attachments || []).map((att) => (
                                                 isImageAttachment(att) ? (
                                                     <a
@@ -323,154 +384,3 @@ function ActivityTab({ comments, loading, authUser, availableUsers, compact }) {
     );
 }
 
-function SmartZiwTab({ project, onRun, compact }) {
-    const [running, setRunning] = useState(false);
-
-    const handleClick = async () => {
-        if (running || project?.smart_ziw_status === 'queued' || project?.smart_ziw_status === 'running') return;
-        setRunning(true);
-        try {
-            await onRun?.();
-        } catch (error) {
-            window.alert(error?.message || 'Failed to start Smart-Ziw Agent');
-        } finally {
-            setRunning(false);
-        }
-    };
-
-    const isBusy = running || project?.smart_ziw_status === 'queued' || project?.smart_ziw_status === 'running';
-    const hasResults = project?.smart_ziw_status === 'completed' || project?.smart_ziw_research_verdict;
-    const status = getUnifiedStatus(project);
-    const nextActions = Array.isArray(project?.smart_ziw_next_actions)
-        ? project.smart_ziw_next_actions
-        : [];
-    const analysisMarkdown = project?.smart_ziw_analysis_markdown || '';
-    const evidence = project?.smart_ziw_evidence || '';
-    const folder = project?.smart_ziw_folder || '';
-    const repoPath = project?.smart_ziw_repo_path || '';
-    const resultFiles = ['README.md', 'analysis.md', 'next-actions.md', 'source.md', 'recap.md'];
-
-    return (
-        <div className={`flex flex-col gap-4 md:gap-6 ${compact ? 'p-4' : 'p-6'}`}>
-            <Card>
-                <CardHeader className="px-4 pb-2 pt-4">
-                    <CardTitle className="text-sm font-semibold">Smart-Ziw Agent</CardTitle>
-                </CardHeader>
-                <CardContent className="flex flex-col items-start gap-3 px-4 pb-4">
-                    <div className="flex flex-wrap items-center gap-3">
-                        <ShadcnButton
-                            type="button"
-                            onClick={handleClick}
-                            disabled={!project?.db_id || isBusy}
-                        >
-                            {isBusy ? 'Generating...' : 'Run Smart-Ziw'}
-                        </ShadcnButton>
-                        {project?.smart_ziw_status ? (
-                            <Badge variant={project.smart_ziw_status === 'error' ? 'destructive' : project.smart_ziw_status === 'completed' ? 'default' : 'secondary'}>
-                                {project.smart_ziw_status}
-                            </Badge>
-                        ) : null}
-                    </div>
-                    {project?.smart_ziw_requested_at ? (
-                        <span className="text-xs text-muted-foreground">
-                            Last requested: {formatDisplayDate(project.smart_ziw_requested_at)}
-                        </span>
-                    ) : null}
-                    {project?.smart_ziw_status === 'error' && project?.smart_ziw_error ? (
-                        <p className="text-sm text-destructive">{project.smart_ziw_error}</p>
-                    ) : null}
-                </CardContent>
-            </Card>
-
-            {hasResults ? (
-                <>
-                    <Card>
-                        <CardHeader className="px-4 pb-2 pt-4">
-                            <CardTitle className="text-sm font-semibold">Verdict</CardTitle>
-                        </CardHeader>
-                        <CardContent className="flex flex-col gap-3 px-4 pb-4">
-                            <div className="flex flex-wrap items-center gap-2">
-                                <Badge className={status.classes}>{status.label}</Badge>
-                                {status.source ? <Badge variant="outline">{status.source}</Badge> : null}
-                                <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
-                                    <span className={`h-1.5 w-1.5 rounded-full ${status.confidenceClasses}`} />
-                                    {status.confidence || 'unknown'} confidence
-                                </span>
-                            </div>
-                            {evidence ? <p className="text-sm text-muted-foreground">{evidence}</p> : null}
-                        </CardContent>
-                    </Card>
-
-                    {analysisMarkdown ? (
-                        <Card>
-                            <CardHeader className="px-4 pb-2 pt-4">
-                                <CardTitle className="text-sm font-semibold">AI Analysis</CardTitle>
-                            </CardHeader>
-                            <CardContent className="px-4 pb-4">
-                                <div className="max-w-full overflow-x-auto whitespace-pre-wrap text-sm leading-relaxed text-foreground">
-                                    {analysisMarkdown}
-                                </div>
-                            </CardContent>
-                        </Card>
-                    ) : null}
-
-                    {nextActions.length ? (
-                        <Card>
-                            <CardHeader className="px-4 pb-2 pt-4">
-                                <CardTitle className="text-sm font-semibold">Next Actions</CardTitle>
-                            </CardHeader>
-                            <CardContent className="px-4 pb-4">
-                                <div className="overflow-x-auto">
-                                    <Table>
-                                        <TableHeader>
-                                            <TableRow>
-                                                <TableHead>Action</TableHead>
-                                                <TableHead>Priority</TableHead>
-                                                <TableHead>Owner</TableHead>
-                                                <TableHead>Deadline</TableHead>
-                                                <TableHead>Notes</TableHead>
-                                            </TableRow>
-                                        </TableHeader>
-                                        <TableBody>
-                                            {nextActions.map((action, index) => (
-                                                <TableRow key={index}>
-                                                    <TableCell className="font-medium">{action.action || action.title || '-'}</TableCell>
-                                                    <TableCell>{action.priority || '-'}</TableCell>
-                                                    <TableCell>{action.owner || action.assignee || '-'}</TableCell>
-                                                    <TableCell>{action.deadline ? formatDisplayDate(action.deadline) : '-'}</TableCell>
-                                                    <TableCell>{action.notes || '-'}</TableCell>
-                                                </TableRow>
-                                            ))}
-                                        </TableBody>
-                                    </Table>
-                                </div>
-                            </CardContent>
-                        </Card>
-                    ) : null}
-
-                    {folder ? (
-                        <Card>
-                            <CardHeader className="px-4 pb-2 pt-4">
-                                <CardTitle className="text-sm font-semibold">Files</CardTitle>
-                            </CardHeader>
-                            <CardContent className="flex flex-col gap-2 px-4 pb-4">
-                                {resultFiles.map((file) => {
-                                    const path = [repoPath, folder, file].filter(Boolean).join('/');
-                                    return (
-                                        <a
-                                            key={file}
-                                            href={`file://${path}`}
-                                            className="text-sm font-medium text-primary transition-colors duration-200 hover:underline"
-                                        >
-                                            {file}
-                                        </a>
-                                    );
-                                })}
-                            </CardContent>
-                        </Card>
-                    ) : null}
-                </>
-            ) : null}
-        </div>
-    );
-}

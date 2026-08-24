@@ -376,7 +376,9 @@ def _emit_user_notifications(*, user_ids: list[str], actor_user: dict, notificat
 
 
 def _sanitize_mentions(raw_mentions: list, users: dict[str, dict] | None = None) -> list[dict]:
-    user_map = users or _active_users_by_id()
+    user_map = dict(users if users is not None else _active_users_by_id())
+    # The Smart-Ziw bot is not a real user row, but mentionable.
+    user_map.setdefault(SMART_ZIW_BOT_USER["id"], SMART_ZIW_BOT_USER)
     mentions = []
     seen = set()
     for raw in raw_mentions or []:
@@ -489,7 +491,8 @@ def _format_smart_ziw_comment(result: dict) -> str:
 
 SMART_ZIW_BOT_USER = {"id": "bot:smart-ziw", "name": "Smart-Ziw Bot", "email": "", "avatarUrl": ""}
 AI_VERIFICATION_BOT_USER = {"id": "bot:ai-verification", "name": "AI Verification", "email": "", "avatarUrl": ""}
-_SMART_ZIW_MENTION_TOKEN = "@smartziw"
+# Matches @smartziw, @SmartZiw, @smart-ziw, @smart ziw, @smart_ziw
+_SMART_ZIW_MENTION_RE = re.compile(r"@smart[\s\-_]*ziw", re.IGNORECASE)
 _SMART_ZIW_REPLY_MAX_CHARS = 2000
 
 
@@ -505,14 +508,7 @@ def _run_smart_ziw(project_db_id: str, actor_user: dict, thread_comments: list[d
         thread = thread_comments if thread_comments is not None else list_comments("project", _project_entity_id(project))
         thread_text = _build_thread_text(thread)
         result = run_smart_ziw_agent(project, config, thread_context=thread_text)
-        comment_body = _format_smart_ziw_comment(result)
-        _create_project_comment_and_notify(
-            entity_type="project",
-            entity_id=_project_entity_id(project),
-            project=project,
-            author_user=SMART_ZIW_BOT_USER,
-            body_text=comment_body,
-        )
+        _post_smart_ziw_comment(project, result)
         enrichment_error = result.get("error")
         push_error = None
         if config.get("gitlab_push_enabled") and not result.get("gitlab_pushed"):
@@ -532,19 +528,23 @@ def _run_smart_ziw(project_db_id: str, actor_user: dict, thread_comments: list[d
             evidence = str(verdict_dict.get("reasoning") or "").strip()
         if not evidence and result.get("research_verdict"):
             evidence = f"Recommendation: {result['research_verdict']}"
+        documents = result.get("documents") or []
         update_project_smart_ziw_state_by_db_id(project_db_id, {
             "smart_ziw_status": "error" if error else "completed",
             "smart_ziw_completed_at": now_iso(),
             "smart_ziw_error": (str(error)[:1000] if error else ""),
             "smart_ziw_folder": result.get("folder", ""),
             "smart_ziw_gitlab_pushed": bool(result.get("gitlab_pushed")),
-            "smart_ziw_analysis_markdown": str(result.get("analysis_markdown") or ""),
-            "smart_ziw_next_actions": result.get("next_actions") if isinstance(result.get("next_actions"), list) else [],
+            "smart_ziw_analysis_markdown": str(result.get("recap_markdown") or ""),
+            "smart_ziw_next_actions": [],
             "smart_ziw_research_verdict": str(result.get("research_verdict") or ""),
             "smart_ziw_evidence": evidence,
             "smart_ziw_confidence": confidence,
             "smart_ziw_ai_source": ai_source,
             "smart_ziw_repo_path": str(result.get("repo_path") or ""),
+            "smart_ziw_source_url": str(result.get("source_url") or ""),
+            "smart_ziw_documents": documents,
+            "smart_ziw_files_found": len(documents),
         })
     except Exception as exc:
         project = get_project_by_db_id(project_db_id)
@@ -578,14 +578,14 @@ def _build_thread_text(thread_comments: list[dict]) -> str:
 
 
 def _build_smart_ziw_chat_prompt(project: dict, comment: dict, thread_comments: list[dict]) -> str:
-    body = re.sub(_SMART_ZIW_MENTION_TOKEN, "", str(comment.get("body") or ""), flags=re.IGNORECASE).strip()
+    body = _SMART_ZIW_MENTION_RE.sub("", str(comment.get("body") or "")).strip()
     lines = [
         f"Project name: {project.get('project_name') or ''}",
         f"Buyer: {project.get('project_sponsor') or ''}",
         f"Country: {project.get('primary_country_name_en') or ''}",
         f"Deadline: {project.get('project_end_date') or project.get('effective_deadline') or ''}",
         f"Description: {project.get('project_description') or ''}",
-        f"Source URL: {project.get('project_url') or ''}",
+        f"Aggregator listing URL (scraped from, NOT the original source): {project.get('project_url') or ''}",
         f"Smart-Ziw status: {project.get('smart_ziw_status') or 'never run'}",
         f"Smart-Ziw folder: {project.get('smart_ziw_folder') or 'none'}",
         "",
@@ -653,7 +653,7 @@ def _maybe_start_smart_ziw_chat(comment: dict, project: dict | None, requester: 
         return
     if comment.get("entityType") != "project":
         return
-    if _SMART_ZIW_MENTION_TOKEN not in str(comment.get("body") or "").lower():
+    if not _SMART_ZIW_MENTION_RE.search(str(comment.get("body") or "")):
         return
     config = get_smart_ziw_config()
     if not config.get("smart_ziw_enabled", True):
@@ -1189,11 +1189,9 @@ class SkillStateUpdate(BaseModel):
 class McpServerConfig(BaseModel):
     id: str = ""
     name: str = ""
-    transport: str = "stdio"
-    command: str = ""
-    args: list[str] = Field(default_factory=list)
+    transport: str = "sse"
     url: str = ""
-    env: dict[str, str] = Field(default_factory=dict)
+    headers: dict[str, str] = Field(default_factory=dict)
     enabled: bool = True
     timeout: int = 30
     tools: list[dict] = Field(default_factory=list)
@@ -1516,8 +1514,107 @@ def serve_upload(file_id: str, filename: str):
         content_disposition_type=disposition,
     )
 
-# Existing endpoints
-@app.get("/api/auth/bootstrap-status")
+def _upload_local_file_to_comment_store(file_path: Path) -> dict | None:
+    """Copy a local file into the comment upload store and return an attachment dict."""
+    try:
+        if not file_path.exists() or not file_path.is_file():
+            return None
+        data = file_path.read_bytes()
+        if len(data) > MAX_COMMENT_UPLOAD_BYTES:
+            return None
+        safe_name = file_path.name.replace("..", "").replace("/", "").replace("\\", "")
+        file_id = str(uuid.uuid4())
+        dest_dir = UPLOADS_DIR / file_id
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        dest_path = dest_dir / safe_name
+        dest_path.write_bytes(data)
+        media_type, _ = mimetypes.guess_type(str(dest_path))
+        return {
+            "fileId": file_id,
+            "originalName": safe_name,
+            "size": len(data),
+            "mimeType": media_type or "application/octet-stream",
+            "url": f"/api/uploads/{file_id}/{safe_name}",
+        }
+    except Exception:
+        return None
+
+
+def _build_reference_footer(references: list[dict], uploaded_attachments: list[dict]) -> str:
+    if not references:
+        return ""
+    # Map url_or_path to uploaded attachment when it matches a file path in the attachments.
+    attachment_by_name: dict[str, dict] = {}
+    for att in uploaded_attachments:
+        name = att.get("originalName", "")
+        if name:
+            attachment_by_name[name] = att
+    lines = ["", "---", "", "## References"]
+    for ref in references:
+        number = ref.get("number") if isinstance(ref.get("number"), int) else 0
+        title = str(ref.get("title") or "").strip()
+        url_or_path = str(ref.get("url_or_path") or "").strip()
+        # Prefer uploaded attachment URL if the reference points to a downloaded file.
+        if url_or_path and not url_or_path.startswith("http"):
+            name = Path(url_or_path).name
+            att = attachment_by_name.get(name)
+            if att:
+                url_or_path = att["url"]
+            elif not url_or_path.startswith("/"):
+                url_or_path = f"files/{url_or_path}"
+        display = title or url_or_path or "source"
+        lines.append(f"[{number}] {display} — {url_or_path}")
+    return "\n".join(lines)
+
+
+def _post_smart_ziw_comment(project: dict, result: dict) -> None:
+    repo_path = Path(result.get("repo_path") or "/home/kali/Smart-Ziw")
+    folder = result.get("folder", "")
+    recap_path = repo_path / folder / "recap.md"
+    recap_markdown = result.get("recap_markdown") or ""
+    if recap_path.exists():
+        try:
+            recap_markdown = recap_path.read_text(encoding="utf-8")
+        except Exception:
+            pass
+
+    if not recap_markdown.strip():
+        _create_project_comment_and_notify(
+            entity_type="project",
+            entity_id=_project_entity_id(project),
+            project=project,
+            author_user=SMART_ZIW_BOT_USER,
+            body_text="Smart-Ziw Agent finished, but no recap was generated.",
+        )
+        return
+
+    # Upload collected files (originals and extracted markdown) as comment attachments.
+    uploaded_attachments: list[dict] = []
+    files_dir = repo_path / folder / "files"
+    if files_dir.exists():
+        for file_path in sorted(files_dir.rglob("*")):
+            if not file_path.is_file():
+                continue
+            att = _upload_local_file_to_comment_store(file_path)
+            if att:
+                uploaded_attachments.append(att)
+
+    footer = _build_reference_footer(result.get("references") or [], uploaded_attachments)
+    files_section = ""
+    if uploaded_attachments:
+        files_section = "\n\n---\n\n## Downloadable files\n" + "\n".join(
+            f"- [{att['originalName']}]({att['url']})" for att in uploaded_attachments
+        )
+    body = recap_markdown.strip() + footer + files_section
+
+    _create_project_comment_and_notify(
+        entity_type="project",
+        entity_id=_project_entity_id(project),
+        project=project,
+        author_user=SMART_ZIW_BOT_USER,
+        body_text=body,
+        attachments=uploaded_attachments,
+    )
 def auth_bootstrap_status():
     has_admin = count_admin_users() > 0
     env_configured = bool(os.getenv("ADMIN_EMAIL", "").strip() and os.getenv("ADMIN_PASSWORD", ""))
@@ -2076,16 +2173,16 @@ def _slugify_mcp_name(name: str) -> str:
     return base or str(uuid.uuid4())
 
 
-def _redact_mcp_env(server: dict) -> dict:
-    """Return a copy of an MCP server config with env values replaced by ***."""
+def _redact_mcp_headers(server: dict) -> dict:
+    """Return a copy of an MCP server config with header values replaced by ***."""
     out = dict(server)
-    if out.get("env"):
-        out["env"] = {key: "***" for key in out["env"]}
+    if out.get("headers"):
+        out["headers"] = {key: "***" for key in out["headers"]}
     return out
 
 
-def _merge_mcp_env(existing: dict, incoming: dict) -> dict:
-    """Preserve existing env values when the UI sends the redacted placeholder."""
+def _merge_mcp_headers(existing: dict, incoming: dict) -> dict:
+    """Preserve existing header values when the UI sends the redacted placeholder."""
     merged = dict(existing)
     for key, value in incoming.items():
         if value == "***" and key in merged:
@@ -2106,14 +2203,15 @@ def _normalize_mcp_server(body: dict, existing: dict | None = None) -> dict:
             return body[key]
         return existing.get(key, default)
 
+    transport = str(_field("transport") or existing.get("transport") or "sse")
+    if transport not in ("sse", "http"):
+        raise HTTPException(status_code=400, detail="Only SSE/HTTP MCP servers are supported")
     return {
         "id": server_id,
         "name": _field("name") or existing.get("name") or server_id,
-        "transport": _field("transport") or existing.get("transport") or "stdio",
-        "command": _field("command"),
-        "args": list(_field("args", [])),
+        "transport": transport,
         "url": _field("url"),
-        "env": _merge_mcp_env(existing.get("env") or {}, body.get("env") or {}),
+        "headers": _merge_mcp_headers(existing.get("headers") or {}, body.get("headers") or {}),
         "enabled": _field("enabled", True),
         "timeout": int(_field("timeout") or existing.get("timeout") or 30),
         "tools": list(_field("tools", [])),
@@ -2124,7 +2222,7 @@ def _normalize_mcp_server(body: dict, existing: dict | None = None) -> dict:
 def admin_list_mcp_servers(request: Request):
     _require_admin(request)
     servers = smart_ziw_mcp.load_mcp_servers()
-    return [_redact_mcp_env(s) for s in servers]
+    return [_redact_mcp_headers(s) for s in servers]
 
 
 @app.post("/api/admin/smart-ziw-mcp-servers/test")
@@ -2156,7 +2254,7 @@ def admin_create_mcp_server(body: McpServerConfig, request: Request):
 
     servers.append(server)
     smart_ziw_mcp.save_mcp_servers(db, servers)
-    return [_redact_mcp_env(s) for s in smart_ziw_mcp.load_mcp_servers()]
+    return [_redact_mcp_headers(s) for s in smart_ziw_mcp.load_mcp_servers()]
 
 
 @app.put("/api/admin/smart-ziw-mcp-servers/{server_id}")
@@ -2181,7 +2279,7 @@ def admin_update_mcp_server(server_id: str, body: McpServerConfig, request: Requ
 
     servers[index] = server
     smart_ziw_mcp.save_mcp_servers(db, servers)
-    return [_redact_mcp_env(s) for s in smart_ziw_mcp.load_mcp_servers()]
+    return [_redact_mcp_headers(s) for s in smart_ziw_mcp.load_mcp_servers()]
 
 
 @app.delete("/api/admin/smart-ziw-mcp-servers/{server_id}")
@@ -2193,5 +2291,5 @@ def admin_delete_mcp_server(server_id: str, request: Request):
     if len(new_servers) == len(servers):
         raise HTTPException(status_code=404, detail="MCP server not found")
     smart_ziw_mcp.save_mcp_servers(db, new_servers)
-    return [_redact_mcp_env(s) for s in smart_ziw_mcp.load_mcp_servers()]
+    return [_redact_mcp_headers(s) for s in smart_ziw_mcp.load_mcp_servers()]
 

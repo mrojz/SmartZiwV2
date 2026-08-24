@@ -280,3 +280,21 @@ def test_hook_spawns_chat_worker_for_non_run_request(monkeypatch):
     assert spawned["daemon"] is True
     assert not posted
     assert "p1" in server._smart_ziw_running
+
+
+def test_mention_variants_all_match_smart_ziw():
+    for body in ("@smartziw hello", "@SmartZiw hello", "@smart-ziw hello", "@smart ziw hello", "@smart_ziw hello"):
+        assert server._SMART_ZIW_MENTION_RE.search(body), body
+    assert not server._SMART_ZIW_MENTION_RE.search("hi @someone else")
+    # Chat prompt strips every variant.
+    for body in ("@smartziw hi", "@smart-ziw hi", "@smart ziw hi"):
+        assert "@smart" not in server._build_smart_ziw_chat_prompt(
+            _mk_project(), _mk_comment(body), []
+        )
+
+
+def test_sanitize_mentions_keeps_bot_mention():
+    raw = [{"userId": "bot:smart-ziw", "name": "Smart-Ziw Bot", "email": ""}, {"userId": "nobody", "name": "Nope", "email": ""}]
+    cleaned = server._sanitize_mentions(raw, {})
+    assert [m["userId"] for m in cleaned] == ["bot:smart-ziw"]
+    assert cleaned[0]["name"] == "Smart-Ziw Bot"

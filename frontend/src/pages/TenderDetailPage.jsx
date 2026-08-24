@@ -268,7 +268,7 @@ export default function TenderDetailPage({ dbId, apiFetch, authUser, availableUs
 
     return (
         <div className="flex min-h-0 flex-1 flex-col">
-            <div className="flex items-center gap-3 border-b px-6 py-4">
+            <div className="sticky top-0 z-10 flex items-center gap-3 border-b bg-background px-6 py-4">
                 <Button variant="ghost" size="sm" onClick={goBack}>
                     <ArrowLeft className="mr-2 h-4 w-4" />
                     Back
@@ -293,20 +293,18 @@ export default function TenderDetailPage({ dbId, apiFetch, authUser, availableUs
                 setDiscussionSearchOpen={setDiscussionSearchOpen}
             />
 
-            <div className="min-h-0 flex-1">
-                <ProjectInspector
-                    project={project}
-                    comments={comments}
-                    commentsLoading={commentsLoading}
-                    authUser={authUser}
-                    availableUsers={availableUsers}
-                    canManageDecision={canManageDecision}
-                    onDecisionChange={handleDecisionChange}
-                    onOpenFullPage={null}
-                    onRunSmartZiw={handleRunSmartZiw}
-                    compact={false}
-                />
-            </div>
+            <ProjectInspector
+                project={project}
+                comments={comments}
+                commentsLoading={commentsLoading}
+                authUser={authUser}
+                availableUsers={availableUsers}
+                canManageDecision={canManageDecision}
+                onDecisionChange={handleDecisionChange}
+                onOpenFullPage={null}
+                onRunSmartZiw={handleRunSmartZiw}
+                compact={false}
+            />
 
             <CommentComposer
                 entity={entity}
@@ -316,6 +314,7 @@ export default function TenderDetailPage({ dbId, apiFetch, authUser, availableUs
                 currentUser={authUser}
                 availableUsers={availableUsers}
                 apiFetch={apiFetch}
+                className="bg-background"
             />
         </div>
     );

@@ -4,7 +4,25 @@ from unittest.mock import MagicMock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from smart_ziw_research import FirecrawlClient, url_is_safe
+from smart_ziw_research import (
+    CorpusItem,
+    DocumentStore,
+    EvidenceCorpus,
+    FirecrawlClient,
+    RECAP_SYNTHESIS_PROMPT,
+    ResearchResult,
+    ROUND_PROMPT,
+    SEED_PROMPT,
+    SELECT_PROMPT,
+    SOURCE_DISCOVERY_PROMPT,
+    SOURCE_RANKING_PROMPT,
+    SUMMARIZE_PROMPT,
+    VERDICT_PROMPT,
+    is_document_url,
+    run_research,
+    synthesize,
+    url_is_safe,
+)
 
 
 def _public_dns(host, port):
@@ -87,15 +105,67 @@ def test_scrape_blocks_unsafe_url_without_request(monkeypatch):
     assert called["n"] == 0
 
 
-def test_search_without_mcp_server_returns_config_error(monkeypatch):
+def test_search_without_mcp_server_uses_http_fallback(monkeypatch):
     monkeypatch.setattr("smart_ziw_research._find_firecrawl_mcp_server", lambda: None)
+    monkeypatch.setattr(
+        "smart_ziw_research.FirecrawlClient._http_search",
+        lambda self, query, limit=10: [{"url": "https://ddg.example/1", "title": "T"}],
+    )
     client = FirecrawlClient({})
     rows = client.search("q")
-    assert len(rows) == 1 and "_error" in rows[0]
-    assert "MCP Servers tab" in rows[0]["_error"]
+    assert rows[0]["url"] == "https://ddg.example/1"
 
 
-from smart_ziw_research import DocumentStore, is_document_url, EvidenceCorpus
+def test_http_scrape_fallback_extracts_text_and_links(monkeypatch):
+    html = (
+        "<html><head><title>Notice</title></head><body>"
+        "<script>bad()</script><p>Hello tender</p>"
+        '<a href="/files/dce.pdf">DCE</a></body></html>'
+    )
+
+    class FakeResp:
+        status_code = 200
+        headers = {"content-type": "text/html; charset=utf-8"}
+        text = html
+
+    monkeypatch.setattr("smart_ziw_research.requests.get", lambda *a, **k: FakeResp())
+    client = FirecrawlClient({})
+    page = client._http_scrape("https://example.com/notice")
+    assert page["title"] == "Notice"
+    assert "Hello tender" in page["markdown"]
+    assert "bad()" not in page["markdown"]
+    assert "https://example.com/files/dce.pdf" in page["links"]
+
+
+def test_http_search_fallback_parses_ddg_html(monkeypatch):
+    html = (
+        '<div class="result">'
+        '<a class="result__a" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fbhn.ne%2Fao">BHN AO</a>'
+        '<a class="result__snippet">Avis d appel d offres</a>'
+        "</div>"
+    )
+
+    class FakeResp:
+        status_code = 200
+        text = html
+
+    monkeypatch.setattr("smart_ziw_research.requests.get", lambda *a, **k: FakeResp())
+    client = FirecrawlClient({})
+    rows = client._http_search("BHN appel d offres")
+    assert rows == [{
+        "url": "https://bhn.ne/ao",
+        "title": "BHN AO",
+        "description": "Avis d appel d offres",
+    }]
+
+
+def test_http_search_fallback_empty_on_failure(monkeypatch):
+    def _boom(*a, **k):
+        raise OSError("no network")
+    monkeypatch.setattr("smart_ziw_research.requests.get", _boom)
+    client = FirecrawlClient({})
+    assert client._http_search("q") == []
+
 
 
 def test_is_document_url_table():
@@ -104,6 +174,110 @@ def test_is_document_url_table():
     assert is_document_url("https://x.com/plan.xlsx") is True
     assert is_document_url("https://x.com/notice.html") is False
     assert is_document_url("https://x.com/notice") is False
+
+
+def test_find_source_rejects_aggregator_domain():
+    from smart_ziw_research import find_source
+
+    def call(system, user):
+        return {
+            "source_url": "https://example.com/tender/notice",
+            "buyer": "CDC Benin",
+            "requesting_company": "CDC Benin",
+            "confidence": "high",
+            "document_urls": [],
+            "notes": "listing is on the aggregator",
+        }
+
+    result = find_source(PROJECT, STUB_CONFIG, llm_call=call)
+    assert result.source_url == ""
+    assert result.confidence == "low"
+    assert "aggregator" in (result.notes or "").lower()
+    assert result.buyer == "CDC Benin"
+
+
+def test_find_source_keeps_buyer_domain():
+    from smart_ziw_research import find_source
+
+    def call(system, user):
+        return {
+            "source_url": "https://buyer.gov.ne/notice",
+            "buyer": "CDC Benin",
+            "requesting_company": "CDC Benin",
+            "confidence": "high",
+            "document_urls": [],
+            "notes": "official portal",
+        }
+
+    result = find_source(PROJECT, STUB_CONFIG, llm_call=call)
+    assert result.source_url == "https://buyer.gov.ne/notice"
+    assert result.confidence == "high"
+
+
+def test_find_source_derives_buyer_domain_from_email():
+    from smart_ziw_research import find_source
+
+    def call(system, user):
+        return {"source_url": "", "buyer": "Banque de l'Habitat du Niger",
+                "requesting_company": "", "confidence": "low", "notes": ""}
+
+    project = dict(PROJECT)
+    project["project_description"] = (
+        "Les offres doivent être envoyées par email à achats@bhn.ne "
+        "ou infos@bhn.ne avant le 04/09/2026."
+    )
+    result = find_source(project, STUB_CONFIG, llm_call=call)
+    assert result.source_url == "https://bhn.ne"
+    assert result.confidence == "medium"
+    assert "email" in (result.notes or "").lower()
+
+
+def test_find_source_email_derivation_skips_aggregator_and_free_mail():
+    from smart_ziw_research import find_source
+
+    def call(system, user):
+        return {"source_url": "", "buyer": "CDC Benin", "requesting_company": "",
+                "confidence": "low", "notes": ""}
+
+    project = dict(PROJECT)
+    project["project_description"] = (
+        "Contact: cdc@example.com ou cdc.benin@gmail.com — aucune autre adresse."
+    )
+    result = find_source(project, STUB_CONFIG, llm_call=call)
+    assert result.source_url == ""
+    assert result.confidence == "low"
+
+
+def test_scrub_aggregator_source_replaces_url_and_states_gap():
+    from smart_ziw_research import ResearchResult, _scrub_aggregator_source
+
+    project = dict(PROJECT)
+    research = ResearchResult()
+    research.buyer = "CDC Benin"
+    out = {
+        "recap_markdown": (
+            "**Source**\n- Original listing: Tender X [1]\n\n"
+            "Source: [Aggregator](https://example.com/tender)"
+        ),
+    }
+    _scrub_aggregator_source(out, project, research)
+    md = out["recap_markdown"]
+    assert "https://example.com/tender" not in md
+    assert "[Aggregator]" not in md
+    assert "not the original source" in md
+    assert "## Original source" in md
+    assert "CDC Benin" in md
+
+
+def test_scrub_aggregator_source_noop_when_source_found():
+    from smart_ziw_research import ResearchResult, _scrub_aggregator_source
+
+    project = dict(PROJECT)
+    research = ResearchResult()
+    research.source_url = "https://buyer.gov.ne/notice"
+    out = {"recap_markdown": "Source: [Buyer](https://buyer.gov.ne/notice)"}
+    _scrub_aggregator_source(out, project, research)
+    assert out["recap_markdown"] == "Source: [Buyer](https://buyer.gov.ne/notice)"
 
 
 def _fake_get(content=b"%PDF-1.4 fake", status=200, content_type="application/pdf"):
@@ -124,7 +298,7 @@ def test_download_saves_slugged_file(monkeypatch, tmp_path):
     assert error is None
     assert path is not None
     assert path.name == "IS-Security-Audit.pdf"
-    assert path.parent == tmp_path / "documents" / "original"
+    assert path.parent == tmp_path / "files" / "original"
 
 
 def test_download_skips_existing_file(monkeypatch, tmp_path):
@@ -238,13 +412,24 @@ def test_corpus_render_log_empty():
 
 
 from smart_ziw_research import (
+    RECAP_SYNTHESIS_PROMPT,
     ROUND_PROMPT,
     SEED_PROMPT,
     SELECT_PROMPT,
+    SOURCE_DISCOVERY_PROMPT,
+    SUMMARIZE_PROMPT,
     VERDICT_PROMPT,
+    CorpusItem,
     DocumentStore,
+    EvidenceCorpus,
+    FirecrawlClient,
+    ResearchResult,
+    is_document_url,
     run_research,
+    synthesize,
+    url_is_safe,
 )
+
 
 PROJECT = {
     "project_name": "IS Security Audit",
@@ -262,7 +447,25 @@ STUB_CONFIG = {
 }
 
 
-def _counting_call(system, user, counters, seed=None, selects=None, rounds=None, verdict=None):
+def _counting_call(system, user, counters, seed=None, selects=None, rounds=None, verdict=None, source=None, source_ranking=None):
+    if system == SOURCE_DISCOVERY_PROMPT:
+        return source or {
+            "source_url": "",
+            "buyer": "",
+            "requesting_company": "",
+            "confidence": "low",
+            "document_urls": [],
+            "notes": "",
+        }
+    if system == SOURCE_RANKING_PROMPT:
+        return source_ranking or {
+            "source_url": "",
+            "buyer": "",
+            "requesting_company": "",
+            "confidence": "low",
+            "document_urls": [],
+            "notes": "",
+        }
     if system == SEED_PROMPT:
         counters["seed"] += 1
         return seed or {}
@@ -307,7 +510,6 @@ def test_run_research_converges_after_two_stops(monkeypatch, tmp_path):
     assert counters["round"] == 2
     assert result.verdict["recommendation"] == "GO-CONDITIONAL"
     assert result.stats["queries_run"] == 1
-    assert (tmp_path / "folder" / "artifacts" / "research-log.md").exists()
 
 
 def test_run_research_dedupe_exhaustion_stops(monkeypatch, tmp_path):
@@ -384,9 +586,8 @@ def test_run_research_scrapes_page_and_captures_document(monkeypatch, tmp_path):
     assert len(result.items) == 2
     assert result.citation_map[EvidenceCorpus.normalize_url("https://example.com/notice")] == 1
     assert result.verdict["recommendation"] == "GO"
-    assert (tmp_path / "folder" / "artifacts" / "page-1.md").exists()
-    assert (tmp_path / "folder" / "documents" / "original" / "dce.pdf").exists()
-    assert (tmp_path / "folder" / "documents" / "extracted" / "dce.md").exists()
+    assert (tmp_path / "folder" / "files" / "original" / "dce.pdf").exists()
+    assert (tmp_path / "folder" / "files" / "extracted" / "dce.md").exists()
 
 
 def test_run_research_times_out(monkeypatch, tmp_path):
@@ -412,37 +613,24 @@ def test_run_research_times_out(monkeypatch, tmp_path):
     assert counters["round"] == 0
 
 
-def test_run_research_no_mcp_server_returns_error(monkeypatch, tmp_path):
-    counters = {"seed": 0, "select": 0, "round": 0, "verdict": 0}
+def test_run_research_without_mcp_server_proceeds(monkeypatch, tmp_path):
+    counters = {"seed": 0}
 
     def call(system, user):
-        counters["seed"] += 1
+        if system == SEED_PROMPT:
+            counters["seed"] += 1
         return {}
 
     monkeypatch.setattr("smart_ziw_research._find_firecrawl_mcp_server", lambda: None)
+    monkeypatch.setattr(
+        "smart_ziw_research.FirecrawlClient._http_search",
+        lambda self, query, limit=10: [],
+    )
     result = run_research(PROJECT, {"smart_ziw_repo_path": "/tmp/x"}, folder_path=tmp_path / "f", llm_call=call)
-    assert "No Firecrawl MCP server configured" in result.error
-    assert counters["seed"] == 0
+    assert result.error == ""
+    assert counters["seed"] == 1
 
 
-from smart_ziw_research import (
-    SUMMARIZE_PROMPT,
-    SYNTHESIS_PROMPT,
-    CorpusItem,
-    ResearchResult,
-    synthesize,
-)
-
-SYNTH_FULL = {
-    "source_markdown": "# Source\n\nVerified [1]",
-    "analysis_markdown": "# Analysis\n\nGO [1]",
-    "eligibility_markdown": "# Eligibility\n\nok",
-    "risks_markdown": "# Risks\n\nlow",
-    "pricing_markdown": "# Pricing\n\nUSD 1000",
-    "recap_markdown": "# Tender Recap\n\nGO",
-    "readme_markdown": "# README\n\nfolder",
-    "documents_notes_markdown": "# Documents\n\nnone",
-}
 
 
 def _make_research(num_items: int) -> ResearchResult:
@@ -452,25 +640,36 @@ def _make_research(num_items: int) -> ResearchResult:
     return ResearchResult(items=corpus.items, citation_map=corpus.citation_map())
 
 
+RECAP_FULL = {
+    "recap_markdown": "# Tender Recap\n\nVerified [1]\n\nGO",
+    "references": [{"number": 1, "title": "Example", "url_or_path": "https://example.com"}],
+}
+
+
 def test_synthesize_chunks_and_returns_coerced_dict():
     research = _make_research(10)  # 2 chunks of 8
+    research.source_url = "https://buyer.gov.ne/notice"  # keeps the scrub out of the assert
     calls = {"summarize": 0, "final": 0}
 
     def call(system, user):
         if system == SUMMARIZE_PROMPT:
             calls["summarize"] += 1
             return {"summaries": [{"citation": 1, "summary": "s"}]}
-        if system == SYNTHESIS_PROMPT:
+        if system == RECAP_SYNTHESIS_PROMPT:
             calls["final"] += 1
-            return SYNTH_FULL
+            return RECAP_FULL
         raise AssertionError(f"unexpected prompt: {system[:60]}")
 
     result = synthesize(PROJECT, research, llm_call=call)
     assert calls["summarize"] == 2
     assert calls["final"] == 1
-    assert result["source_markdown"] == "# Source\n\nVerified [1]"
-    assert result["analysis_markdown"] == "# Analysis\n\nGO [1]"
-    assert result["pricing_markdown"] == "# Pricing\n\nUSD 1000"
+    assert result["recap_markdown"] == (
+        "# Tender Recap\n\nVerified [1]\n\nGO"
+        "\n\n---\n\n## Original source\n"
+        "- [Original source](https://buyer.gov.ne/notice)"
+    )
+    assert result["references"][0]["url_or_path"] == "https://buyer.gov.ne/notice"
+    assert result["references"][1]["url_or_path"] == "https://example.com"
 
 
 def test_synthesize_coerces_bad_fields_to_safe_defaults():
@@ -479,15 +678,14 @@ def test_synthesize_coerces_bad_fields_to_safe_defaults():
     def call(system, user):
         if system == SUMMARIZE_PROMPT:
             raise AssertionError("no chunks expected")
-        if system == SYNTHESIS_PROMPT:
-            return {"analysis_markdown": "bad", "source_markdown": ""}
+        if system == RECAP_SYNTHESIS_PROMPT:
+            return {"recap_markdown": "bad", "references": "not-a-list"}
         raise AssertionError(f"unexpected prompt: {system[:60]}")
 
     result = synthesize(PROJECT, research, llm_call=call)
-    assert "# Source" in result["source_markdown"]
-    assert "# Analysis" in result["analysis_markdown"]
+    assert "# Tender Recap" in result["recap_markdown"]
     assert "GO-CONDITIONAL" in result["recap_markdown"]
-    assert "# Eligibility" in result["eligibility_markdown"]
+    assert isinstance(result["references"], list)
 
 
 def test_synthesize_llm_failure_returns_error_dict():
@@ -545,23 +743,28 @@ def test_download_blocks_redirect_to_private_url(monkeypatch, tmp_path):
     assert get.call_args.kwargs["allow_redirects"] is False
 
 
-def test_run_research_none_timeout_still_returns_config_error(monkeypatch, tmp_path):
+def test_run_research_none_timeout_still_proceeds(monkeypatch, tmp_path):
     # I3: timeout coercion must not raise when the config value is None.
-    counters = {"seed": 0, "select": 0, "round": 0, "verdict": 0}
+    counters = {"seed": 0}
 
     def call(system, user):
-        counters["seed"] += 1
+        if system == SEED_PROMPT:
+            counters["seed"] += 1
         return {}
 
     monkeypatch.setattr("smart_ziw_research._find_firecrawl_mcp_server", lambda: None)
+    monkeypatch.setattr(
+        "smart_ziw_research.FirecrawlClient._http_search",
+        lambda self, query, limit=10: [],
+    )
     result = run_research(
         PROJECT,
         {"smart_ziw_research_timeout_seconds": None},
         folder_path=tmp_path / "f",
         llm_call=call,
     )
-    assert "No Firecrawl MCP server configured" in result.error
-    assert counters["seed"] == 0
+    assert result.error == ""
+    assert counters["seed"] == 1
 
 
 def test_run_research_document_stats_count_only_new_urls(monkeypatch, tmp_path):
@@ -680,9 +883,8 @@ def test_run_research_writes_log_on_exception(monkeypatch, tmp_path):
 
     result = run_research(PROJECT, STUB_CONFIG, folder_path=tmp_path / "folder", llm_call=call)
     assert result.error == "research failed: boom mid-research"
-    log = tmp_path / "folder" / "artifacts" / "research-log.md"
-    assert log.exists()
-    assert "Notice" in log.read_text(encoding="utf-8")
+    # Artifact logs are no longer persisted to disk.
+    assert not (tmp_path / "folder" / "artifacts" / "research-log.md").exists()
 
 
 def test_extract_archive_zip_recursively(tmp_path):
@@ -698,14 +900,14 @@ def test_extract_archive_zip_recursively(tmp_path):
     assert any(a["name"] == "bundle.zip" for a in notes)
 
 
-def test_document_store_writes_notes_md(tmp_path, monkeypatch):
+def test_document_store_builds_notes_in_memory(tmp_path, monkeypatch):
     monkeypatch.setattr("smart_ziw_research.socket.getaddrinfo", _public_dns)
     monkeypatch.setattr("smart_ziw_research.requests.get", lambda *a, **k: _fake_get())
     store = DocumentStore(tmp_path)
     path, _ = store.download("https://example.com/file.PDF")
     store.save_extraction(path)
     store.write_notes(PROJECT)
-    notes = (tmp_path / "documents" / "notes.md").read_text(encoding="utf-8")
+    notes = store.notes
     assert "file.pdf" in notes.lower()
     assert "recursive" in notes.lower()
     assert "files_downloaded" not in notes

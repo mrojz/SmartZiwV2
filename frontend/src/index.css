@@ -153,3 +153,27 @@ html.modal-scroll-locked,
 body.modal-scroll-locked {
   overflow: hidden;
 }
+
+/* Markdown inside comment bubbles (Smart-Ziw recaps, user notes). */
+.comment-markdown > :first-child { margin-top: 0; }
+.comment-markdown > :last-child { margin-bottom: 0; }
+.comment-markdown h1, .comment-markdown h2, .comment-markdown h3, .comment-markdown h4 {
+  margin: 0.6em 0 0.3em;
+  font-weight: 700;
+  line-height: 1.3;
+}
+.comment-markdown h1 { font-size: 1.05em; }
+.comment-markdown h2 { font-size: 1em; }
+.comment-markdown h3, .comment-markdown h4 { font-size: 0.95em; }
+.comment-markdown p { margin: 0.3em 0; }
+.comment-markdown ul, .comment-markdown ol { margin: 0.3em 0; padding-left: 1.25em; }
+.comment-markdown ul { list-style: disc; }
+.comment-markdown ol { list-style: decimal; }
+.comment-markdown li { margin: 0.15em 0; }
+.comment-markdown code { border-radius: 0.25rem; background: hsl(0 0% 0% / 0.08); padding: 0.1em 0.3em; font-size: 0.85em; }
+.comment-markdown pre { overflow-x: auto; border-radius: 0.375rem; background: hsl(0 0% 0% / 0.08); padding: 0.5em 0.75em; margin: 0.4em 0; }
+.comment-markdown pre code { background: transparent; padding: 0; }
+.comment-markdown blockquote { margin: 0.4em 0; padding-left: 0.75em; border-left: 3px solid hsl(0 0% 0% / 0.2); }
+.comment-markdown hr { margin: 0.8em 0; }
+.comment-markdown table { border-collapse: collapse; margin: 0.4em 0; }
+.comment-markdown th, .comment-markdown td { border: 1px solid hsl(0 0% 0% / 0.15); padding: 0.25em 0.5em; }

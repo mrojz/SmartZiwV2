@@ -42,7 +42,6 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { Textarea } from '@/components/ui/textarea';
 import { Avatar as ShadcnAvatar, AvatarFallback } from '@/components/ui/avatar';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
@@ -1333,11 +1332,9 @@ function AdminPage({ apiFetch, authUser, initialTab = 'users' }) {
     const [mcpForm, setMcpForm] = useState({
         id: '',
         name: '',
-        transport: 'stdio',
-        command: '',
-        argsText: '',
+        transport: 'sse',
         url: '',
-        envText: '',
+        headersText: '',
         enabled: true,
         timeout: 30,
         tools: [],
@@ -1425,7 +1422,7 @@ function AdminPage({ apiFetch, authUser, initialTab = 'users' }) {
         };
         setPageHeader({
             title: 'Admin',
-            subtitle: adminSubtitles[adminTab] || '',
+            subtitle: 'Manage users, agent settings, and platform configuration.',
             action: getAction(),
         });
         return () => clearPageHeader();
@@ -1749,28 +1746,22 @@ function AdminPage({ apiFetch, authUser, initialTab = 'users' }) {
     };
 
     const buildMcpPayload = () => {
-        const args = mcpForm.argsText
-            .split(/\r?\n/)
-            .map((line) => line.trim())
-            .filter(Boolean);
-        const env = {};
-        mcpForm.envText
+        const headers = {};
+        mcpForm.headersText
             .split(/\r?\n/)
             .map((line) => line.trim())
             .filter(Boolean)
             .forEach((line) => {
                 const idx = line.indexOf('=');
                 if (idx <= 0) return;
-                env[line.slice(0, idx).trim()] = line.slice(idx + 1).trim();
+                headers[line.slice(0, idx).trim()] = line.slice(idx + 1).trim();
             });
         return {
             id: mcpForm.id || '',
             name: mcpForm.name.trim(),
-            transport: mcpForm.transport,
-            command: mcpForm.command.trim(),
-            args,
+            transport: 'sse',
             url: mcpForm.url.trim(),
-            env,
+            headers,
             enabled: mcpForm.enabled,
             timeout: Number.isFinite(Number(mcpForm.timeout)) && Number(mcpForm.timeout) >= 1 ? Number(mcpForm.timeout) : 30,
             tools: mcpForm.tools || [],
@@ -1783,11 +1774,9 @@ function AdminPage({ apiFetch, authUser, initialTab = 'users' }) {
         setMcpForm({
             id: '',
             name: '',
-            transport: 'stdio',
-            command: '',
-            argsText: '',
+            transport: 'sse',
             url: '',
-            envText: '',
+            headersText: '',
             enabled: true,
             timeout: 30,
             tools: [],
@@ -1800,11 +1789,9 @@ function AdminPage({ apiFetch, authUser, initialTab = 'users' }) {
         setMcpForm({
             id: server.id || '',
             name: server.name || '',
-            transport: server.transport || 'stdio',
-            command: server.command || '',
-            argsText: (server.args || []).join('\n'),
+            transport: 'sse',
             url: server.url || '',
-            envText: Object.entries(server.env || {}).map(([key, value]) => `${key}=${value}`).join('\n'),
+            headersText: Object.entries(server.headers || {}).map(([key, value]) => `${key}=${value}`).join('\n'),
             enabled: server.enabled !== false,
             timeout: Number.isFinite(Number(server.timeout)) && Number(server.timeout) >= 1 ? Number(server.timeout) : 30,
             tools: server.tools || [],
@@ -1815,14 +1802,8 @@ function AdminPage({ apiFetch, authUser, initialTab = 'users' }) {
         const nextErrors = {};
         const nameError = isRequired(mcpForm.name.trim());
         if (nameError) nextErrors.name = nameError;
-        if (mcpForm.transport === 'stdio') {
-            const commandError = isRequired(mcpForm.command.trim());
-            if (commandError) nextErrors.command = commandError;
-        }
-        if (mcpForm.transport === 'sse') {
-            const urlError = isUrl(mcpForm.url.trim());
-            if (urlError) nextErrors.url = urlError;
-        }
+        const urlError = isUrl(mcpForm.url.trim());
+        if (urlError) nextErrors.url = urlError;
         if (Object.keys(nextErrors).length) {
             setMcpErrors(nextErrors);
             return;
@@ -1857,14 +1838,8 @@ function AdminPage({ apiFetch, authUser, initialTab = 'users' }) {
         const nextErrors = {};
         const nameError = isRequired(mcpForm.name.trim());
         if (nameError) nextErrors.name = nameError;
-        if (mcpForm.transport === 'stdio') {
-            const commandError = isRequired(mcpForm.command.trim());
-            if (commandError) nextErrors.command = commandError;
-        }
-        if (mcpForm.transport === 'sse') {
-            const urlError = isUrl(mcpForm.url.trim());
-            if (urlError) nextErrors.url = urlError;
-        }
+        const urlError = isUrl(mcpForm.url.trim());
+        if (urlError) nextErrors.url = urlError;
         if (Object.keys(nextErrors).length) {
             setMcpErrors(nextErrors);
             return;
@@ -1921,11 +1896,9 @@ function AdminPage({ apiFetch, authUser, initialTab = 'users' }) {
                 body: JSON.stringify({
                     id: server.id,
                     name: server.name,
-                    transport: server.transport,
-                    command: server.command || '',
-                    args: server.args || [],
+                    transport: server.transport || 'sse',
                     url: server.url || '',
-                    env: server.env || {},
+                    headers: server.headers || {},
                     enabled: !server.enabled,
                     timeout: server.timeout || 30,
                     tools: server.tools || [],
@@ -2198,34 +2171,45 @@ function AdminPage({ apiFetch, authUser, initialTab = 'users' }) {
     };
 
     return (
-        <div className="flex flex-col gap-6">
-            <Tabs value={adminTab} onValueChange={setAdminTab} className="flex gap-6">
-                <div className="admin-sidebar flex w-48 shrink-0 flex-col gap-0.5 border-r pr-4">
-                    {[
-                        { id: 'users', label: 'Users' },
-                        { id: 'release-notes', label: 'Release Notes' },
-                        { id: 'smart-ziw', label: 'Agent' },
-                        { id: 'skills', label: 'Skills' },
-                        { id: 'mcp-servers', label: 'MCP Servers' },
-                        { id: 'llm', label: 'LLM Provider' },
-                        { id: 'system-prompts', label: 'System Prompts' },
-                    ].map((tab) => (
-                        <button
-                            key={tab.id}
-                            type="button"
-                            onClick={() => setAdminTab(tab.id)}
-                            className={`rounded-md px-3 py-2 text-left text-sm transition-colors ${adminTab === tab.id ? 'bg-muted font-medium text-foreground' : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'}`}
-                        >
-                            {tab.label}
-                        </button>
-                    ))}
+        <div className="mx-auto max-w-6xl">
+            <div className="flex flex-col gap-8">
+                <div className="flex flex-col gap-6">
+                    <div className="flex flex-col gap-1">
+                        <h1 className="text-3xl font-semibold tracking-tight">Admin</h1>
+                        <p className="text-sm text-muted-foreground">Manage users, agent settings, and platform configuration.</p>
+                    </div>
+
+                    <nav aria-label="Admin sections" className="flex items-center gap-6 border-b">
+                        {[
+                            { id: 'users', label: 'Users' },
+                            { id: 'release-notes', label: 'Release Notes' },
+                            { id: 'smart-ziw', label: 'Agent' },
+                            { id: 'skills', label: 'Skills' },
+                            { id: 'mcp-servers', label: 'MCP Servers' },
+                            { id: 'llm', label: 'LLM Provider' },
+                            { id: 'system-prompts', label: 'System Prompts' },
+                        ].map((tab) => {
+                            const active = adminTab === tab.id;
+                            return (
+                                <button
+                                    key={tab.id}
+                                    type="button"
+                                    onClick={() => setAdminTab(tab.id)}
+                                    className={`relative pb-3 text-sm transition-colors ${active ? 'font-medium text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+                                >
+                                    {tab.label}
+                                    {active ? <span className="absolute bottom-0 left-0 right-0 h-0.5 rounded-full bg-foreground" /> : null}
+                                </button>
+                            );
+                        })}
+                    </nav>
                 </div>
 
-                <div className="flex-1 min-w-0">
+                <div className="min-w-0">
 
-            <TabsContent value="users" className="mt-4">
-            <div className="overflow-hidden rounded-lg border bg-card shadow-sm">
-                <div className="flex flex-wrap items-center justify-between gap-3 border-b p-4">
+            {adminTab === 'users' ? (
+            <section className="flex flex-col gap-8">
+                <div className="flex flex-wrap items-center justify-between gap-3">
                     <div className="flex flex-wrap items-center gap-3">
                         <div className="relative">
                             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -2273,22 +2257,22 @@ function AdminPage({ apiFetch, authUser, initialTab = 'users' }) {
                     </div>
                 </div>
 
-                <div className="admin-stats-cards grid grid-cols-1 gap-3 border-b p-4 sm:grid-cols-3">
-                    <div className="rounded-lg bg-muted/40 p-4">
+                <div className="admin-stats-cards grid grid-cols-1 gap-4 sm:grid-cols-3">
+                    <div className="rounded-xl bg-muted/40 p-5">
                         <div className="flex flex-col gap-1.5">
                             <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Total Users</span>
                             <span className="text-2xl font-semibold tracking-tight text-foreground">{users.length}</span>
                             <span className="text-xs text-muted-foreground">Accounts in the system</span>
                         </div>
                     </div>
-                    <div className="rounded-lg bg-muted/40 p-4">
+                    <div className="rounded-xl bg-muted/40 p-5">
                         <div className="flex flex-col gap-1.5">
                             <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Active Users</span>
                             <span className="text-2xl font-semibold tracking-tight text-foreground">{users.filter((u) => u.isActive).length}</span>
                             <span className="text-xs text-muted-foreground">Currently enabled</span>
                         </div>
                     </div>
-                    <div className="rounded-lg bg-muted/40 p-4">
+                    <div className="rounded-xl bg-muted/40 p-5">
                         <div className="flex flex-col gap-1.5">
                             <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Admins</span>
                             <span className="text-2xl font-semibold tracking-tight text-foreground">{users.filter((u) => u.role === 'admin').length}</span>
@@ -2304,6 +2288,7 @@ function AdminPage({ apiFetch, authUser, initialTab = 'users' }) {
                     </div>
                 ) : null}
 
+                <div className="overflow-hidden rounded-lg border">
                 <Table aria-label="Users table">
                     <TableHeader>
                         <TableRow className="hover:bg-transparent">
@@ -2383,6 +2368,7 @@ function AdminPage({ apiFetch, authUser, initialTab = 'users' }) {
                         ))}
                     </TableBody>
                 </Table>
+                </div>
 
                 {pageData.length === 0 && (
                     <div className="py-12 text-center">
@@ -2420,17 +2406,17 @@ function AdminPage({ apiFetch, authUser, initialTab = 'users' }) {
                         </div>
                     </div>
                 )}
-            </div>
-            </TabsContent>
+            </section>
+            ) : null}
 
-            <TabsContent value="release-notes" className="mt-4">
-                <div className="overflow-hidden rounded-lg border bg-card shadow-sm">
-                    <div className="border-b p-4">
-                        <h3 className="text-base font-semibold text-foreground">Release Notes</h3>
+            {adminTab === 'release-notes' ? (
+                <section className="flex flex-col gap-6">
+                    <div className="flex flex-col gap-1">
+                        <h3 className="text-lg font-semibold tracking-tight text-foreground">Release Notes</h3>
                         <p className="text-sm text-muted-foreground">Create new release notes or update existing versions.</p>
                     </div>
-                    <div className="grid gap-4 p-4 md:grid-cols-[240px_1fr]">
-                        <aside className="flex flex-col gap-1.5">
+                    <div className="grid gap-6 md:grid-cols-[240px_1fr]">
+                        <aside className="flex flex-col gap-2">
                             {releaseNotes.map((note) => (
                                 <button
                                     key={note.version}
@@ -2443,7 +2429,7 @@ function AdminPage({ apiFetch, authUser, initialTab = 'users' }) {
                                 </button>
                             ))}
                         </aside>
-                        <div className="flex flex-col gap-4 rounded-lg border bg-card p-4">
+                        <div className="flex flex-col gap-6 rounded-xl border bg-card/50 p-6">
                             <div className="grid gap-4 sm:grid-cols-2">
                                 <div className="flex flex-col gap-1.5">
                                     <Label htmlFor="release-version" className="text-sm font-medium">Version</Label>
@@ -2472,16 +2458,16 @@ function AdminPage({ apiFetch, authUser, initialTab = 'users' }) {
                             </div>
                         </div>
                     </div>
-                </div>
-            </TabsContent>
+                </section>
+            ) : null}
 
-            <TabsContent value="smart-ziw" className="mt-4">
-                <Card>
-                    <CardHeader>
-                        <CardTitle>Smart-Ziw Agent</CardTitle>
+            {adminTab === 'smart-ziw' ? (
+                <section className="flex flex-col gap-6">
+                    <div className="flex flex-col gap-1">
+                        <h3 className="text-lg font-semibold tracking-tight text-foreground">Smart-Ziw Agent</h3>
                         <p className="text-sm text-muted-foreground">Configure local mirror path, web research, and optional GitLab push.</p>
-                    </CardHeader>
-                    <CardContent className="grid gap-4 sm:grid-cols-2">
+                    </div>
+                    <div className="grid gap-4 sm:grid-cols-2">
                         <div className="flex items-center justify-between rounded-lg border px-4 py-3 sm:col-span-2">
                             <Label htmlFor="smart-ziw-enabled" className="text-sm font-semibold">Enable Smart-Ziw Agent</Label>
                             <Switch id="smart-ziw-enabled" checked={smartZiwConfig.smart_ziw_enabled} onCheckedChange={(checked) => setSmartZiwConfig({ ...smartZiwConfig, smart_ziw_enabled: checked })} />
@@ -2535,22 +2521,22 @@ function AdminPage({ apiFetch, authUser, initialTab = 'users' }) {
                             <ShadcnInput id="research-timeout" type="number" min={1} value={smartZiwConfig.smart_ziw_research_timeout_seconds} onChange={(e) => { const value = Number(e.target.value); setSmartZiwConfig({ ...smartZiwConfig, smart_ziw_research_timeout_seconds: Number.isFinite(value) && value >= 1 ? value : 900 }) }} />
                             {configErrors.smart_ziw_research_timeout_seconds ? <p className="text-xs text-destructive">{configErrors.smart_ziw_research_timeout_seconds}</p> : null}
                         </div>
-                    </CardContent>
-                    <CardFooter className="justify-end border-t pt-6">
+                    </div>
+                    <div className="flex justify-end">
                         <ShadcnButton type="button" onClick={saveSmartZiwConfig} disabled={savingSmartZiwConfig}>
                             {savingSmartZiwConfig ? 'Saving...' : 'Save config'}
                         </ShadcnButton>
-                    </CardFooter>
-                </Card>
-            </TabsContent>
+                    </div>
+                </section>
+            ) : null}
 
-            <TabsContent value="skills" className="mt-4">
-                <Card>
-                    <CardHeader>
-                        <CardTitle>Smart-Ziw Skills</CardTitle>
+            {adminTab === 'skills' ? (
+                <section className="flex flex-col gap-6">
+                    <div className="flex flex-col gap-1">
+                        <h3 className="text-lg font-semibold tracking-tight text-foreground">Smart-Ziw Skills</h3>
                         <p className="text-sm text-muted-foreground">Manage the skills that extend what the Smart-Ziw agent can do.</p>
-                    </CardHeader>
-                    <CardContent className="flex flex-col gap-6">
+                    </div>
+                    <div className="flex flex-col gap-6">
                         <div className="flex flex-col gap-2">
                             <Label htmlFor="skill-url" className="text-sm font-medium">Add skill from URL</Label>
                             <div className="flex gap-2">
@@ -2624,18 +2610,18 @@ function AdminPage({ apiFetch, authUser, initialTab = 'users' }) {
                                 ))}
                             </div>
                         )}
-                    </CardContent>
-                </Card>
-            </TabsContent>
+                    </div>
+                </section>
+            ) : null}
 
-            <TabsContent value="mcp-servers" className="mt-4">
-                <Card>
-                    <CardHeader>
-                        <CardTitle>MCP Servers</CardTitle>
-                        <p className="text-sm text-muted-foreground">Connect external MCP servers (stdio or SSE). Each server's tools become Smart-Ziw skills when enabled.</p>
-                    </CardHeader>
-                    <CardContent className="flex flex-col gap-6">
-                        <div className="rounded-lg border bg-card p-4">
+            {adminTab === 'mcp-servers' ? (
+                <section className="flex flex-col gap-6">
+                    <div className="flex flex-col gap-1">
+                        <h3 className="text-lg font-semibold tracking-tight text-foreground">MCP Servers</h3>
+                        <p className="text-sm text-muted-foreground">Connect external MCP servers over SSE / HTTP. Each server's tools become Smart-Ziw skills when enabled.</p>
+                    </div>
+                    <div className="flex flex-col gap-6">
+                        <div className="rounded-xl border bg-card/50 p-6">
                             <div className="mb-3 flex items-center justify-between gap-3">
                                 <h4 className="text-sm font-semibold text-foreground">{editingMcpId ? 'Edit MCP server' : 'Add MCP server'}</h4>
                                 {editingMcpId ? (
@@ -2648,35 +2634,11 @@ function AdminPage({ apiFetch, authUser, initialTab = 'users' }) {
                                     <ShadcnInput id="mcp-name" value={mcpForm.name} onChange={(e) => setMcpForm({ ...mcpForm, name: e.target.value })} placeholder="My MCP server" />
                                     {mcpErrors.name ? <p className="text-xs text-destructive">{mcpErrors.name}</p> : null}
                                 </div>
-                                <div className="flex flex-col gap-1.5">
-                                    <Label className="text-sm font-medium">Transport</Label>
-                                    <Select value={mcpForm.transport} onValueChange={(value) => setMcpForm({ ...mcpForm, transport: value })}>
-                                        <SelectTrigger className="w-full" aria-label="MCP transport"><SelectValue /></SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="stdio">stdio (local process)</SelectItem>
-                                            <SelectItem value="sse">SSE (remote server)</SelectItem>
-                                        </SelectContent>
-                                    </Select>
+                                <div className="flex flex-col gap-1.5 sm:col-span-2">
+                                    <Label htmlFor="mcp-url" className="text-sm font-medium">SSE / HTTP URL</Label>
+                                    <ShadcnInput id="mcp-url" type="url" value={mcpForm.url} onChange={(e) => setMcpForm({ ...mcpForm, url: e.target.value })} placeholder="https://mcp.example.com/sse" />
+                                    {mcpErrors.url ? <p className="text-xs text-destructive">{mcpErrors.url}</p> : null}
                                 </div>
-                                {mcpForm.transport === 'stdio' ? (
-                                    <>
-                                        <div className="flex flex-col gap-1.5">
-                                            <Label htmlFor="mcp-command" className="text-sm font-medium">Command</Label>
-                                            <ShadcnInput id="mcp-command" value={mcpForm.command} onChange={(e) => setMcpForm({ ...mcpForm, command: e.target.value })} placeholder="npx -y @modelcontextprotocol/server-filesystem" />
-                                            {mcpErrors.command ? <p className="text-xs text-destructive">{mcpErrors.command}</p> : null}
-                                        </div>
-                                        <div className="flex flex-col gap-1.5">
-                                            <Label htmlFor="mcp-args" className="text-sm font-medium">Arguments (one per line)</Label>
-                                            <Textarea id="mcp-args" rows={3} value={mcpForm.argsText} onChange={(e) => setMcpForm({ ...mcpForm, argsText: e.target.value })} placeholder={'/path/to/allowed/dir'} />
-                                        </div>
-                                    </>
-                                ) : (
-                                    <div className="flex flex-col gap-1.5 sm:col-span-2">
-                                        <Label htmlFor="mcp-url" className="text-sm font-medium">SSE URL</Label>
-                                        <ShadcnInput id="mcp-url" type="url" value={mcpForm.url} onChange={(e) => setMcpForm({ ...mcpForm, url: e.target.value })} placeholder="https://mcp.example.com/sse" />
-                                        {mcpErrors.url ? <p className="text-xs text-destructive">{mcpErrors.url}</p> : null}
-                                    </div>
-                                )}
                                 <div className="flex flex-col gap-1.5">
                                     <Label htmlFor="mcp-timeout" className="text-sm font-medium">Timeout (seconds)</Label>
                                     <ShadcnInput id="mcp-timeout" type="number" min={1} value={mcpForm.timeout} onChange={(e) => setMcpForm({ ...mcpForm, timeout: e.target.value })} />
@@ -2686,8 +2648,9 @@ function AdminPage({ apiFetch, authUser, initialTab = 'users' }) {
                                     <Switch id="mcp-enabled" checked={mcpForm.enabled} onCheckedChange={(checked) => setMcpForm({ ...mcpForm, enabled: checked })} />
                                 </div>
                                 <div className="flex flex-col gap-1.5 sm:col-span-2">
-                                    <Label htmlFor="mcp-env" className="text-sm font-medium">Environment variables (KEY=value, one per line)</Label>
-                                    <Textarea id="mcp-env" rows={3} value={mcpForm.envText} onChange={(e) => setMcpForm({ ...mcpForm, envText: e.target.value })} placeholder={'API_KEY=sk-...'} />
+                                    <Label htmlFor="mcp-headers" className="text-sm font-medium">Authentication headers (KEY=value, one per line)</Label>
+                                    <Textarea id="mcp-headers" rows={3} value={mcpForm.headersText} onChange={(e) => setMcpForm({ ...mcpForm, headersText: e.target.value })} placeholder={'Authorization=Bearer sk-...'} />
+                                    <p className="text-xs text-muted-foreground">Sent with every connection. Stored values are hidden after saving.</p>
                                 </div>
                                 <div className="flex flex-wrap items-center gap-2 sm:col-span-2">
                                     <ShadcnButton type="button" variant="outline" onClick={testMcpServer} disabled={mcpTesting || mcpSaving}>
@@ -2731,14 +2694,19 @@ function AdminPage({ apiFetch, authUser, initialTab = 'users' }) {
                                             <CardHeader className="pb-3">
                                                 <div className="flex items-start justify-between gap-3">
                                                     <CardTitle className="text-base">{server.name}</CardTitle>
-                                                    <Badge variant="outline">{server.transport === 'sse' ? 'SSE' : 'stdio'}</Badge>
+                                                    <Badge variant="outline">SSE</Badge>
                                                 </div>
-                                                <p className="text-sm text-muted-foreground">
-                                                    {server.transport === 'sse' ? server.url : server.command}
-                                                </p>
+                                                <p className="text-sm text-muted-foreground break-all">{server.url}</p>
                                             </CardHeader>
                                             <CardContent className="flex flex-1 flex-col gap-3 pt-0">
-                                                <span className="text-sm text-muted-foreground">{(server.tools || []).length} cached tool{(server.tools || []).length === 1 ? '' : 's'}</span>
+                                                <div className="flex flex-wrap gap-1.5">
+                                                    {(server.tools || []).map((tool) => (
+                                                        <Badge key={tool.name} variant="secondary">{tool.name}</Badge>
+                                                    ))}
+                                                    {(server.tools || []).length === 0 ? (
+                                                        <span className="text-sm text-muted-foreground">No tools cached yet</span>
+                                                    ) : null}
+                                                </div>
                                                 <div className="mt-auto flex items-center justify-between gap-3">
                                                     <div className="flex items-center gap-2">
                                                         <Switch
@@ -2775,15 +2743,15 @@ function AdminPage({ apiFetch, authUser, initialTab = 'users' }) {
                                 </div>
                             )}
                         </div>
-                    </CardContent>
-                </Card>
-            </TabsContent>
+                    </div>
+                </section>
+            ) : null}
 
-            <TabsContent value="llm" className="mt-4">
-                <Card>
-                    <CardHeader>
+            {adminTab === 'llm' ? (
+                <section className="flex flex-col gap-6">
+                    <div className="flex flex-col gap-1">
                         <div className="flex flex-wrap items-center justify-between gap-3">
-                            <CardTitle>LLM Provider</CardTitle>
+                            <h3 className="text-lg font-semibold tracking-tight text-foreground">LLM Provider</h3>
                             <Badge variant="secondary">
                                 {llmEnvProvider
                                     ? `Environment · ${llmEnvStatus.model || 'default'}`
@@ -2791,8 +2759,8 @@ function AdminPage({ apiFetch, authUser, initialTab = 'users' }) {
                             </Badge>
                         </div>
                         <p className="text-sm text-muted-foreground">Configure the LLM backend used by the Smart-Ziw agent.</p>
-                    </CardHeader>
-                    <CardContent className="grid gap-4 sm:grid-cols-2">
+                    </div>
+                    <div className="grid gap-4 sm:grid-cols-2">
                         <div className="flex flex-col gap-1.5 sm:col-span-2">
                             <Label htmlFor="llm-provider" className="text-sm font-medium">Provider</Label>
                             <Select
@@ -2948,22 +2916,22 @@ function AdminPage({ apiFetch, authUser, initialTab = 'users' }) {
                                 </div>
                             </CollapsibleContent>
                         </Collapsible>
-                    </CardContent>
-                    <CardFooter className="justify-end border-t pt-6">
+                    </div>
+                    <div className="flex justify-end">
                         <ShadcnButton type="button" onClick={testAndSaveLlmConfig} disabled={savingSmartZiwConfig}>
                             {testingLlm ? 'Testing…' : savingSmartZiwConfig ? 'Saving...' : 'Save config'}
                         </ShadcnButton>
-                    </CardFooter>
-                </Card>
-            </TabsContent>
+                    </div>
+                </section>
+            ) : null}
 
-            <TabsContent value="system-prompts" className="mt-4">
-                <Card>
-                    <CardHeader>
-                        <CardTitle>AI Verification Prompts</CardTitle>
+            {adminTab === 'system-prompts' ? (
+                <section className="flex flex-col gap-6">
+                    <div className="flex flex-col gap-1">
+                        <h3 className="text-lg font-semibold tracking-tight text-foreground">AI Verification Prompts</h3>
                         <p className="text-sm text-muted-foreground">These prompts guide the AI filter when deciding whether a scraped tender is relevant.</p>
-                    </CardHeader>
-                    <CardContent className="grid gap-6">
+                    </div>
+                    <div className="grid gap-6">
                         <div className="flex flex-col gap-1.5">
                             <Label htmlFor="ai-verification-system-prompt" className="text-sm font-medium">AI verification system prompt</Label>
                             <Textarea
@@ -2997,16 +2965,16 @@ function AdminPage({ apiFetch, authUser, initialTab = 'users' }) {
                                 placeholder="List services, products, or project types the AI should reject..."
                             />
                         </div>
-                    </CardContent>
-                    <CardFooter className="justify-end border-t pt-6">
+                    </div>
+                    <div className="flex justify-end">
                         <ShadcnButton type="button" onClick={saveSystemPrompts} disabled={savingSystemPrompts}>
                             {savingSystemPrompts ? 'Saving...' : 'Save System Prompts'}
                         </ShadcnButton>
-                    </CardFooter>
-                </Card>
-            </TabsContent>
+                    </div>
+                </section>
+            ) : null}
                 </div>
-            </Tabs>
+            </div>
 
             <UserDrawer
                 open={drawer.open}
@@ -3084,7 +3052,10 @@ export default function App() {
     const [releaseNotes, setReleaseNotes] = useState(DEFAULT_RELEASE_NOTES);
 
     const [route, setRoute] = useState(normalizeRoute(window.location.hash.replace('#', '')));
-    const tenderDetailId = getTenderIdFromHash(window.location.hash);
+    // State (not a window read) so hash changes always re-render: normalizeRoute maps
+    // 'tenders/...' back to 'dashboard', so setRoute alone can bail out and leave the
+    // dashboard on screen after opening a tender from an idle dashboard.
+    const [tenderDetailId, setTenderDetailId] = useState(getTenderIdFromHash(window.location.hash));
     const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
     const [mobileNavOpen, setMobileNavOpen] = useState(false);
     const [commandOpen, setCommandOpen] = useState(false);
@@ -3198,6 +3169,7 @@ export default function App() {
         const onHash = () => {
             const rawHash = window.location.hash.replace('#', '');
             setRoute(normalizeRoute(rawHash));
+            setTenderDetailId(getTenderIdFromHash(window.location.hash));
         };
         window.addEventListener('hashchange', onHash);
         return () => window.removeEventListener('hashchange', onHash);
@@ -3667,7 +3639,7 @@ export default function App() {
                                 navigate={navigate}
                             />
                         ) : null}
-{route === 'dashboard' && !tenderDetailId ? (
+{route === 'dashboard' && !isTenderFullPageHash(window.location.hash) ? (
                             <TendersPage
                                 apiFetch={apiFetch}
                                 authUser={authUser}

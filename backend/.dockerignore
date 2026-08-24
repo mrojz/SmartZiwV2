@@ -1,0 +1,49 @@
+# Git
+.git
+.gitignore
+
+# Python
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+env
+venv
+.venv
+pip-wheel-metadata
+*.egg-info
+.pytest_cache
+.mypy_cache
+.ruff_cache
+
+# Environment / secrets
+.env
+.env.*
+*.env
+
+# Logs / runtime
+*.log
+logs
+
+# Local data / caches
+.cache
+*.sqlite
+*.db
+
+# Tests (not needed for runtime image)
+tests
+.pytest_cache
+
+# Editor / OS
+.vscode
+.idea
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Docker itself
+Dockerfile
+docker-compose.yml
+.dockerignore

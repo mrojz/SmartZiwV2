@@ -20,6 +20,9 @@ def _run_web_research(focus: str = "", **context) -> dict:
         llm_call=llm_call,
         thread_context=thread_context,
     )
+    # Preserve the raw research result so the agent can include stats/verdict in its final output.
+    if isinstance(context, dict):
+        context["research_result"] = research
     if research.error:
         return {
             "success": False,

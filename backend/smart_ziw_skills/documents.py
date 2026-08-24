@@ -47,17 +47,10 @@ def _download_documents(urls: list[str] | None = None, **context) -> dict:
     except Exception as exc:
         error = error or str(exc)
 
-    notes_text = ""
-    try:
-        if store.notes_path.exists():
-            notes_text = store.notes_path.read_text(encoding="utf-8")
-    except Exception:
-        pass
-
     return {
         "downloaded": downloaded,
         "extracted": extracted,
-        "notes": notes_text,
+        "notes": store.notes,
         "error": error,
     }
 

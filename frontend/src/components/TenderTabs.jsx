@@ -1,10 +1,9 @@
-import { FileText, MessageSquare, Sparkles, LayoutList } from 'lucide-react';
+import { FileText, MessageSquare, LayoutList } from 'lucide-react';
 
 const TABS = [
     { id: 'overview', label: 'Overview', icon: LayoutList },
     { id: 'documents', label: 'Documents', icon: FileText },
-    { id: 'activity', label: 'Activity', icon: MessageSquare },
-    { id: 'smart-ziw', label: 'Smart-Ziw', icon: Sparkles },
+    { id: 'activity', label: 'Discussion', icon: MessageSquare },
 ];
 
 export default function TenderTabs({ activeTab, onChange, compact = false }) {

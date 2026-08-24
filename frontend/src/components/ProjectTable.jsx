@@ -490,7 +490,7 @@ export default function ProjectTable({
               {columns.map((col) => (
                 <TableHead
                   key={col.key}
-                  className={`sticky top-0 z-[2] h-12 whitespace-nowrap border-b bg-muted px-3.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground ${col.key === '_select' ? 'w-10 text-center' : ''} ${col.key === '_actions' ? 'w-12 text-center' : ''} ${col.key === '_project' ? 'w-[120px] min-w-[120px] md:w-[200px] md:min-w-[200px]' : ''} ${col.key === '_project_id' ? 'w-[110px] min-w-[110px]' : ''} ${col.key === '_region' ? 'w-[120px] min-w-[120px]' : ''} ${col.key === '_published' ? 'w-[140px] min-w-[140px]' : ''} ${col.key === '_deadline' ? 'w-[110px] min-w-[110px]' : ''} ${col.key === 'matched_keywords' ? 'w-[130px] min-w-[130px]' : ''} ${col.key === '_status' ? 'w-[140px] min-w-[140px]' : ''} ${col.key === 'scraped_at' ? 'w-[110px] min-w-[110px]' : ''} ${col.type !== 'none' ? 'cursor-pointer select-none' : ''}`}
+                  className={`sticky top-0 z-[2] h-12 whitespace-nowrap border-b bg-muted px-3.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground ${col.key === '_select' ? 'w-10 text-center' : ''} ${col.key === '_actions' ? 'w-12 text-center' : ''} ${col.key === '_project' ? 'w-[120px] min-w-[120px] md:w-[200px] md:min-w-[200px]' : ''} ${col.key === '_project_id' ? 'w-[110px] min-w-[110px]' : ''} ${col.key === '_region' ? 'w-[120px] min-w-[120px]' : ''} ${col.key === '_published' ? 'w-[140px] min-w-[140px]' : ''} ${col.key === '_deadline' ? 'w-[110px] min-w-[110px]' : ''} ${col.key === 'matched_keywords' ? 'w-[180px] min-w-[180px]' : ''} ${col.key === '_status' ? 'w-[140px] min-w-[140px]' : ''} ${col.key === 'scraped_at' ? 'w-[110px] min-w-[110px]' : ''} ${col.type !== 'none' ? 'cursor-pointer select-none' : ''}`}
                   aria-sort={sortCol === col.key ? (sortDir === 'asc' ? 'ascending' : 'descending') : undefined}
                   onClick={col.type !== 'none' ? () => handleSortClick(col.key) : undefined}
                 >
@@ -635,7 +635,7 @@ export default function ProjectTable({
                             const remaining = kws.length - shown.length;
                             return (
                               <>
-                                {shown.map((kw) => <Badge key={kw} variant="outline" className="m-0.5 font-medium transition-colors duration-200">{kw}</Badge>)}
+                                {shown.map((kw) => <Badge key={kw} variant="outline" className="m-0.5 max-w-[90px] truncate font-medium transition-colors duration-200" title={kw}>{kw}</Badge>)}
                                 {remaining > 0 ? <Badge variant="secondary" className="m-0.5 font-medium transition-colors duration-200" title={kws.slice(2).join(', ')}>+{remaining}</Badge> : null}
                               </>
                             );

@@ -4,6 +4,7 @@ import re
 import subprocess
 from datetime import datetime
 from pathlib import Path
+from urllib.parse import urlparse, urlunparse
 
 from openai import OpenAI
 
@@ -107,16 +108,103 @@ If the question needs full web research, tell the user to trigger the Smart-Ziw 
 
 def _default_enrichment() -> dict:
     return {
-        "source_markdown": "",
-        "analysis_markdown": "",
-        "eligibility_markdown": "",
-        "risks_markdown": "",
-        "pricing_markdown": "",
         "recap_markdown": "",
-        "readme_markdown": "",
-        "documents_notes_markdown": "",
-        "next_actions": [],
+        "references": [],
     }
+
+
+def _normalize_url(url: str) -> str:
+    parsed = urlparse(url)
+    query = "&".join(
+        part for part in parsed.query.split("&")
+        if not part.lower().startswith(("utm_", "fbclid", "gclid"))
+    )
+    return urlunparse((parsed.scheme, parsed.netloc.lower(), parsed.path, "", query, ""))
+
+
+def _build_references_from_research(research) -> list[dict]:
+    if not research or not research.items:
+        return []
+    numbers = research.citation_map
+    refs = []
+    used = set()
+    for item in research.items:
+        number = numbers.get(_normalize_url(item.url))
+        if number is not None and number not in used:
+            used.add(number)
+            refs.append({
+                "number": number,
+                "title": item.title or item.url,
+                "url_or_path": item.url,
+            })
+    return refs
+
+
+def _inject_source_reference(references: list[dict], source_url: str, title: str = "") -> None:
+    if not source_url:
+        return
+    normalized = _normalize_url(source_url)
+    if any(_normalize_url(str(r.get("url_or_path") or "")) == normalized for r in references):
+        return
+    references.insert(0, {
+        "number": 1,
+        "title": title or "Original source",
+        "url_or_path": source_url,
+    })
+    for idx, ref in enumerate(references[1:], start=2):
+        ref["number"] = idx
+
+
+def _coerce_skill_result(content: dict, research) -> dict:
+    """Make sure a skill-loop result has a recap, references, and the discovered source."""
+    if not isinstance(content, dict):
+        content = {}
+    recap = str(content.get("recap_markdown") or "").strip()
+    if not recap:
+        recap = "# Tender Recap\n\nNo verifiable recap was generated for this tender."
+
+    references = content.get("references")
+    if not isinstance(references, list):
+        references = _build_references_from_research(research)
+
+    cleaned = []
+    used_numbers = set()
+    for ref in references:
+        if isinstance(ref, dict):
+            number = ref.get("number")
+            try:
+                number = int(number)
+            except (TypeError, ValueError):
+                number = None
+            if number is not None and number not in used_numbers:
+                used_numbers.add(number)
+                cleaned.append({
+                    "number": number,
+                    "title": str(ref.get("title") or "").strip(),
+                    "url_or_path": str(ref.get("url_or_path") or "").strip(),
+                })
+
+    if research and research.source_url:
+        _inject_source_reference(
+            cleaned,
+            research.source_url,
+            research.buyer or research.requesting_company or "Original source",
+        )
+
+    if not cleaned and research and research.items:
+        cleaned = _build_references_from_research(research)
+
+    content["recap_markdown"] = recap
+    content["references"] = cleaned
+
+    if research and research.source_url and research.source_url not in recap:
+        source_section = (
+            "\n\n---\n\n## Original source\n"
+            f"- [{research.buyer or research.requesting_company or 'Original source'}]({research.source_url})"
+        )
+        content["recap_markdown"] = recap.rstrip() + source_section
+
+    return content
 
 
 def _human_only_actions(rows: list) -> list[dict]:
@@ -224,22 +312,15 @@ def _collect_helper_context(project: dict, config: dict) -> dict:
 
 
 ENRICH_PROMPT = """You are a tender intelligence analyst. Given tender metadata and helper facts below, return JSON with exactly these keys:
-- "source_markdown": source verification notes following the source template.
-- "analysis_markdown": high-level analysis following the analysis template.
-- "eligibility_markdown": eligibility assessment following the eligibility template.
-- "risks_markdown": risk analysis following the risks template.
-- "pricing_markdown": pricing/commercial notes following the pricing template.
-- "recap_markdown": one-page recap following the recap template.
-- "readme_markdown": a short README for the tender folder.
-- "documents_notes_markdown": notes about downloaded documents.
+- "recap_markdown": a concise tender recap with inline [n] citations.
+- "references": a list of reference objects used in the recap: {"number": int, "title": str, "url_or_path": str}.
 
 Rules:
-- Decision labels must be exactly one of: GO, NO-GO, GO-CONDITIONAL.
-- Cite sources when possible; if no web sources are available, state facts as unverified.
-- Use the provided Forvis Mazars presence check for the tender country.
-- Use the provided currency conversion and travel estimate where relevant.
+- Cite sources when possible; if no web sources are available, cite the provided Source URL as [1].
+- Include, when available: tender summary, service-provider deliverables, SLA/dates/batches, price/budget, and a source section with the original listing link.
 - If a monetary value is not available, leave placeholders empty rather than fabricating.
-- Keep each markdown section concise but structured."""
+- Decision labels must be exactly one of: GO, NO-GO, GO-CONDITIONAL.
+- Keep the recap concise but structured."""
 
 
 SMART_ZIW_SKILLS_SYSTEM_PROMPT = """You are Smart-Ziw, a tender-bidding analyst for Forvis Mazars.
@@ -256,21 +337,15 @@ Available tools:
 - download_documents: downloads tender documents and extracts text.
 
 When you have enough information, return a single JSON object with exactly these keys:
-- "source_markdown": source verification notes.
-- "analysis_markdown": high-level analysis.
-- "eligibility_markdown": eligibility assessment.
-- "risks_markdown": risk analysis.
-- "pricing_markdown": pricing/commercial notes.
-- "recap_markdown": one-page recap.
-- "readme_markdown": short README for the tender folder.
-- "documents_notes_markdown": notes about downloaded documents.
-- "next_actions": list of human-only next-action dicts, each with keys action, priority, owner, deadline, notes.
+- "recap_markdown": a concise tender recap with inline [n] citations.
+- "references": list of reference objects, each with keys number, title, url_or_path.
 
 Rules:
 - Decision labels must be exactly one of: GO, NO-GO, GO-CONDITIONAL.
-- Cite sources when possible.
+- Cite sources when possible; if research was run, include the original source URL and a source section.
 - Do not fabricate monetary values.
-- Keep each markdown section concise but structured."""
+- Include, when available: tender summary, service-provider deliverables, SLA/dates/batches, and price/budget.
+- Keep the recap concise but structured."""
 
 
 def _enrich(project: dict, config: dict | None = None, llm_call=None, thread_context: str = "") -> dict:
@@ -292,30 +367,45 @@ def _enrich(project: dict, config: dict | None = None, llm_call=None, thread_con
         return enrichment
     enrichment = _default_enrichment()
     for key in enrichment:
-        if key == "next_actions":
+        if key == "references":
+            refs = result.get("references")
+            if isinstance(refs, list):
+                enrichment[key] = [
+                    {
+                        "number": int(r.get("number")) if isinstance(r.get("number"), int) else 0,
+                        "title": str(r.get("title") or "").strip(),
+                        "url_or_path": str(r.get("url_or_path") or "").strip(),
+                    }
+                    for r in refs
+                    if isinstance(r, dict)
+                ]
+            else:
+                enrichment[key] = []
+            # Fall back to the project's source URL when the LLM returned no references.
+            if not enrichment[key] and project.get("project_url"):
+                enrichment[key] = [{
+                    "number": 1,
+                    "title": project.get("source") or "Source listing",
+                    "url_or_path": project.get("project_url"),
+                }]
             continue
         enrichment[key] = str(result.get(key) or "").strip()
-    enrichment["next_actions"] = result.get("next_actions") if isinstance(result.get("next_actions"), list) else []
+
+    # Make sure the recap cites the source URL when no web research was available.
+    if project.get("project_url") and project.get("project_url") not in enrichment["recap_markdown"]:
+        source_line = f"\n\nSource: [{project.get('source') or 'listing'}]({project.get('project_url')})"
+        enrichment["recap_markdown"] = enrichment["recap_markdown"].rstrip() + source_line
+
     return enrichment
 
 
 # ---------- Renderers for the new spec ----------
 
-def _render_from_synthesis_or_enrichment(project: dict, content: dict, key: str, default_title: str) -> str:
-    value = content.get(key, "")
+def _render_recap_markdown(project: dict, content: dict) -> str:
+    value = content.get("recap_markdown", "")
     if value:
-        return value
-    return f"# {default_title}\n\nNo content was generated for this section."
-
-
-render_source_markdown = lambda project, content: _render_from_synthesis_or_enrichment(project, content, "source_markdown", "Source")
-render_analysis_markdown = lambda project, content: _render_from_synthesis_or_enrichment(project, content, "analysis_markdown", "Analysis")
-render_eligibility_markdown = lambda project, content: _render_from_synthesis_or_enrichment(project, content, "eligibility_markdown", "Eligibility")
-render_risks_markdown = lambda project, content: _render_from_synthesis_or_enrichment(project, content, "risks_markdown", "Risks")
-render_pricing_markdown = lambda project, content: _render_from_synthesis_or_enrichment(project, content, "pricing_markdown", "Pricing")
-render_recap_markdown = lambda project, content: _render_from_synthesis_or_enrichment(project, content, "recap_markdown", "Tender Recap")
-render_readme_markdown = lambda project, content: _render_from_synthesis_or_enrichment(project, content, "readme_markdown", project.get("project_name") or "Tender")
-render_documents_notes = lambda project, content: _render_from_synthesis_or_enrichment(project, content, "documents_notes_markdown", "Documents")
+        return str(value).strip()
+    return f"# Tender Recap: {project.get('project_name') or 'Untitled'}\n\nNo recap was generated for this tender."
 
 
 def _render_next_actions_markdown(project: dict, content: dict) -> str:
@@ -358,17 +448,7 @@ def load_skill_registry(config: dict | None = None) -> "SkillRegistry":
 
 
 def _has_required_markdown_keys(content: dict) -> bool:
-    required = {
-        "source_markdown",
-        "analysis_markdown",
-        "eligibility_markdown",
-        "risks_markdown",
-        "pricing_markdown",
-        "recap_markdown",
-        "readme_markdown",
-        "documents_notes_markdown",
-    }
-    return required.issubset(content.keys())
+    return bool(content.get("recap_markdown"))
 
 
 def run_with_skills(project: dict, config: dict | None = None, thread_context: str = "") -> dict:
@@ -414,6 +494,9 @@ def run_with_skills(project: dict, config: dict | None = None, thread_context: s
             "thread_context": thread_context,
         }
         content = run_tool_loop(registry, llm_tool_call, messages, context, max_iterations=10)
+        research = context.get("research_result")
+        if research is not None:
+            content = _coerce_skill_result(content, research)
         if content.get("error") or not _has_required_markdown_keys(content):
             fallback = _enrich(project, config=config, llm_call=llm_call, thread_context=thread_context)
             if content.get("error"):
@@ -422,45 +505,41 @@ def run_with_skills(project: dict, config: dict | None = None, thread_context: s
         if content.get("error"):
             error = error or content["error"]
 
-    files = {
-        "README.md": render_readme_markdown(project, content),
-        "source.md": render_source_markdown(project, content),
-        "analysis.md": render_analysis_markdown(project, content),
-        "eligibility.md": render_eligibility_markdown(project, content),
-        "risks.md": render_risks_markdown(project, content),
-        "pricing.md": render_pricing_markdown(project, content),
-        "recap.md": render_recap_markdown(project, content),
-        "next-actions.md": _render_next_actions_markdown(project, content),
-    }
-
-    for name, file_content in files.items():
-        (folder_path / name).write_text(file_content, encoding="utf-8")
-
-    documents_dir = folder_path / "documents"
-    documents_dir.mkdir(parents=True, exist_ok=True)
-    notes_content = render_documents_notes(project, content)
-    if notes_content:
-        (documents_dir / "notes.md").write_text(notes_content, encoding="utf-8")
+    recap_markdown = _render_recap_markdown(project, content)
+    (folder_path / "recap.md").write_text(recap_markdown, encoding="utf-8")
 
     git_result = push_to_gitlab(repo_path, folder, config)
 
     result = {
         "folder": folder,
-        "files": list(files.keys()),
+        "files": ["recap.md"],
+        "recap_markdown": recap_markdown,
+        "references": content.get("references") if isinstance(content.get("references"), list) else [],
         "repo_path": str(repo_path),
         "gitlab_pushed": git_result["pushed"],
         "gitlab_message": git_result["message"],
     }
 
-    artifacts_dir = folder_path / "artifacts"
-    artifact_files = []
-    if artifacts_dir.exists():
-        artifact_files = [f"artifacts/{p.name}" for p in sorted(artifacts_dir.glob("*.md"))]
-        result["files"].extend(artifact_files)
-
-    document_files = [str(p.relative_to(folder_path)) for p in sorted(documents_dir.rglob("*")) if p.is_file()]
+    files_dir = folder_path / "files"
+    document_files = sorted(
+        str(p.relative_to(folder_path))
+        for p in (files_dir.rglob("*") if files_dir.exists() else [])
+        if p.is_file()
+    )
     if document_files:
         result["documents"] = document_files
+
+    if research is not None:
+        result["research"] = True
+        result["research_stats"] = research.stats
+        result["research_verdict"] = (
+            (research.verdict or {}).get("recommendation", "GO-CONDITIONAL") if not research.error else "ERROR"
+        )
+        result["research_timed_out"] = bool(research.timed_out)
+        result["source_url"] = research.source_url
+        result["buyer"] = research.buyer
+        result["requesting_company"] = research.requesting_company
+        result["source_confidence"] = research.source_confidence
 
     if error:
         result["error"] = error
@@ -495,11 +574,9 @@ def run(project: dict, config: dict | None = None, thread_context: str = "") -> 
         error = str(exc)
     research_ran = False
     if not error and config.get("smart_ziw_research_enabled", True):
-        from smart_ziw_research import firecrawl_mcp_available
-        if firecrawl_mcp_available():
-            research_ran = True
-        else:
-            error = "No Firecrawl MCP server configured. Add one in the MCP Servers tab."
+        # Research degrades gracefully without a Firecrawl MCP server
+        # (FirecrawlClient falls back to plain HTTP scrape + DuckDuckGo search).
+        research_ran = True
 
     store = None
     if research_ran:
@@ -526,45 +603,27 @@ def run(project: dict, config: dict | None = None, thread_context: str = "") -> 
         if content.get("error"):
             error = error or content["error"]
 
-    files = {
-        "README.md": render_readme_markdown(project, content),
-        "source.md": render_source_markdown(project, content),
-        "analysis.md": render_analysis_markdown(project, content),
-        "eligibility.md": render_eligibility_markdown(project, content),
-        "risks.md": render_risks_markdown(project, content),
-        "pricing.md": render_pricing_markdown(project, content),
-        "recap.md": render_recap_markdown(project, content),
-        "next-actions.md": _render_next_actions_markdown(project, content),
-    }
+    recap_markdown = _render_recap_markdown(project, content)
+    (folder_path / "recap.md").write_text(recap_markdown, encoding="utf-8")
 
-    for name, file_content in files.items():
-        (folder_path / name).write_text(file_content, encoding="utf-8")
-
-    # Documents folder: store notes.md (from research or enrichment)
-    documents_dir = folder_path / "documents"
-    documents_dir.mkdir(parents=True, exist_ok=True)
-    notes_content = render_documents_notes(project, content)
-    if notes_content:
-        (documents_dir / "notes.md").write_text(notes_content, encoding="utf-8")
-
-    from smart_ziw_gitlab import push_to_gitlab
     git_result = push_to_gitlab(repo_path, folder, config)
 
     result = {
         "folder": folder,
-        "files": list(files.keys()),
+        "files": ["recap.md"],
+        "recap_markdown": recap_markdown,
+        "references": content.get("references") if isinstance(content.get("references"), list) else [],
         "repo_path": str(repo_path),
         "gitlab_pushed": git_result["pushed"],
         "gitlab_message": git_result["message"],
     }
 
-    artifacts_dir = folder_path / "artifacts"
-    artifact_files = []
-    if artifacts_dir.exists():
-        artifact_files = [f"artifacts/{p.name}" for p in sorted(artifacts_dir.glob("*.md"))]
-        result["files"].extend(artifact_files)
-
-    document_files = [str(p.relative_to(folder_path)) for p in sorted(documents_dir.rglob("*")) if p.is_file()]
+    files_dir = folder_path / "files"
+    document_files = sorted(
+        str(p.relative_to(folder_path))
+        for p in (files_dir.rglob("*") if files_dir.exists() else [])
+        if p.is_file()
+    )
     if document_files:
         result["documents"] = document_files
 
@@ -575,6 +634,10 @@ def run(project: dict, config: dict | None = None, thread_context: str = "") -> 
             (research.verdict or {}).get("recommendation", "GO-CONDITIONAL") if not research.error else "ERROR"
         )
         result["research_timed_out"] = bool(research.timed_out)
+        result["source_url"] = research.source_url
+        result["buyer"] = research.buyer
+        result["requesting_company"] = research.requesting_company
+        result["source_confidence"] = research.source_confidence
 
     if error:
         result["error"] = error

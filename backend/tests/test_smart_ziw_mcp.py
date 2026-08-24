@@ -149,11 +149,11 @@ def test_admin_list_mcp_servers_requires_admin(monkeypatch):
     assert r.status_code == 403
 
 
-def test_admin_list_mcp_servers_redacts_env(monkeypatch):
+def test_admin_list_mcp_servers_redacts_headers(monkeypatch):
     fake_db = _FakeDB()
     fake_db.config._doc = {
         "_type": "smart_ziw_mcp_servers",
-        "servers": [{"id": "s1", "name": "S1", "env": {"SECRET": "hidden"}, "enabled": True, "tools": []}],
+        "servers": [{"id": "s1", "name": "S1", "headers": {"Authorization": "Bearer secret"}, "enabled": True, "tools": []}],
     }
     app = _client_with_admin(monkeypatch, fake_db)
     from fastapi.testclient import TestClient
@@ -161,7 +161,22 @@ def test_admin_list_mcp_servers_redacts_env(monkeypatch):
     r = client.get("/api/admin/smart-ziw-mcp-servers")
     assert r.status_code == 200
     data = r.json()
-    assert data[0]["env"] == {"SECRET": "***"}
+    assert data[0]["headers"] == {"Authorization": "***"}
+
+
+def test_admin_create_mcp_server_rejects_stdio(monkeypatch):
+    fake_db = _FakeDB()
+    app = _client_with_admin(monkeypatch, fake_db)
+    from fastapi.testclient import TestClient
+    client = TestClient(app)
+    r = client.post("/api/admin/smart-ziw-mcp-servers", json={
+        "name": "Legacy",
+        "transport": "stdio",
+        "command": "python",
+        "url": "",
+    })
+    assert r.status_code == 400
+    assert "SSE/HTTP" in r.json()["detail"]
 
 
 def test_admin_create_mcp_server_tests_and_caches_tools(monkeypatch):
@@ -181,21 +196,20 @@ def test_admin_create_mcp_server_tests_and_caches_tools(monkeypatch):
     client = TestClient(app)
     r = client.post("/api/admin/smart-ziw-mcp-servers", json={
         "name": "Test Server",
-        "transport": "stdio",
-        "command": "python",
-        "args": ["-m", "server"],
-        "env": {"KEY": "value"},
+        "transport": "sse",
+        "url": "https://mcp.example.com/sse",
+        "headers": {"Authorization": "Bearer value"},
     })
     assert r.status_code == 200
     data = r.json()
     assert len(data) == 1
     assert data[0]["id"] == "test-server"
     assert data[0]["tools"][0]["name"] == "hello"
-    assert data[0]["env"] == {"KEY": "***"}
+    assert data[0]["headers"] == {"Authorization": "***"}
 
     # persisted unredacted
     raw = fake_db.config._doc["servers"][0]
-    assert raw["env"] == {"KEY": "value"}
+    assert raw["headers"] == {"Authorization": "Bearer value"}
     assert raw["tools"][0]["name"] == "hello"
 
 
@@ -219,11 +233,11 @@ def test_admin_create_mcp_server_fails_when_test_fails(monkeypatch):
     assert "connection refused" in r.json()["detail"]
 
 
-def test_admin_update_preserves_redacted_env(monkeypatch):
+def test_admin_update_preserves_redacted_headers(monkeypatch):
     fake_db = _FakeDB()
     fake_db.config._doc = {
         "_type": "smart_ziw_mcp_servers",
-        "servers": [{"id": "s1", "name": "S1", "transport": "stdio", "command": "c", "env": {"SECRET": "keep-me"}, "enabled": True, "tools": []}],
+        "servers": [{"id": "s1", "name": "S1", "transport": "sse", "url": "https://mcp.example.com/sse", "headers": {"Authorization": "Bearer keep-me"}, "enabled": True, "tools": []}],
     }
     app = _client_with_admin(monkeypatch, fake_db)
 
@@ -236,15 +250,32 @@ def test_admin_update_preserves_redacted_env(monkeypatch):
     client = TestClient(app)
     r = client.put("/api/admin/smart-ziw-mcp-servers/s1", json={
         "name": "S1 updated",
-        "transport": "stdio",
-        "command": "c2",
-        "env": {"SECRET": "***"},
+        "transport": "sse",
+        "url": "https://mcp.example.com/sse",
+        "headers": {"Authorization": "***"},
     })
     assert r.status_code == 200
     raw = fake_db.config._doc["servers"][0]
     assert raw["name"] == "S1 updated"
-    assert raw["command"] == "c2"
-    assert raw["env"] == {"SECRET": "keep-me"}
+    assert raw["headers"] == {"Authorization": "Bearer keep-me"}
+
+
+def test_admin_update_rejects_stdio(monkeypatch):
+    fake_db = _FakeDB()
+    fake_db.config._doc = {
+        "_type": "smart_ziw_mcp_servers",
+        "servers": [{"id": "s1", "name": "S1", "transport": "sse", "url": "https://mcp.example.com/sse", "enabled": True, "tools": []}],
+    }
+    app = _client_with_admin(monkeypatch, fake_db)
+    from fastapi.testclient import TestClient
+    client = TestClient(app)
+    r = client.put("/api/admin/smart-ziw-mcp-servers/s1", json={
+        "name": "S1",
+        "transport": "stdio",
+        "url": "",
+    })
+    assert r.status_code == 400
+    assert "SSE/HTTP" in r.json()["detail"]
 
 
 def test_admin_delete_mcp_server(monkeypatch):
@@ -274,8 +305,8 @@ def test_admin_test_mcp_server_endpoint(monkeypatch):
     client = TestClient(app)
     r = client.post("/api/admin/smart-ziw-mcp-servers/test", json={
         "name": "Probe",
-        "transport": "stdio",
-        "command": "python",
+        "transport": "sse",
+        "url": "https://mcp.example.com/sse",
     })
     assert r.status_code == 200
     assert r.json()["status"] == "ok"

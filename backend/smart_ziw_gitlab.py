@@ -99,9 +99,9 @@ def push_to_gitlab(repo_path: Path, folder: str, config: dict) -> dict:
         _git(["config", "user.name", author_name], check=False)
         _git(["config", "user.email", author_email], check=False)
         _git(["add", "--", f"{folder}/"], check=True)
-        if (repo_path / folder / "documents").exists():
+        if (repo_path / folder / "files" / "original").exists():
             # Tender binaries are kept locally but excluded from the mirror.
-            _git(["rm", "-r", "--cached", "--quiet", "--", f"{folder}/documents"], check=False)
+            _git(["rm", "-r", "--cached", "--quiet", "--", f"{folder}/files/original"], check=False)
         status = _git(["status", "--porcelain"], check=False)
         if not status.stdout.strip():
             return {"pushed": False, "message": "No changes to commit"}

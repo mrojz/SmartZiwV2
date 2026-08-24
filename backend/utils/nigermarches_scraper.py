@@ -141,34 +141,56 @@ def _parse_list_item(article: BeautifulSoup) -> dict | None:
     }
 
 
-def _fetch_detail_description(session: requests.Session, url: str) -> str:
-    """Fetch the detail page and return its main text content."""
+DOCUMENT_LINK_HINTS = ("telecharger", "download", "pieces-jointes", "fichier")
+DOCUMENT_EXTENSIONS = (".pdf", ".doc", ".docx", ".xls", ".xlsx", ".zip", ".rar", ".7z")
+IMAGE_EXTENSIONS = (".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg")
+
+
+def _extract_document_links(soup: BeautifulSoup) -> list[str]:
+    """Collect direct download links (document extensions or download/upload URLs)
+    from a detail page. Excludes images."""
+    links = []
+    for a in soup.find_all("a", href=True):
+        href = (a.get("href") or "").strip()
+        if not href or href.startswith(("mailto:", "javascript:", "#")):
+            continue
+        lower = href.lower()
+        if any(ext in lower for ext in DOCUMENT_EXTENSIONS):
+            links.append(urljoin(SITE_BASE_URL, href))
+        elif any(hint in lower for hint in DOCUMENT_LINK_HINTS) and not any(ext in lower for ext in IMAGE_EXTENSIONS):
+            links.append(urljoin(SITE_BASE_URL, href))
+    return links
+
+
+def _fetch_detail(session: requests.Session, url: str) -> tuple[str, str]:
+    """Fetch the detail page and return (description, document_url)."""
     if not url:
-        return ""
+        return "", ""
     try:
         resp = session.get(url, headers=HEADERS, timeout=DETAIL_TIMEOUT)
         resp.raise_for_status()
     except requests.RequestException as exc:
         print(f"    [!] Niger Marchés detail request failed: {exc}")
-        return ""
+        return "", ""
 
     try:
         soup = BeautifulSoup(resp.text, "html.parser")
+        doc_links = _extract_document_links(soup)
         container = (
             soup.select_one("main#main")
             or soup.find("article")
             or soup.body
         )
         if not container:
-            return ""
-        return _normalize_whitespace(container.get_text(" ", strip=True))
+            return "", (doc_links[0] if doc_links else "")
+        return _normalize_whitespace(container.get_text(" ", strip=True)), (doc_links[0] if doc_links else "")
     except Exception as exc:
         print(f"    [!] Niger Marchés detail parse failed: {exc}")
-        return ""
+        return "", ""
 
 
 def _enrich_descriptions(session: requests.Session, projects: list[dict]) -> None:
-    """Populate project_description from detail pages where useful."""
+    """Populate project_description and document_url from detail pages where useful."""
     eligible = [
         (idx, p)
         for idx, p in enumerate(projects)
@@ -177,12 +199,12 @@ def _enrich_descriptions(session: requests.Session, projects: list[dict]) -> Non
     if not eligible:
         return
 
-    def worker(project: dict) -> str:
+    def worker(project: dict) -> tuple[str, str]:
         # Use a fresh session clone per worker to avoid cookie/cross-talk issues.
         worker_session = requests.Session()
         worker_session.headers.update(session.headers)
         worker_session.cookies.update(session.cookies)
-        return _fetch_detail_description(worker_session, project["project_url"])
+        return _fetch_detail(worker_session, project["project_url"])
 
     print(f"    Fetching {len(eligible)} detail pages for descriptions...")
     with ThreadPoolExecutor(max_workers=DETAIL_WORKERS) as executor:
@@ -191,9 +213,11 @@ def _enrich_descriptions(session: requests.Session, projects: list[dict]) -> Non
         }
         for future in as_completed(future_to_idx):
             idx = future_to_idx[future]
-            description = future.result()
+            description, doc_url = future.result()
             if description:
                 projects[idx]["project_description"] = description
+            if doc_url:
+                projects[idx]["document_url"] = doc_url
 
 
 def fetch_first_page(session: requests.Session) -> list[dict]:

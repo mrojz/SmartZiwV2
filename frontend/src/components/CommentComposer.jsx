@@ -92,6 +92,7 @@ export default function CommentComposer({
     currentUser,
     availableUsers,
     apiFetch,
+    className = '',
 }) {
     const fileInputRef = useRef(null);
     const textAreaRef = useRef(null);
@@ -141,12 +142,15 @@ export default function CommentComposer({
     const mentionCandidates = useMemo(() => {
         const query = mentionState.query.trim().toLowerCase();
         if (!mentionState.open) return [];
-        return (mentionUsers || [])
-            .filter((user) => user.id !== currentUser?.id)
-            .filter((user) => {
+        // The Smart-Ziw bot is mentionable like any user; mentioning it triggers the agent.
+        const bot = { id: 'bot:smart-ziw', name: 'Smart-Ziw Bot', email: '', mentionLabel: '@smartziw' };
+        const botMatches = !query || 'smart ziw bot'.includes(query);
+        const users = (mentionUsers || []).filter((user) => user.id !== currentUser?.id);
+        return (botMatches ? [bot] : [])
+            .concat(users.filter((user) => {
                 if (!query) return true;
                 return `${user.name || ''} ${user.email || ''}`.toLowerCase().includes(query);
-            })
+            }))
             .slice(0, 6);
     }, [mentionUsers, currentUser?.id, mentionState]);
 
@@ -169,7 +173,7 @@ export default function CommentComposer({
     };
 
     const insertMention = (user) => {
-        const label = user?.name || user?.email || '';
+        const label = user?.mentionLabel || user?.name || user?.email || '';
         if (!label || mentionState.start < 0) return;
         const start = mentionState.start;
         const end = mentionState.end < 0 ? body.length : mentionState.end;
@@ -177,7 +181,7 @@ export default function CommentComposer({
         setBody(nextValue);
         setSelectedMentions((prev) => {
             const next = prev.filter((item) => item.userId !== user.id);
-            next.push({ userId: user.id, name: user.name, email: user.email });
+            next.push({ userId: user.id, name: user.name, email: user.email, mentionLabel: label });
             return next;
         });
         setMentionState({ open: false, query: '', start: -1, end: -1, index: 0 });
@@ -265,7 +269,7 @@ export default function CommentComposer({
     const removeFile = (fileId) => setPendingFiles((prev) => prev.filter((f) => f.fileId !== fileId));
 
     const handleSubmit = () => {
-        const mentions = selectedMentions.filter((mention) => body.includes(`@${mention.name || mention.email}`));
+        const mentions = selectedMentions.filter((mention) => body.includes(`@${mention.mentionLabel || mention.name || mention.email}`));
         return onSubmit(pendingFiles, mentions, () => {
             setPendingFiles([]);
             setSelectedMentions([]);
@@ -274,7 +278,7 @@ export default function CommentComposer({
     };
 
     return (
-        <div className="border-t p-4 tender-comment-composer">
+        <div className={`border-t p-4 tender-comment-composer ${className}`}>
             {pendingFiles.length > 0 ? (
                 <div className="flex flex-wrap gap-2 pb-3">
                     {pendingFiles.map((f) => (
@@ -316,7 +320,6 @@ export default function CommentComposer({
                 <Textarea
                     ref={textAreaRef}
                     className="min-h-0 flex-1 resize-none px-3.5 py-2.5"
-                    style={{ fieldSizing: 'fixed' }}
                     name="discussionMessage"
                     aria-label="Discussion message"
                     value={body}
@@ -331,7 +334,7 @@ export default function CommentComposer({
                     rows={1}
                 />
                 {mentionState.open && mentionCandidates.length ? (
-                    <div className="absolute bottom-full left-0 right-0 z-10 mb-2 flex flex-col gap-1 rounded-lg border bg-popover p-1 shadow-lg">
+                    <div className="absolute bottom-full left-0 right-0 z-30 mb-2 flex max-h-56 flex-col gap-1 overflow-y-auto rounded-lg border bg-popover p-1 shadow-lg">
                         {mentionCandidates.map((user, index) => (
                             <button
                                 key={user.id}
