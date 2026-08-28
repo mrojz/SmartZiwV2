@@ -1,3 +1,8 @@
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
 import pytest
 
 
@@ -24,14 +29,15 @@ async def test_loop_terminates_on_post_comment():
     async def fake_post(args):
         return {"comment_id": "c1", "status": "ok"}
 
-    REGISTRY["post_smart_ziw_comment"] = Tool(
+    tools = dict(REGISTRY)
+    tools["post_smart_ziw_comment"] = Tool(
         name="post_smart_ziw_comment",
         description="",
         input_schema={"type": "object", "properties": {}},
         handler=fake_post,
     )
 
-    loop = SmartZiwToolLoop(llm=FakeLLM(), tools=REGISTRY, max_iterations=5)
+    loop = SmartZiwToolLoop(llm=FakeLLM(), tools=tools, max_iterations=5)
     result = await loop.run(tender={"id": "1"}, system_prompt="test")
     assert result["final_status"] == "success"
     assert result["comment_id"] == "c1"
