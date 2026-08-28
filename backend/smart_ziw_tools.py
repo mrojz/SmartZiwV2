@@ -98,27 +98,32 @@ async def fetch_aggregator_tender(args: dict[str, Any]) -> dict[str, Any]:
 
 @register("derive_buyer_site", "Guess the buyer's official site from tender emails.", DERIVE_BUYER_SITE_SCHEMA)
 async def derive_buyer_site(args: dict[str, Any]) -> dict[str, Any]:
-    raise NotImplementedError
+    from smart_ziw_research import handle_derive_buyer_site
+    return await handle_derive_buyer_site(args)
 
 
 @register("brave_web_search", "Search the web using Brave Search API.", BRAVE_WEB_SEARCH_SCHEMA)
 async def brave_web_search(args: dict[str, Any]) -> dict[str, Any]:
-    raise NotImplementedError
+    from smart_ziw_research import handle_brave_web_search
+    return await handle_brave_web_search(args)
 
 
 @register("scrape_page", "Scrape a web page and extract text and links.", SCRAPE_PAGE_SCHEMA)
 async def scrape_page(args: dict[str, Any]) -> dict[str, Any]:
-    raise NotImplementedError
+    from smart_ziw_research import handle_scrape_page
+    return await handle_scrape_page(args)
 
 
 @register("find_documents", "Find downloadable documents on a source page or via search.", FIND_DOCUMENTS_SCHEMA)
 async def find_documents(args: dict[str, Any]) -> dict[str, Any]:
-    raise NotImplementedError
+    from smart_ziw_research import handle_find_documents
+    return await handle_find_documents(args)
 
 
 @register("download_document", "Download a document and convert to markdown.", DOWNLOAD_DOCUMENT_SCHEMA)
 async def download_document(args: dict[str, Any]) -> dict[str, Any]:
-    raise NotImplementedError
+    from smart_ziw_research import handle_download_document
+    return await handle_download_document(args)
 
 
 @register("post_smart_ziw_comment", "Post the final Smart-Ziw analysis comment.", POST_COMMENT_SCHEMA)

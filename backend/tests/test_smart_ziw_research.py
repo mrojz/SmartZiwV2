@@ -941,3 +941,308 @@ def test_thread_context_included_in_seed_prompt(monkeypatch, tmp_path):
     run_research(PROJECT, STUB_CONFIG, folder_path=tmp_path / "folder", llm_call=call, thread_context="user asked for pricing")
     assert "user asked for pricing" in seen["user"]
 
+
+# ---------- Tool-loop handlers (Task 5) ----------
+
+import asyncio
+
+import requests
+
+
+def _brave_payload(results=None):
+    return {"web": {"results": results or []}}
+
+
+def test_brave_search_uses_api_key_and_params(monkeypatch):
+    captured = {}
+
+    def _fake_get(url, headers=None, params=None, timeout=None):
+        captured["url"] = url
+        captured["headers"] = headers
+        captured["params"] = params
+        return MagicMock(json=lambda: _brave_payload())
+
+    monkeypatch.setattr("smart_ziw_research.requests.get", _fake_get)
+    from smart_ziw_research import brave_search
+
+    result = brave_search("tender niger", "secret-key", count=5)
+    assert result["status"] == "ok"
+    assert result["results"] == []
+    assert captured["url"] == "https://api.search.brave.com/res/v1/web/search"
+    assert captured["headers"]["X-Subscription-Token"] == "secret-key"
+    assert captured["params"] == {"q": "tender niger", "count": 5}
+
+
+def test_brave_search_returns_results(monkeypatch):
+    payload = _brave_payload([
+        {"title": "Tender notice", "url": "https://bhn.ne/ao/1", "description": "Appel d'offres"},
+        {"title": "No desc", "url": "https://example.com/x"},
+    ])
+
+    class FakeResp:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return payload
+
+    monkeypatch.setattr("smart_ziw_research.requests.get", lambda *a, **k: FakeResp())
+    from smart_ziw_research import brave_search
+
+    result = brave_search("q", "k")
+    assert result["status"] == "ok"
+    assert result["results"][0] == {
+        "title": "Tender notice",
+        "url": "https://bhn.ne/ao/1",
+        "snippet": "Appel d'offres",
+    }
+    assert result["results"][1]["snippet"] == ""
+
+
+def test_brave_search_missing_key_returns_error_without_network(monkeypatch):
+    def _explode(*a, **k):
+        raise AssertionError("network should not be used")
+
+    monkeypatch.setattr("smart_ziw_research.requests.get", _explode)
+    from smart_ziw_research import brave_search
+
+    result = brave_search("q", "")
+    assert result["status"] == "error"
+    assert "API key" in result["error"]
+    assert result["results"] == []
+
+
+def test_brave_search_http_error_returns_error_dict(monkeypatch):
+    class Boom:
+        def raise_for_status(self):
+            raise requests.HTTPError("429 too many requests")
+
+    monkeypatch.setattr("smart_ziw_research.requests.get", lambda *a, **k: Boom())
+    from smart_ziw_research import brave_search
+
+    result = brave_search("q", "k")
+    assert result["status"] == "error"
+    assert "brave search failed" in result["error"]
+
+
+def test_handle_brave_web_search_ok(monkeypatch):
+    monkeypatch.setattr(
+        "smart_ziw_config.load_smart_ziw_config",
+        lambda: {"brave_api_key": "cfg-key"},
+    )
+    captured = {}
+
+    def _fake_get(url, headers=None, params=None, timeout=None):
+        captured["headers"] = headers
+        captured["params"] = params
+        return MagicMock(json=lambda: _brave_payload([
+            {"title": "T", "url": "https://example.com", "description": "d"},
+        ]))
+
+    monkeypatch.setattr("smart_ziw_research.requests.get", _fake_get)
+    from smart_ziw_research import handle_brave_web_search
+
+    result = asyncio.run(handle_brave_web_search({"query": "q", "count": 3}))
+    assert result["status"] == "ok"
+    assert result["results"][0]["url"] == "https://example.com"
+    assert captured["headers"]["X-Subscription-Token"] == "cfg-key"
+    assert captured["params"] == {"q": "q", "count": 3}
+
+
+def test_handle_brave_web_search_missing_query(monkeypatch):
+    monkeypatch.setattr("smart_ziw_config.load_smart_ziw_config", lambda: {})
+    from smart_ziw_research import handle_brave_web_search
+
+    result = asyncio.run(handle_brave_web_search({}))
+    assert result["status"] == "error"
+    assert "query" in result["error"]
+
+
+def test_handle_derive_buyer_site_ok(monkeypatch):
+    project = dict(PROJECT)
+    project["project_description"] = "Contact: achats@bhn.ne avant le 04/09/2026."
+    monkeypatch.setattr("database.get_project_by_db_id", lambda tid: project)
+    from smart_ziw_research import handle_derive_buyer_site
+
+    result = asyncio.run(handle_derive_buyer_site({"tender_id": "507f1f77bcf86cd799439011"}))
+    assert result["status"] == "ok"
+    assert result["url"] == "https://bhn.ne"
+    assert "email" in result["note"]
+
+
+def test_handle_derive_buyer_site_tender_not_found(monkeypatch):
+    monkeypatch.setattr("database.get_project_by_db_id", lambda tid: None)
+    from smart_ziw_research import handle_derive_buyer_site
+
+    result = asyncio.run(handle_derive_buyer_site({"tender_id": "missing"}))
+    assert result["status"] == "error"
+    assert "not found" in result["error"]
+
+
+def test_handle_derive_buyer_site_no_emails(monkeypatch):
+    monkeypatch.setattr("database.get_project_by_db_id", lambda tid: dict(PROJECT))
+    from smart_ziw_research import handle_derive_buyer_site
+
+    result = asyncio.run(handle_derive_buyer_site({"tender_id": "id"}))
+    assert result["status"] == "error"
+    assert "emails" in result["error"]
+
+
+def test_handle_scrape_page_ok(monkeypatch):
+    class StubClient:
+        def __init__(self, config):
+            self.config = config
+
+        def scrape(self, url):
+            return {
+                "title": "Notice",
+                "markdown": "# Notice text",
+                "links": ["https://example.com/dce.pdf"],
+            }
+
+    monkeypatch.setattr("smart_ziw_research.FirecrawlClient", StubClient)
+    monkeypatch.setattr("smart_ziw_config.load_smart_ziw_config", lambda: {})
+    from smart_ziw_research import handle_scrape_page
+
+    result = asyncio.run(handle_scrape_page({"url": "https://example.com/notice"}))
+    assert result["status"] == "ok"
+    assert result["title"] == "Notice"
+    assert result["markdown"] == "# Notice text"
+    assert result["links"] == ["https://example.com/dce.pdf"]
+
+
+def test_handle_scrape_page_error(monkeypatch):
+    class StubClient:
+        def __init__(self, config):
+            self.config = config
+
+        def scrape(self, url):
+            return {"_error": "blocked (unsafe URL)"}
+
+    monkeypatch.setattr("smart_ziw_research.FirecrawlClient", StubClient)
+    monkeypatch.setattr("smart_ziw_config.load_smart_ziw_config", lambda: {})
+    from smart_ziw_research import handle_scrape_page
+
+    result = asyncio.run(handle_scrape_page({"url": "http://10.0.0.5/internal"}))
+    assert result["status"] == "error"
+    assert "blocked" in result["error"]
+
+
+def test_handle_find_documents_filters_links(monkeypatch):
+    class StubClient:
+        def __init__(self, config):
+            self.config = config
+
+        def scrape(self, url):
+            return {
+                "title": "Notice",
+                "links": [
+                    "https://example.com/dce.pdf",
+                    "https://example.com/dce.pdf?download=1",
+                    "https://example.com/plan.xlsx",
+                    "https://example.com/notice.html",
+                    "https://example.com/bundle.zip",
+                    "https://example.com/plain",
+                ],
+            }
+
+    monkeypatch.setattr("smart_ziw_research.FirecrawlClient", StubClient)
+    monkeypatch.setattr("smart_ziw_config.load_smart_ziw_config", lambda: {})
+    from smart_ziw_research import handle_find_documents
+
+    result = asyncio.run(handle_find_documents({
+        "source_url": "https://example.com/notice",
+        "tender_title": "IS Security Audit",
+        "tender_reference": "REF-1",
+    }))
+    assert result["status"] == "ok"
+    assert set(result["documents"]) == {
+        "https://example.com/dce.pdf",
+        "https://example.com/dce.pdf?download=1",
+        "https://example.com/plan.xlsx",
+    }
+    assert result["page_title"] == "Notice"
+
+
+def test_handle_find_documents_missing_url():
+    from smart_ziw_research import handle_find_documents
+
+    result = asyncio.run(handle_find_documents({}))
+    assert result["status"] == "error"
+    assert "source_url" in result["error"]
+
+
+def test_handle_download_document_ok(monkeypatch, tmp_path):
+    class StubStore:
+        def __init__(self, folder_path, config=None):
+            self.folder_path = folder_path
+
+        def download(self, url, title=""):
+            path = self.folder_path / "files" / "original" / "dce.pdf"
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(b"%PDF fake")
+            return path, None
+
+        def save_extraction(self, path):
+            return path.with_suffix(".md"), True
+
+    monkeypatch.setattr("database.get_project_by_db_id", lambda tid: dict(PROJECT))
+    monkeypatch.setattr(
+        "smart_ziw_config.load_smart_ziw_config",
+        lambda: {"smart_ziw_repo_path": str(tmp_path)},
+    )
+    monkeypatch.setattr("smart_ziw_research.DocumentStore", StubStore)
+    from smart_ziw_research import handle_download_document
+
+    result = asyncio.run(handle_download_document({
+        "url": "https://example.com/dce.pdf",
+        "tender_id": "507f1f77bcf86cd799439011",
+    }))
+    assert result["status"] == "ok"
+    assert result["file"].endswith("dce.pdf")
+    assert result["markdown_path"].endswith("dce.md")
+    assert result["extracted"] is True
+
+
+def test_handle_download_document_missing_args():
+    from smart_ziw_research import handle_download_document
+
+    result = asyncio.run(handle_download_document({"url": "https://x.com/d.pdf"}))
+    assert result["status"] == "error"
+    assert "url and tender_id" in result["error"]
+
+
+def test_tools_registry_research_handlers_return_status_dicts(monkeypatch):
+    """Wire-through: every Task-5 registered tool, called through smart_ziw_tools,
+    returns a status dict instead of raising, with all backends failing."""
+    monkeypatch.setattr("smart_ziw_config.load_smart_ziw_config", lambda: {})
+    monkeypatch.setattr("database.get_project_by_db_id", lambda tid: None)
+
+    class BoomClient:
+        def __init__(self, config):
+            self.config = config
+
+        def scrape(self, url):
+            return {"_error": "no"}
+
+    monkeypatch.setattr("smart_ziw_research.FirecrawlClient", BoomClient)
+
+    def _explode(*a, **k):
+        raise AssertionError("network should not be used")
+
+    monkeypatch.setattr("smart_ziw_research.requests.get", _explode)
+    from smart_ziw_tools import REGISTRY
+
+    cases = {
+        "derive_buyer_site": {"tender_id": "missing"},
+        "brave_web_search": {"query": "q"},
+        "scrape_page": {"url": "https://example.com"},
+        "find_documents": {"source_url": "https://example.com"},
+        "download_document": {"url": "https://example.com/d.pdf", "tender_id": "missing"},
+    }
+    for name, args in cases.items():
+        result = asyncio.run(REGISTRY[name].handler(args))
+        assert result["status"] in ("ok", "error"), name
+        if result["status"] == "error":
+            assert "error" in result, name
+

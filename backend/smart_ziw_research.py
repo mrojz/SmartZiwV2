@@ -1387,3 +1387,124 @@ def synthesize(
     out = _coerce_recap(final, research)
     _scrub_aggregator_source(out, project, research)
     return out
+
+
+# ---------- Tool-loop support ----------
+
+_BRAVE_SEARCH_URL = "https://api.search.brave.com/res/v1/web/search"
+
+
+def brave_search(query: str, api_key: str, count: int = 10) -> dict[str, Any]:
+    """Brave Web Search API. Never raises; returns {"status": "ok", "results": [...]}
+    or {"status": "error", "error": ..., "results": []}."""
+    if not api_key:
+        return {"status": "error", "error": "Brave API key not configured", "results": []}
+    headers = {"X-Subscription-Token": api_key, "Accept": "application/json"}
+    params = {"q": query, "count": count}
+    try:
+        resp = requests.get(_BRAVE_SEARCH_URL, headers=headers, params=params, timeout=30)
+        resp.raise_for_status()
+        data = resp.json()
+    except Exception as exc:  # noqa: BLE001
+        return {"status": "error", "error": f"brave search failed: {exc}", "results": []}
+    results = []
+    for item in data.get("web", {}).get("results", []):
+        if isinstance(item, dict):
+            results.append({
+                "title": str(item.get("title") or ""),
+                "url": str(item.get("url") or ""),
+                "snippet": str(item.get("description") or ""),
+            })
+    return {"status": "ok", "results": results}
+
+
+async def handle_brave_web_search(args: dict[str, Any]) -> dict[str, Any]:
+    from smart_ziw_config import load_smart_ziw_config
+
+    query = str(args.get("query") or "").strip()
+    if not query:
+        return {"status": "error", "error": "query is required", "results": []}
+    try:
+        count = int(args.get("count") or 10)
+    except (TypeError, ValueError):
+        count = 10
+    cfg = load_smart_ziw_config()
+    return brave_search(query, str(cfg.get("brave_api_key") or ""), count)
+
+
+async def handle_scrape_page(args: dict[str, Any]) -> dict[str, Any]:
+    from smart_ziw_config import load_smart_ziw_config
+
+    url = str(args.get("url") or "").strip()
+    if not url:
+        return {"status": "error", "error": "url is required"}
+    page = FirecrawlClient(load_smart_ziw_config()).scrape(url)
+    if not isinstance(page, dict) or page.get("_error"):
+        error = page.get("_error", "scrape failed") if isinstance(page, dict) else "scrape failed"
+        return {"status": "error", "error": str(error)}
+    return {
+        "status": "ok",
+        "title": page.get("title") or "",
+        "markdown": page.get("markdown") or "",
+        "links": page.get("links") or [],
+    }
+
+
+async def handle_find_documents(args: dict[str, Any]) -> dict[str, Any]:
+    from smart_ziw_config import load_smart_ziw_config
+
+    url = str(args.get("source_url") or "").strip()
+    if not url:
+        return {"status": "error", "error": "source_url is required"}
+    page = FirecrawlClient(load_smart_ziw_config()).scrape(url)
+    if not isinstance(page, dict) or page.get("_error"):
+        error = page.get("_error", "scrape failed") if isinstance(page, dict) else "scrape failed"
+        return {"status": "error", "error": str(error)}
+    documents = [
+        link for link in (page.get("links") or [])
+        if isinstance(link, str) and is_document_url(link)
+    ]
+    return {"status": "ok", "documents": documents, "page_title": page.get("title") or ""}
+
+
+async def handle_derive_buyer_site(args: dict[str, Any]) -> dict[str, Any]:
+    from database import get_project_by_db_id
+
+    tender_id = str(args.get("tender_id") or "").strip()
+    if not tender_id:
+        return {"status": "error", "error": "tender_id is required"}
+    project = get_project_by_db_id(tender_id)
+    if not project:
+        return {"status": "error", "error": f"tender {tender_id} not found"}
+    derived = _derive_buyer_site_from_emails(project)
+    if not derived:
+        return {"status": "error", "error": "no buyer domain could be derived from the tender's contact emails"}
+    return {"status": "ok", "url": derived["url"], "note": derived["note"]}
+
+
+async def handle_download_document(args: dict[str, Any]) -> dict[str, Any]:
+    from database import get_project_by_db_id
+    from smart_ziw_config import load_smart_ziw_config
+
+    url = str(args.get("url") or "").strip()
+    tender_id = str(args.get("tender_id") or "").strip()
+    if not url or not tender_id:
+        return {"status": "error", "error": "url and tender_id are required"}
+    project = get_project_by_db_id(tender_id)
+    if not project:
+        return {"status": "error", "error": f"tender {tender_id} not found"}
+    cfg = load_smart_ziw_config()
+    folder_path = Path(cfg.get("smart_ziw_repo_path", "/home/kali/Smart-Ziw")) / build_folder_name(project)
+    store = DocumentStore(folder_path, config=cfg)
+    path, error = store.download(url, title=str(project.get("project_name") or ""))
+    if error:
+        return {"status": "error", "error": error}
+    if _is_archive_path(path):
+        store.extract_archive(path)
+    extraction_path, extracted_ok = store.save_extraction(path)
+    return {
+        "status": "ok",
+        "file": str(path),
+        "markdown_path": str(extraction_path),
+        "extracted": bool(extracted_ok),
+    }
