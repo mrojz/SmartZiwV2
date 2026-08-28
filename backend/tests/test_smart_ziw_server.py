@@ -5,6 +5,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from fastapi.testclient import TestClient
 
+import pytest
+
 import server as server
 
 
@@ -632,3 +634,161 @@ def test_run_smart_ziw_saves_structured_fields(monkeypatch):
     assert completed_update["smart_ziw_next_actions"] == []
     assert completed_update["smart_ziw_ai_source"] == "Web research"
     assert completed_update["smart_ziw_confidence"] == "high"
+
+
+_PROJECT = {
+    "db_id": "p1",
+    "project_id": "id1",
+    "project_name": "Tender One",
+}
+
+
+def _mk_smart_ziw_bot_comment(**kwargs):
+    return {
+        "id": kwargs.get("id", "c1"),
+        "entityType": "project",
+        "entityId": "id1",
+        "authorUserId": "bot:smart-ziw",
+        "authorName": "Smart-Ziw Bot",
+        "authorAvatarUrl": "",
+        "body": kwargs.get("body", ""),
+        "attachments": kwargs.get("attachments", []),
+        "mentions": [],
+        "createdAt": "2026-08-28T00:00:00Z",
+        "updatedAt": "2026-08-28T00:00:00Z",
+    }
+
+
+@pytest.mark.asyncio
+async def test_post_smart_ziw_comment_returns_comment_id(monkeypatch):
+    seen = {}
+
+    def fake_create(**kwargs):
+        seen.update(kwargs)
+        return _mk_smart_ziw_bot_comment()
+
+    monkeypatch.setattr(server, "get_project_by_db_id", lambda db_id: dict(_PROJECT))
+    monkeypatch.setattr(server, "_create_project_comment_and_notify", fake_create)
+    result = await server.post_smart_ziw_comment(
+        tender_id="p1", content="# Recap", source_url="",
+        downloaded_files=[], failed_files=[], user={"id": "u1"},
+    )
+    assert result["status"] == "ok"
+    assert result["comment_id"] == "c1"
+    assert result["comment"]["id"] == "c1"
+    assert seen["entity_id"] == "id1"
+    assert seen["author_user"] is server.SMART_ZIW_BOT_USER
+    assert seen["body_text"] == "# Recap"
+    assert seen["attachments"] == []
+
+
+@pytest.mark.asyncio
+async def test_post_smart_ziw_comment_renders_failed_files_as_links(monkeypatch):
+    seen = {}
+
+    def fake_create(**kwargs):
+        seen.update(kwargs)
+        return _mk_smart_ziw_bot_comment()
+
+    monkeypatch.setattr(server, "get_project_by_db_id", lambda db_id: dict(_PROJECT))
+    monkeypatch.setattr(server, "_create_project_comment_and_notify", fake_create)
+    result = await server.post_smart_ziw_comment(
+        tender_id="p1", content="Recap body", source_url="https://tender.example",
+        downloaded_files=[], failed_files=["https://tender.example/a.pdf", "https://tender.example/b.pdf"],
+        user={"id": "u1"},
+    )
+    assert result["status"] == "ok"
+    body = seen["body_text"]
+    assert "## Files we could not retrieve" in body
+    assert "- [https://tender.example/a.pdf](https://tender.example/a.pdf)" in body
+    assert "- [https://tender.example/b.pdf](https://tender.example/b.pdf)" in body
+
+
+@pytest.mark.asyncio
+async def test_post_smart_ziw_comment_uploads_downloaded_files(monkeypatch):
+    seen = {}
+
+    def fake_create(**kwargs):
+        seen.update(kwargs)
+        return _mk_smart_ziw_bot_comment(attachments=kwargs.get("attachments", []))
+
+    def fake_upload(path):
+        return {"fileId": "f1", "originalName": path.name, "size": 1, "mimeType": "text/plain", "url": f"/api/uploads/f1/{path.name}"}
+
+    monkeypatch.setattr(server, "get_project_by_db_id", lambda db_id: dict(_PROJECT))
+    monkeypatch.setattr(server, "_upload_local_file_to_comment_store", fake_upload)
+    monkeypatch.setattr(server, "_create_project_comment_and_notify", fake_create)
+    result = await server.post_smart_ziw_comment(
+        tender_id="p1", content="Recap body", source_url="",
+        downloaded_files=["/tmp/report.pdf"], failed_files=[], user={"id": "u1"},
+    )
+    assert result["status"] == "ok"
+    assert seen["attachments"] == [{"fileId": "f1", "originalName": "report.pdf", "size": 1, "mimeType": "text/plain", "url": "/api/uploads/f1/report.pdf"}]
+    assert "[report.pdf](/api/uploads/f1/report.pdf)" in seen["body_text"]
+
+
+@pytest.mark.asyncio
+async def test_post_smart_ziw_comment_blank_content_uses_fallback(monkeypatch):
+    seen = {}
+
+    def fake_create(**kwargs):
+        seen.update(kwargs)
+        return _mk_smart_ziw_bot_comment()
+
+    monkeypatch.setattr(server, "get_project_by_db_id", lambda db_id: dict(_PROJECT))
+    monkeypatch.setattr(server, "_create_project_comment_and_notify", fake_create)
+    result = await server.post_smart_ziw_comment(
+        tender_id="p1", content="   ", source_url="",
+        downloaded_files=[], failed_files=[], user={"id": "u1"},
+    )
+    assert result["status"] == "ok"
+    assert seen["body_text"] == "Smart-Ziw Agent finished, but no recap was generated."
+
+
+@pytest.mark.asyncio
+async def test_post_smart_ziw_comment_tender_not_found(monkeypatch):
+    monkeypatch.setattr(server, "get_project_by_db_id", lambda db_id: None)
+    result = await server.post_smart_ziw_comment(
+        tender_id="missing", content="Recap body", source_url="",
+        downloaded_files=[], failed_files=[], user={"id": "u1"},
+    )
+    assert result == {"status": "error", "error": "Tender not found"}
+
+
+@pytest.mark.asyncio
+async def test_post_smart_ziw_comment_swallows_posting_exception(monkeypatch):
+    monkeypatch.setattr(server, "get_project_by_db_id", lambda db_id: dict(_PROJECT))
+
+    def fake_create(**kwargs):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(server, "_create_project_comment_and_notify", fake_create)
+    result = await server.post_smart_ziw_comment(
+        tender_id="p1", content="Recap body", source_url="",
+        downloaded_files=[], failed_files=[], user={"id": "u1"},
+    )
+    assert result["status"] == "error"
+    assert result["error"] == "boom"
+
+
+def test_make_post_comment_handler_forwards_args(monkeypatch):
+    import asyncio
+
+    captured = {}
+
+    async def fake_post(**kwargs):
+        captured.update(kwargs)
+        return {"status": "ok", "comment_id": "c1"}
+
+    monkeypatch.setattr(server, "post_smart_ziw_comment", fake_post)
+    handler = server.make_post_comment_handler({"id": "u1"})
+    result = asyncio.run(handler({
+        "tender_id": "p1", "content": "Recap", "source_url": "https://x.example",
+    }))
+    assert result["status"] == "ok"
+    assert captured["tender_id"] == "p1"
+    assert captured["content"] == "Recap"
+    assert captured["source_url"] == "https://x.example"
+    assert captured["downloaded_files"] == []
+    assert captured["failed_files"] == []
+    assert captured["user"] == {"id": "u1"}

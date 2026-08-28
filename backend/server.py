@@ -1615,6 +1615,73 @@ def _post_smart_ziw_comment(project: dict, result: dict) -> None:
         body_text=body,
         attachments=uploaded_attachments,
     )
+
+
+async def post_smart_ziw_comment(
+    tender_id: str,
+    content: str,
+    source_url: str,
+    downloaded_files: list[str],
+    failed_files: list[str],
+    user: dict[str, Any],
+) -> dict[str, Any]:
+    """Post the Smart-Ziw analysis comment as the bot on a tender (tool-loop handler).
+
+    `source_url` and `user` are part of the tool interface; the bot authors the
+    comment, so `user` (the actor who triggered Smart-Ziw) is currently unused.
+    """
+    try:
+        project = get_project_by_db_id(tender_id)
+        if not project:
+            return {"status": "error", "error": "Tender not found"}
+
+        uploaded_attachments: list[dict] = []
+        for file_path in downloaded_files or []:
+            att = _upload_local_file_to_comment_store(Path(file_path))
+            if att:
+                uploaded_attachments.append(att)
+
+        body = (content or "").strip()
+        if body:
+            if uploaded_attachments:
+                body += "\n\n---\n\n## Downloadable files\n" + "\n".join(
+                    f"- [{att['originalName']}]({att['url']})" for att in uploaded_attachments
+                )
+        else:
+            body = "Smart-Ziw Agent finished, but no recap was generated."
+
+        if failed_files:
+            body += "\n\n---\n\n## Files we could not retrieve\n" + "\n".join(
+                f"- [{url}]({url})" for url in failed_files
+            )
+
+        comment = _create_project_comment_and_notify(
+            entity_type="project",
+            entity_id=_project_entity_id(project),
+            project=project,
+            author_user=SMART_ZIW_BOT_USER,
+            body_text=body,
+            attachments=uploaded_attachments,
+        )
+        return {"status": "ok", "comment_id": comment["id"], "comment": comment}
+    except Exception as exc:
+        return {"status": "error", "error": str(exc)}
+
+
+def make_post_comment_handler(user: dict[str, Any]):
+    async def handler(args: dict[str, Any]) -> dict[str, Any]:
+        return await post_smart_ziw_comment(
+            tender_id=args["tender_id"],
+            content=args["content"],
+            source_url=args["source_url"],
+            downloaded_files=args.get("downloaded_files", []),
+            failed_files=args.get("failed_files", []),
+            user=user,
+        )
+
+    return handler
+
+
 def auth_bootstrap_status():
     has_admin = count_admin_users() > 0
     env_configured = bool(os.getenv("ADMIN_EMAIL", "").strip() and os.getenv("ADMIN_PASSWORD", ""))
