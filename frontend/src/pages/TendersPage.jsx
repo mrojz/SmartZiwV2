@@ -21,8 +21,6 @@ import {
     buildSheetHash,
     buildFullPageHash,
     buildTenderShareUrl,
-    buildDashboardHash,
-    deserializeFilters,
     isTenderSheetHash,
     isTenderFullPageHash,
 } from '../utils/tenderRouting';
@@ -124,52 +122,9 @@ export default function TendersPage({
             .catch(() => {});
     }, [authUser, apiFetch]);
 
-    // URL-synced filters: read once on mount.
-    useEffect(() => {
-        const hash = window.location.hash || '';
-        const queryIndex = hash.indexOf('?');
-        const search = queryIndex >= 0 ? hash.slice(queryIndex + 1) : '';
-        const parsed = deserializeFilters(search);
-        setFreeText(parsed.q);
-        setSource(parsed.source);
-        setRegion(parsed.region);
-        setContinent(parsed.continent);
-        setVerified(parsed.verified);
-        setDecision(parsed.decision);
-        setEndDateFrom(parsed.deadlineFrom);
-        setEndDateTo(parsed.deadlineTo);
-        setScrapedFrom(parsed.scrapedFrom);
-        setScrapedTo(parsed.scrapedTo);
-        setExpiringSoonOnly(parsed.expiringSoon === '1');
-        setExpiringSoonDays(Number(parsed.expiringDays) || 5);
-    }, []);
-
-    // URL-synced filters: write on every change.
-    useEffect(() => {
-        if (getTenderIdFromHash(window.location.hash)) return;
-        const filters = {
-            q: freeText,
-            source,
-            region,
-            continent,
-            verified,
-            decision,
-            deadlineFrom: endDateFrom,
-            deadlineTo: endDateTo,
-            scrapedFrom,
-            scrapedTo,
-            expiringSoon: expiringSoonOnly ? '1' : '0',
-            expiringDays: String(expiringSoonDays),
-        };
-        const nextHash = buildDashboardHash(filters);
-        if (nextHash !== `#${window.location.hash.replace(/^#/, '')}`) {
-            window.location.hash = nextHash;
-        }
-    }, [
-        freeText, source, region, continent, verified, decision,
-        endDateFrom, endDateTo, scrapedFrom, scrapedTo,
-        expiringSoonOnly, expiringSoonDays,
-    ]);
+    // Filters live in component state only. Syncing them into the URL hash is not
+    // possible because the App router (normalizeRoute) treats '#dashboard?...' as an
+    // unknown route and renders a blank page.
 
     const getRegion = useCallback((sponsor) => {
         if (!sponsor) return '';
@@ -1016,9 +971,9 @@ export default function TendersPage({
                 <SheetContent
                     side="right"
                     showCloseButton={false}
-                    className="!w-full !max-w-none gap-0 p-0 flex flex-col overflow-y-auto overscroll-contain sm:!w-[50vw] transition-transform duration-300 ease-out data-[state=closed]:translate-x-full data-[state=open]:translate-x-0"
+                    className="!w-full !max-w-none gap-0 p-0 flex flex-col overflow-hidden overscroll-contain sm:!w-[50vw] transition-transform duration-300 ease-out data-[state=closed]:translate-x-full data-[state=open]:translate-x-0"
                 >
-                    <SheetHeader className="sticky top-0 z-10 flex flex-row items-start justify-between gap-4 border-b bg-popover p-5">
+                    <SheetHeader className="sticky top-0 z-10 flex shrink-0 flex-row items-start justify-between gap-4 border-b bg-popover p-5">
                         <div className="min-w-0">
                             <SheetDescription className="text-xs font-medium uppercase tracking-wide">Project inspector</SheetDescription>
                             <SheetTitle className="mt-1 text-lg leading-snug">
@@ -1062,7 +1017,7 @@ export default function TendersPage({
                                 setDiscussionSearchOpen={setDiscussionSearchOpen}
                             />
 
-                            <div className="min-h-0 flex-1" onClick={handleAttachmentClick}>
+                            <div className="min-h-0 flex-1 overflow-y-auto" onClick={handleAttachmentClick}>
                                 <ProjectInspector
                                     project={selectedProject}
                                     comments={filteredComments}
@@ -1085,7 +1040,7 @@ export default function TendersPage({
                                 currentUser={authUser}
                                 availableUsers={availableUsers}
                                 apiFetch={apiFetch}
-                                className="bg-popover"
+                                className="bg-popover shrink-0"
                             />
 
                             {previewAttachment ? (

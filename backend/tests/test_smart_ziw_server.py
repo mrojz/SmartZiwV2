@@ -71,6 +71,22 @@ def test_admin_update_preserves_empty_tokens(monkeypatch):
     assert r.json()["lightllm_subscription_key"] == ""
 
 
+def test_admin_update_llm_status_uses_unredacted_key(monkeypatch):
+    monkeypatch.setattr(server, "_get_request_user", lambda req: _mk_admin())
+    config = {**_config_with_secrets(), "smart_ziw_llm_provider": "openai"}
+    monkeypatch.setattr(server, "get_smart_ziw_config", lambda: config)
+    monkeypatch.setattr(server, "save_smart_ziw_config", lambda c: dict(c))
+    client = TestClient(server.app)
+    r = client.put("/api/admin/smart-ziw-config", json={"smart_ziw_llm_provider": "openai", "lightllm_api_key": ""})
+    assert r.status_code == 200
+    status = r.json()["llm_status"]
+    # llm_status must be computed before the response key is blanked; the
+    # preserved stored key means the preset provider is configured.
+    assert status["provider"] == "openai"
+    assert status["configured"] is True
+    assert status["missing_fields"] == []
+
+
 def test_admin_update_preserves_presence_list_when_empty(monkeypatch):
     saved = {}
     monkeypatch.setattr(server, "_get_request_user", lambda req: _mk_admin())

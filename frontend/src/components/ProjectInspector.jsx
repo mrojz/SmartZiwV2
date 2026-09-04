@@ -55,6 +55,16 @@ export default function ProjectInspector({
 
             <TenderTabs activeTab={activeTab} onChange={setActiveTab} compact={compact} />
 
+            {project?.smart_ziw_status === 'error' ? (
+                <div
+                    role="alert"
+                    className={`rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive ${compact ? 'mx-4 mb-2' : 'mx-6 mb-4'}`}
+                >
+                    <p className="font-semibold">Smart-Ziw Agent failed</p>
+                    <p className="mt-1 break-words whitespace-pre-wrap">{project.smart_ziw_error || 'Unknown error'}</p>
+                </div>
+            ) : null}
+
             <div className="min-h-0 flex-1">
                 {activeTab === 'overview' && (
                     <div role="tabpanel" id="panel-overview" aria-labelledby="tab-overview">

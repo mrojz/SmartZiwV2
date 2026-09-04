@@ -98,7 +98,11 @@ def _reconstruct_custom_skill(entry: dict) -> Skill | None:
     if not skill_id:
         return None
 
+    markdown_text = str(entry.get("markdown") or "")
     handler = None
+    if markdown_text:
+        handler = lambda **kwargs: {"content": markdown_text}
+
     module_path = entry.get("module_path")
     handler_path = entry.get("handler_path")
 
@@ -180,7 +184,7 @@ def get_registry(config: dict | None = None) -> SkillRegistry:
 
 
 def fetch_skill_from_url(url: str, config: dict | None = None) -> list[Skill]:
-    """Download a skill definition (JSON or .py) from a public URL.
+    """Download a skill definition (.py, .md, or JSON) from a public URL.
 
     Returns a list of Skill objects (empty if nothing valid was found).
     """
@@ -191,7 +195,9 @@ def fetch_skill_from_url(url: str, config: dict | None = None) -> list[Skill]:
 
     parsed = urlparse(url)
     filename = Path(parsed.path or "skill").name or "skill"
-    is_python = filename.lower().endswith(".py")
+    lower_name = filename.lower()
+    is_python = lower_name.endswith(".py")
+    is_markdown = lower_name.endswith(".md") or lower_name.endswith(".markdown")
 
     headers = {"User-Agent": "Smart-Ziw Skill Loader"}
     response = requests.get(url, headers=headers, stream=True, timeout=30)
@@ -203,10 +209,13 @@ def fetch_skill_from_url(url: str, config: dict | None = None) -> list[Skill]:
         if len(content) > 1024 * 1024:
             raise ValueError("Skill payload exceeds 1 MB limit")
 
+    content_type = str(response.headers.get("content-type") or "").lower()
     text = content.decode("utf-8", errors="replace")
 
     if is_python:
         return _load_python_skill(url, filename, text)
+    if is_markdown or "markdown" in content_type:
+        return [_load_markdown_skill(url, filename, text)]
 
     # Try JSON parsing even if the filename is not .json.
     try:
@@ -224,6 +233,53 @@ def fetch_skill_from_url(url: str, config: dict | None = None) -> list[Skill]:
 
     skill = _load_json_skill_item(url, data)
     return [skill] if skill is not None else []
+
+
+def _load_markdown_skill(url: str, filename: str, text: str) -> Skill:
+    """Turn a skill markdown document into a Skill whose handler returns the document.
+
+    Supports an optional frontmatter block (``---`` delimited ``key: value``
+    lines with ``name`` / ``description``); falls back to the first ``# ``
+    heading for the name and the first paragraph for the description.
+    """
+    body = text
+    frontmatter: dict[str, str] = {}
+    match = re.match(r"^\s*---\s*\r?\n(.*?)\r?\n---\s*\r?\n?", text, re.DOTALL)
+    if match:
+        for line in match.group(1).splitlines():
+            key, sep, value = line.partition(":")
+            if sep and key.strip():
+                frontmatter[key.strip().lower()] = value.strip().strip('"\'')
+        body = text[match.end():]
+
+    name = frontmatter.get("name") or ""
+    if not name:
+        heading = re.search(r"^#\s+(.+)$", body, re.MULTILINE)
+        name = heading.group(1).strip() if heading else Path(filename).stem
+    description = frontmatter.get("description") or ""
+    if not description:
+        paragraph = next(
+            (block.strip() for block in re.split(r"\n\s*\n", body)
+             if block.strip() and not block.lstrip().startswith("#")),
+            "",
+        )
+        description = re.sub(r"\s+", " ", paragraph)[:300]
+
+    skill_id = re.sub(r"[^\w.-]+", "-", (name or filename).lower()).strip("-") or "markdown-skill"
+    skill = Skill(
+        id=skill_id,
+        name=name,
+        description=description,
+        parameters={"type": "object", "properties": {}},
+        handler=lambda **kwargs: {"content": text},
+        source_url=url,
+        built_in=False,
+        enabled=True,
+    )
+    # Carried into the stored state by _skill_to_full_state so the handler
+    # survives reconstruction after reload.
+    skill.markdown_text = text
+    return skill
 
 
 def _load_json_skill_item(url: str, data: dict) -> Skill | None:
@@ -330,6 +386,7 @@ def save_skills_state(db, states: list[dict]) -> dict:
                 "source_url": state.get("source_url", entry.get("source_url", "")),
                 "handler_path": state.get("handler_path", entry.get("handler_path", "")),
                 "module_path": state.get("module_path", entry.get("module_path", "")),
+                "markdown": state.get("markdown", entry.get("markdown", "")),
                 "built_in": False,
                 "enabled": enabled,
             }
@@ -396,6 +453,9 @@ def _skill_to_state(skill: Skill) -> dict:
 def _skill_to_full_state(skill: Skill) -> dict:
     """Serialize a custom Skill including reconstruction metadata."""
     state = _skill_to_state(skill)
+    markdown_text = getattr(skill, "markdown_text", "")
+    if markdown_text:
+        state["markdown"] = markdown_text
     handler = getattr(skill, "handler", None)
     if handler is not None:
         module = getattr(handler, "__module__", "")

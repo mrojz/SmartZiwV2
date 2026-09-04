@@ -1342,6 +1342,8 @@ function AdminPage({ apiFetch, authUser, initialTab = 'users' }) {
     const [mcpSaving, setMcpSaving] = useState(false);
     const [mcpTesting, setMcpTesting] = useState(false);
     const [mcpTestResult, setMcpTestResult] = useState(null);
+    const [builtinMcpKeys, setBuiltinMcpKeys] = useState({});
+    const [builtinMcpSavingId, setBuiltinMcpSavingId] = useState('');
     const [testingLlm, setTestingLlm] = useState(false);
     const [configErrors, setConfigErrors] = useState({});
     const [releaseErrors, setReleaseErrors] = useState({});
@@ -1354,6 +1356,7 @@ function AdminPage({ apiFetch, authUser, initialTab = 'users' }) {
     const [llmProviders, setLlmProviders] = useState([]);
     const [llmProvidersLoading, setLlmProvidersLoading] = useState(false);
     const [llmEnvStatus, setLlmEnvStatus] = useState({ model: '', api_key_set: false });
+    const [llmStatus, setLlmStatus] = useState(null);
     const { setPageHeader, clearPageHeader } = usePageHeader();
     const skillUrlInputRef = useRef(null);
 
@@ -1459,7 +1462,9 @@ function AdminPage({ apiFetch, authUser, initialTab = 'users' }) {
         const res = await apiFetch('/api/admin/smart-ziw-config');
         if (res.ok) {
             const data = await res.json();
-            setSmartZiwConfig((prev) => ({ ...prev, ...data }));
+            const { llm_status, ...rest } = data || {};
+            setSmartZiwConfig((prev) => ({ ...prev, ...rest }));
+            if (llm_status) setLlmStatus(llm_status);
         }
     }, [apiFetch]);
 
@@ -1605,7 +1610,9 @@ function AdminPage({ apiFetch, authUser, initialTab = 'users' }) {
             });
             if (!res.ok) throw new Error('Failed to save');
             const data = await res.json();
-            setSmartZiwConfig((prev) => ({ ...prev, ...data, gitlab_token: prev.gitlab_token, lightllm_api_key: '', forvis_mazars_presence_countries: data.forvis_mazars_presence_countries || prev.forvis_mazars_presence_countries }));
+            const { llm_status, ...rest } = data || {};
+            if (llm_status) setLlmStatus(llm_status);
+            setSmartZiwConfig((prev) => ({ ...prev, ...rest, gitlab_token: prev.gitlab_token, lightllm_api_key: '', forvis_mazars_presence_countries: data.forvis_mazars_presence_countries || prev.forvis_mazars_presence_countries }));
             toast.success('Smart-Ziw config saved.');
         } catch (error) {
             toast.error(`Failed to save Smart-Ziw config: ${error?.message || 'unknown error'}`);
@@ -1624,7 +1631,9 @@ function AdminPage({ apiFetch, authUser, initialTab = 'users' }) {
             });
             if (!res.ok) throw new Error('Failed to save');
             const data = await res.json();
-            setSmartZiwConfig((prev) => ({ ...prev, ...data, gitlab_token: prev.gitlab_token, lightllm_api_key: '', forvis_mazars_presence_countries: data.forvis_mazars_presence_countries || prev.forvis_mazars_presence_countries }));
+            const { llm_status, ...rest } = data || {};
+            if (llm_status) setLlmStatus(llm_status);
+            setSmartZiwConfig((prev) => ({ ...prev, ...rest, gitlab_token: prev.gitlab_token, lightllm_api_key: '', forvis_mazars_presence_countries: data.forvis_mazars_presence_countries || prev.forvis_mazars_presence_countries }));
             toast.success('System prompts saved.');
         } catch (error) {
             toast.error(`Failed to save system prompts: ${error?.message || 'unknown error'}`);
@@ -1909,6 +1918,48 @@ function AdminPage({ apiFetch, authUser, initialTab = 'users' }) {
             toast.success(server.enabled ? 'MCP server disabled' : 'MCP server enabled');
         } catch (error) {
             toast.error(`Failed to update MCP server: ${error?.message || 'unknown error'}`);
+        }
+    };
+
+    const saveBuiltinMcpKey = async (server) => {
+        const key = (builtinMcpKeys[server.id] || '').trim();
+        const headerName = server.api_key_header;
+        if (!headerName) return;
+        if (!key && !server.api_key_configured) {
+            toast.error(`Enter the ${server.name} API key first.`);
+            return;
+        }
+        setBuiltinMcpSavingId(server.id);
+        try {
+            // Redacted "***" values mean "unchanged" server-side; send the header
+            // only when a new key was typed.
+            const headers = {};
+            if (key) headers[headerName] = `${server.api_key_prefix || ''}${key}`;
+            const res = await apiFetch(`/api/admin/smart-ziw-mcp-servers/${encodeURIComponent(server.id)}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    id: server.id,
+                    name: server.name,
+                    transport: server.transport || 'http',
+                    url: server.url || '',
+                    headers,
+                    enabled: server.enabled !== false,
+                    timeout: server.timeout || 30,
+                    tools: server.tools || [],
+                }),
+            });
+            if (!res.ok) {
+                const data = await res.json().catch(() => ({}));
+                throw new Error(data.detail || `Save failed (HTTP ${res.status})`);
+            }
+            setBuiltinMcpKeys((prev) => ({ ...prev, [server.id]: '' }));
+            await loadMcpServers();
+            toast.success(`${server.name} API key saved.`);
+        } catch (error) {
+            toast.error(`Failed to save ${server.name} API key: ${error?.message || 'unknown error'}`);
+        } finally {
+            setBuiltinMcpSavingId('');
         }
     };
 
@@ -2544,7 +2595,7 @@ function AdminPage({ apiFetch, authUser, initialTab = 'users' }) {
                                     id="skill-url"
                                     ref={skillUrlInputRef}
                                     type="url"
-                                    placeholder="https://example.com/skill.json"
+                                    placeholder="https://example.com/skill.py | skill.json | skill.md"
                                     value={skillUrl}
                                     onChange={(e) => { setSkillUrlError(''); setSkillUrl(e.target.value); }}
                                     disabled={fetchingSkill}
@@ -2554,6 +2605,7 @@ function AdminPage({ apiFetch, authUser, initialTab = 'users' }) {
                                     {fetchingSkill ? 'Fetching...' : 'Fetch skill'}
                                 </ShadcnButton>
                             </div>
+                            <p className="text-xs text-muted-foreground">Accepts .py (module with register_skills()), .json (skill definition), and .md (markdown skill) files.</p>
                             {skillUrlError ? <p className="text-xs text-destructive">{skillUrlError}</p> : null}
                         </div>
 
@@ -2682,19 +2734,88 @@ function AdminPage({ apiFetch, authUser, initialTab = 'users' }) {
                         </div>
 
                         <div>
-                            <h4 className="mb-3 text-sm font-semibold text-foreground">Configured servers</h4>
+                            <h4 className="mb-3 text-sm font-semibold text-foreground">Pre-configured servers</h4>
                             {mcpServersLoading ? (
                                 <p className="text-sm text-muted-foreground">Loading MCP servers...</p>
-                            ) : mcpServers.length === 0 ? (
-                                <p className="text-sm text-muted-foreground">No MCP servers configured yet.</p>
                             ) : (
                                 <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                                    {mcpServers.map((server) => (
+                                    {mcpServers.filter((server) => server.builtin).map((server) => (
                                         <Card key={server.id} className="flex flex-col">
                                             <CardHeader className="pb-3">
                                                 <div className="flex items-start justify-between gap-3">
                                                     <CardTitle className="text-base">{server.name}</CardTitle>
-                                                    <Badge variant="outline">SSE</Badge>
+                                                    <div className="flex items-center gap-1.5">
+                                                        <Badge variant="outline">{server.transport === 'http' ? 'HTTP' : 'SSE'}</Badge>
+                                                        <Badge
+                                                            variant="outline"
+                                                            className={server.api_key_configured ? 'gap-1 border-success/25 bg-success/10 text-success' : 'gap-1 border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400'}
+                                                        >
+                                                            <span className="h-1.5 w-1.5 rounded-full bg-current opacity-80" />
+                                                            {server.api_key_configured ? 'Key saved' : 'Key required'}
+                                                        </Badge>
+                                                    </div>
+                                                </div>
+                                                <p className="text-sm text-muted-foreground break-all">{server.url}</p>
+                                            </CardHeader>
+                                            <CardContent className="flex flex-1 flex-col gap-3 pt-0">
+                                                <div className="flex flex-wrap gap-1.5">
+                                                    {(server.tools || []).map((tool) => (
+                                                        <Badge key={tool.name} variant="secondary">{tool.name}</Badge>
+                                                    ))}
+                                                    {(server.tools || []).length === 0 ? (
+                                                        <span className="text-sm text-muted-foreground">Tools are discovered when the API key is saved.</span>
+                                                    ) : null}
+                                                </div>
+                                                <div className="mt-auto flex flex-col gap-2">
+                                                    <Label htmlFor={`mcp-key-${server.id}`} className="text-sm font-medium">
+                                                        API key{server.api_key_configured ? ' (enter to replace)' : ''}
+                                                    </Label>
+                                                    <div className="flex gap-2">
+                                                        <ShadcnInput
+                                                            id={`mcp-key-${server.id}`}
+                                                            type="password"
+                                                            value={builtinMcpKeys[server.id] || ''}
+                                                            onChange={(e) => setBuiltinMcpKeys((prev) => ({ ...prev, [server.id]: e.target.value }))}
+                                                            placeholder={server.api_key_configured ? 'Saved — type to replace' : `Your ${server.name} API key`}
+                                                            className="flex-1"
+                                                        />
+                                                        <ShadcnButton onClick={() => saveBuiltinMcpKey(server)} disabled={builtinMcpSavingId === server.id}>
+                                                            {builtinMcpSavingId === server.id ? 'Saving...' : 'Save key'}
+                                                        </ShadcnButton>
+                                                    </div>
+                                                    <p className="text-xs text-muted-foreground">
+                                                        Sent as the <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">{server.api_key_header}</code> header. Stored hidden.
+                                                    </p>
+                                                </div>
+                                                <div className="flex items-center gap-2">
+                                                    <Switch
+                                                        id={`mcp-enabled-${server.id}`}
+                                                        checked={server.enabled !== false}
+                                                        onCheckedChange={() => toggleMcpServer(server)}
+                                                    />
+                                                    <Label htmlFor={`mcp-enabled-${server.id}`} className="text-sm">{server.enabled !== false ? 'Enabled' : 'Disabled'}</Label>
+                                                </div>
+                                            </CardContent>
+                                        </Card>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+
+                        <div>
+                            <h4 className="mb-3 text-sm font-semibold text-foreground">Custom servers</h4>
+                            {mcpServersLoading ? (
+                                <p className="text-sm text-muted-foreground">Loading MCP servers...</p>
+                            ) : mcpServers.filter((server) => !server.builtin).length === 0 ? (
+                                <p className="text-sm text-muted-foreground">No custom MCP servers configured yet.</p>
+                            ) : (
+                                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                                    {mcpServers.filter((server) => !server.builtin).map((server) => (
+                                        <Card key={server.id} className="flex flex-col">
+                                            <CardHeader className="pb-3">
+                                                <div className="flex items-start justify-between gap-3">
+                                                    <CardTitle className="text-base">{server.name}</CardTitle>
+                                                    <Badge variant="outline">{server.transport === 'http' ? 'HTTP' : 'SSE'}</Badge>
                                                 </div>
                                                 <p className="text-sm text-muted-foreground break-all">{server.url}</p>
                                             </CardHeader>
@@ -2760,6 +2881,31 @@ function AdminPage({ apiFetch, authUser, initialTab = 'users' }) {
                         </div>
                         <p className="text-sm text-muted-foreground">Configure the LLM backend used by the Smart-Ziw agent.</p>
                     </div>
+                    {llmStatus ? (
+                        <div className={`flex flex-wrap items-center justify-between gap-3 rounded-xl border px-4 py-3 ${llmStatus.configured ? 'border-success/25 bg-success/5' : 'border-amber-500/30 bg-amber-500/5'}`}>
+                            <div className="flex items-center gap-3">
+                                <Badge
+                                    variant="outline"
+                                    className={llmStatus.configured ? 'gap-1 border-success/25 bg-success/10 text-success' : 'gap-1 border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400'}
+                                >
+                                    <span className="h-1.5 w-1.5 rounded-full bg-current opacity-80" />
+                                    {llmStatus.configured ? 'Configured' : 'Not configured'}
+                                </Badge>
+                                <div className="flex flex-col">
+                                    <span className="text-sm font-medium text-foreground">{llmStatus.provider_name}</span>
+                                    <span className="text-xs text-muted-foreground">
+                                        Model <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs text-foreground">{llmStatus.model || 'not set'}</code>
+                                        {' '}· resolved from {llmStatus.source === 'environment' ? 'environment (.env)' : 'this configuration'}
+                                    </span>
+                                </div>
+                            </div>
+                            {!llmStatus.configured && llmStatus.missing_fields?.length ? (
+                                <span className="text-xs text-amber-600 dark:text-amber-400">
+                                    Missing: {llmStatus.missing_fields.map((field) => (field === 'api_key' ? 'API key' : 'Base URL')).join(', ')}
+                                </span>
+                            ) : null}
+                        </div>
+                    ) : null}
                     <div className="grid gap-4 sm:grid-cols-2">
                         <div className="flex flex-col gap-1.5 sm:col-span-2">
                             <Label htmlFor="llm-provider" className="text-sm font-medium">Provider</Label>

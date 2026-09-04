@@ -301,7 +301,7 @@ def test_anthropic_provider_routes_to_messages_endpoint(monkeypatch):
 def test_anthropic_json_mode_uses_safe_json_loads(monkeypatch):
     monkeypatch.setattr(
         "smart_ziw_llm.requests.post",
-        lambda url, **kwargs: _http_response(200, {"content": [{"text": '{"ok": 1}'}]}),
+        lambda url, **kwargs: _http_response(200, {"content": [{"type": "text", "text": '{"ok": 1}'}]}),
     )
     recorded = {}
 
@@ -400,7 +400,7 @@ def test_anthropic_uses_configured_temperature_and_max_tokens(monkeypatch):
 
     def fake_post(url, **kwargs):
         captured["body"] = kwargs["json"]
-        return _http_response(200, {"content": [{"text": "ok"}]})
+        return _http_response(200, {"content": [{"type": "text", "text": "ok"}]})
 
     monkeypatch.setattr("smart_ziw_llm.requests.post", fake_post)
     call = getattr(sll, "get_llm_call")(_anthropic_config(llm_temperature=1.0, llm_max_tokens=999), json_mode=False)
@@ -510,10 +510,31 @@ def test_anthropic_preset_routes_to_messages_endpoint(monkeypatch):
         "lightllm_model": "claude-test",
     }, json_mode=False)
     assert call("s", "u") == "ok"
-    assert captured["url"] == "https://api.anthropic.com/messages"
+    assert captured["url"] == "https://api.anthropic.com/v1/messages"
     assert captured["kwargs"]["headers"]["x-api-key"] == "ak"
     assert captured["kwargs"]["json"]["model"] == "claude-test"
     assert _FakeOpenAI.instances == []
+
+
+def test_kimi_coding_preset_posts_to_v1_messages(monkeypatch):
+    captured = {}
+
+    def fake_post(url, **kwargs):
+        captured["url"] = url
+        captured["kwargs"] = kwargs
+        return _http_response(200, {"content": [
+            {"type": "thinking", "thinking": "hmm"},
+            {"type": "text", "text": "ok"},
+        ]})
+
+    monkeypatch.setattr("smart_ziw_llm.requests.post", fake_post)
+    call = getattr(sll, "get_llm_call")({
+        "smart_ziw_llm_provider": "kimi_coding",
+        "lightllm_api_key": "sk-kimi-x",
+    }, json_mode=False)
+    assert call("s", "u") == "ok"
+    assert captured["url"] == "https://api.kimi.com/coding/v1/messages"
+    assert captured["kwargs"]["json"]["model"] == "kimi3"
 
 
 def test_local_preset_uses_default_url_and_keyless_call(monkeypatch):
@@ -614,7 +635,7 @@ def test_discover_models_for_anthropic_preset_uses_requests(monkeypatch):
     monkeypatch.setattr("smart_ziw_llm.requests.get", fake_get)
     result = sll.discover_models_for_preset("anthropic", api_key="ak")
     assert result == {"status": "ok", "models": [{"id": "claude-x", "name": "Claude X"}]}
-    assert captured["url"] == "https://api.anthropic.com/models"
+    assert captured["url"] == "https://api.anthropic.com/v1/models"
 
 
 def test_discover_models_for_preset_falls_back_to_hardcoded(monkeypatch):
@@ -675,7 +696,7 @@ def test_anthropic_preset_tool_call_uses_requests(monkeypatch):
         "lightllm_model": "claude-test",
     })
     tool_call([{"role": "user", "content": "hi"}], None)
-    assert captured["url"] == "https://api.anthropic.com/messages"
+    assert captured["url"] == "https://api.anthropic.com/v1/messages"
     assert captured["json"]["model"] == "claude-test"
 
 

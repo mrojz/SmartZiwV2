@@ -2004,11 +2004,54 @@ def trigger_project_smart_ziw(project_db_id: str, body: SmartZiwTriggerRequest, 
 def admin_get_smart_ziw_config(request: Request):
     _require_admin(request)
     config = get_smart_ziw_config()
+    llm_status = _compute_llm_status(config)
     config["gitlab_token"] = ""
     config["github_token"] = ""
     config["lightllm_api_key"] = ""
     config["lightllm_subscription_key"] = ""
+    config["llm_status"] = llm_status
     return config
+
+
+def _compute_llm_status(config: dict) -> dict:
+    """Derived status of the effective LLM provider: which model is in use and
+    whether the effective API key / base URL resolve (config value wins; the
+    DeepSeek environment path falls back to .env vars). Mirrors the provider
+    resolution in smart_ziw_llm.get_llm_call. Secrets are never exposed —
+    only presence."""
+    presets = {p["id"]: p for p in get_llm_provider_presets()}
+    provider = str(config.get("smart_ziw_llm_provider") or "auto")
+    if provider not in presets:
+        provider = "auto"
+    preset = presets[provider]
+
+    base_url = str(config.get("lightllm_base_url") or "").strip()
+    if provider == "deepseek" or (provider == "auto" and not base_url):
+        api_key_set = bool(os.environ.get("DEEPSEEK_API_KEY"))
+        return {
+            "provider": provider,
+            "provider_name": preset["name"],
+            "model": os.environ.get("DEEPSEEK_MODEL") or os.environ.get("DEEPSEEK_WEB_MODEL") or "deepseek-chat",
+            "configured": api_key_set,
+            "missing_fields": [] if api_key_set else ["api_key"],
+            "source": "environment",
+        }
+
+    missing: list[str] = []
+    effective_base_url = base_url or str(preset.get("base_url") or "").strip()
+    if provider in ("lightllm", "custom") and not effective_base_url:
+        missing.append("base_url")
+    if preset.get("requires_api_key") and not str(config.get("lightllm_api_key") or "").strip():
+        missing.append("api_key")
+    model = str(config.get("lightllm_model") or "").strip() or str(preset.get("default_model") or "default")
+    return {
+        "provider": provider,
+        "provider_name": preset["name"],
+        "model": model,
+        "configured": not missing,
+        "missing_fields": missing,
+        "source": "config",
+    }
 
 
 @app.put("/api/admin/smart-ziw-config")
@@ -2025,10 +2068,12 @@ def admin_update_smart_ziw_config(body: SmartZiwConfigUpdate, request: Request):
     if not data.get("forvis_mazars_presence_countries"):
         data["forvis_mazars_presence_countries"] = existing.get("forvis_mazars_presence_countries", [])
     saved = save_smart_ziw_config(data)
+    llm_status = _compute_llm_status(saved)
     saved["gitlab_token"] = ""
     saved["github_token"] = ""
     saved["lightllm_api_key"] = ""
     saved["lightllm_subscription_key"] = ""
+    saved["llm_status"] = llm_status
     return saved
 
 
@@ -2273,7 +2318,7 @@ def _normalize_mcp_server(body: dict, existing: dict | None = None) -> dict:
     transport = str(_field("transport") or existing.get("transport") or "sse")
     if transport not in ("sse", "http"):
         raise HTTPException(status_code=400, detail="Only SSE/HTTP MCP servers are supported")
-    return {
+    server = {
         "id": server_id,
         "name": _field("name") or existing.get("name") or server_id,
         "transport": transport,
@@ -2283,6 +2328,12 @@ def _normalize_mcp_server(body: dict, existing: dict | None = None) -> dict:
         "timeout": int(_field("timeout") or existing.get("timeout") or 30),
         "tools": list(_field("tools", [])),
     }
+    # Built-in presets are pre-configured: url/transport are not user-editable.
+    builtin = next((p for p in smart_ziw_mcp.BUILTIN_MCP_SERVERS if p["id"] == server_id), None)
+    if builtin:
+        server["url"] = builtin["url"]
+        server["transport"] = builtin["transport"]
+    return server
 
 
 @app.get("/api/admin/smart-ziw-mcp-servers")
@@ -2352,6 +2403,8 @@ def admin_update_mcp_server(server_id: str, body: McpServerConfig, request: Requ
 @app.delete("/api/admin/smart-ziw-mcp-servers/{server_id}")
 def admin_delete_mcp_server(server_id: str, request: Request):
     _require_admin(request)
+    if any(p["id"] == server_id for p in smart_ziw_mcp.BUILTIN_MCP_SERVERS):
+        raise HTTPException(status_code=400, detail="Built-in MCP servers cannot be deleted")
     db = get_db()
     servers = smart_ziw_mcp.load_mcp_servers()
     new_servers = [s for s in servers if s.get("id") != server_id]

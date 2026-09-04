@@ -46,7 +46,7 @@ export default function TenderSheetPanel({
     if (!project) return null;
 
     return (
-        <div className="border-b p-4 space-y-4">
+        <div className="shrink-0 border-b p-4 space-y-4">
             <div className="flex items-center justify-between gap-2">
                 <div className="flex items-baseline gap-2">
                     <h3 className="text-sm font-semibold">Discussion</h3>

@@ -94,15 +94,41 @@ def test_load_and_save_mcp_servers(monkeypatch):
     fake_db = _FakeDB()
     monkeypatch.setattr("database.get_db", lambda: fake_db)
 
-    assert smart_ziw_mcp.load_mcp_servers() == []
+    servers = smart_ziw_mcp.load_mcp_servers()
+    assert [s["id"] for s in servers] == ["brave-search", "firecrawl"]
+    assert all(s["builtin"] for s in servers)
+    assert not any(s["api_key_configured"] for s in servers)
 
     smart_ziw_mcp.save_mcp_servers(fake_db, [{"id": "s1", "name": "Server 1"}])
-    assert smart_ziw_mcp.load_mcp_servers() == [{"id": "s1", "name": "Server 1"}]
-
-    smart_ziw_mcp.save_mcp_servers(fake_db, [{"id": "s1", "name": "Server 1"}, {"id": "s2", "name": "Server 2"}])
     servers = smart_ziw_mcp.load_mcp_servers()
-    assert len(servers) == 2
-    assert servers[1]["id"] == "s2"
+    assert [s["id"] for s in servers] == ["brave-search", "firecrawl", "s1"]
+    assert not servers[2].get("builtin")
+
+    # Stored API keys merge into the built-in presets.
+    smart_ziw_mcp.save_mcp_servers(fake_db, [
+        {"id": "s1", "name": "Server 1"},
+        {"id": "brave-search", "headers": {"X-Subscription-Token": "BSA-key"}, "tools": [{"name": "t", "description": "", "inputSchema": {}}]},
+    ])
+    servers = smart_ziw_mcp.load_mcp_servers()
+    brave = next(s for s in servers if s["id"] == "brave-search")
+    assert brave["headers"] == {"X-Subscription-Token": "BSA-key"}
+    assert brave["api_key_configured"] is True
+    assert brave["url"] == "https://api.search.brave.com/mcp"
+    assert brave["transport"] == "http"
+    assert brave["tools"][0]["name"] == "t"
+    firecrawl = next(s for s in servers if s["id"] == "firecrawl")
+    assert firecrawl["headers"] == {}
+    assert firecrawl["api_key_configured"] is False
+
+
+def test_builtin_servers_use_expected_headers():
+    presets = {p["id"]: p for p in smart_ziw_mcp.BUILTIN_MCP_SERVERS}
+    assert presets["brave-search"]["url"] == "https://api.search.brave.com/mcp"
+    assert presets["brave-search"]["api_key_header"] == "X-Subscription-Token"
+    assert presets["brave-search"]["api_key_prefix"] == ""
+    assert presets["firecrawl"]["url"] == "https://mcp.firecrawl.dev/v2/mcp"
+    assert presets["firecrawl"]["api_key_header"] == "Authorization"
+    assert presets["firecrawl"]["api_key_prefix"] == "Bearer "
 
 
 def test_test_mcp_server_reports_unsupported_transport():
@@ -161,7 +187,12 @@ def test_admin_list_mcp_servers_redacts_headers(monkeypatch):
     r = client.get("/api/admin/smart-ziw-mcp-servers")
     assert r.status_code == 200
     data = r.json()
-    assert data[0]["headers"] == {"Authorization": "***"}
+    s1 = next(s for s in data if s["id"] == "s1")
+    assert s1["headers"] == {"Authorization": "***"}
+    # Header values on built-ins are redacted too, presence preserved.
+    brave = next(s for s in data if s["id"] == "brave-search")
+    assert brave["builtin"] is True
+    assert brave["headers"] == {}
 
 
 def test_admin_create_mcp_server_rejects_stdio(monkeypatch):
@@ -202,13 +233,12 @@ def test_admin_create_mcp_server_tests_and_caches_tools(monkeypatch):
     })
     assert r.status_code == 200
     data = r.json()
-    assert len(data) == 1
-    assert data[0]["id"] == "test-server"
-    assert data[0]["tools"][0]["name"] == "hello"
-    assert data[0]["headers"] == {"Authorization": "***"}
+    created = next(s for s in data if s["id"] == "test-server")
+    assert created["tools"][0]["name"] == "hello"
+    assert created["headers"] == {"Authorization": "***"}
 
     # persisted unredacted
-    raw = fake_db.config._doc["servers"][0]
+    raw = next(s for s in fake_db.config._doc["servers"] if s["id"] == "test-server")
     assert raw["headers"] == {"Authorization": "Bearer value"}
     assert raw["tools"][0]["name"] == "hello"
 
@@ -255,7 +285,7 @@ def test_admin_update_preserves_redacted_headers(monkeypatch):
         "headers": {"Authorization": "***"},
     })
     assert r.status_code == 200
-    raw = fake_db.config._doc["servers"][0]
+    raw = next(s for s in fake_db.config._doc["servers"] if s["id"] == "s1")
     assert raw["name"] == "S1 updated"
     assert raw["headers"] == {"Authorization": "Bearer keep-me"}
 
@@ -289,7 +319,46 @@ def test_admin_delete_mcp_server(monkeypatch):
     client = TestClient(app)
     r = client.delete("/api/admin/smart-ziw-mcp-servers/s1")
     assert r.status_code == 200
-    assert [s["id"] for s in r.json()] == ["s2"]
+    assert [s["id"] for s in r.json()] == ["brave-search", "firecrawl", "s2"]
+
+
+def test_admin_delete_builtin_mcp_server_rejected(monkeypatch):
+    fake_db = _FakeDB()
+    app = _client_with_admin(monkeypatch, fake_db)
+    from fastapi.testclient import TestClient
+    client = TestClient(app)
+    r = client.delete("/api/admin/smart-ziw-mcp-servers/brave-search")
+    assert r.status_code == 400
+    assert "Built-in" in r.json()["detail"]
+
+
+def test_admin_update_builtin_server_only_stores_api_key(monkeypatch):
+    fake_db = _FakeDB()
+    fake_db.config._doc = {
+        "_type": "smart_ziw_mcp_servers",
+        "servers": [{"id": "brave-search", "headers": {"X-Subscription-Token": "BSA-old"}, "tools": [{"name": "t", "description": "", "inputSchema": {}}]}],
+    }
+    app = _client_with_admin(monkeypatch, fake_db)
+    from fastapi.testclient import TestClient
+    client = TestClient(app)
+    r = client.put("/api/admin/smart-ziw-mcp-servers/brave-search", json={
+        "id": "brave-search",
+        "name": "Brave Search",
+        "transport": "http",
+        "url": "https://attacker.example.com/mcp",
+        "headers": {"X-Subscription-Token": "BSA-new"},
+        "enabled": True,
+        "tools": [{"name": "t", "description": "", "inputSchema": {}}],
+    })
+    assert r.status_code == 200
+    raw = fake_db.config._doc["servers"][0]
+    # url/transport snap back to the preset; only the key is user-editable.
+    assert raw["url"] == "https://api.search.brave.com/mcp"
+    assert raw["transport"] == "http"
+    assert raw["headers"] == {"X-Subscription-Token": "BSA-new"}
+    returned = next(s for s in r.json() if s["id"] == "brave-search")
+    assert returned["headers"] == {"X-Subscription-Token": "***"}
+    assert returned["api_key_configured"] is True
 
 
 def test_admin_test_mcp_server_endpoint(monkeypatch):

@@ -10,6 +10,7 @@ untrusted data, never instructions.
 
 from __future__ import annotations
 
+import hashlib
 import ipaddress
 import json
 import re
@@ -339,6 +340,14 @@ def _is_under(path: Path, root: Path) -> bool:
         return False
 
 
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with open(path, "rb") as handle:
+        for chunk in iter(lambda: handle.read(1 << 20), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
 class DocumentStore:
     """Downloads tender documents into files/original/, recursively
     extracts archives into files/extracted/, and keeps notes in memory.
@@ -359,6 +368,14 @@ class DocumentStore:
         self.extractions: list[dict] = []
         self.archives: list[dict] = []
         self.notes: str = ""
+        # Hash index of files already on disk so re-downloading identical
+        # content (e.g. a second agent run with a different title slug)
+        # reuses the existing file instead of creating a duplicate.
+        self._hash_index: dict[str, Path] = {}
+        for directory in (self.documents_dir, self.extracted_dir):
+            for existing in sorted(directory.rglob("*")):
+                if existing.is_file():
+                    self._hash_index[_sha256_file(existing)] = existing
 
     def _browser_fetch(self, url: str, target_path: Path) -> tuple[Path | None, str | None]:
         """Fallback that registers with a disposable email when the document is behind a login wall."""
@@ -423,7 +440,13 @@ class DocumentStore:
                         handle.write(chunk)
                         if handle.tell() > self.max_bytes:
                             return None, "file exceeds size cap"
+            digest = _sha256_file(tmp)
+            duplicate = self._hash_index.get(digest)
+            if duplicate is not None and _is_under(duplicate, self.documents_dir) and duplicate.exists():
+                tmp.unlink()
+                return duplicate, None
             tmp.replace(target)
+            self._hash_index[digest] = target
             self.downloads.append({"url": url, "name": target.name, "path": target})
             return target, None
         except requests.RequestException as exc:
@@ -535,15 +558,13 @@ class DocumentStore:
         target = self._extraction_target(doc_path)
         target.parent.mkdir(parents=True, exist_ok=True)
         text = self.extract(doc_path)
-        if text.strip():
-            target.write_text(text, encoding="utf-8")
-            self.extractions.append({"source": doc_path.name, "target": target, "ok": True})
-            return target, True
-        target.write_text(
-            f"# {doc_path.name}\n\n> Extraction failed: no text could be extracted.\n", encoding="utf-8"
-        )
-        self.extractions.append({"source": doc_path.name, "target": target, "ok": False})
-        return target, False
+        ok = bool(text.strip())
+        payload = text if ok else f"# {doc_path.name}\n\n> Extraction failed: no text could be extracted.\n"
+        if target.exists() and target.read_text(encoding="utf-8", errors="replace") == payload:
+            return target, ok
+        target.write_text(payload, encoding="utf-8")
+        self.extractions.append({"source": doc_path.name, "target": target, "ok": ok})
+        return target, ok
 
     def write_notes(self, project: dict | None = None) -> None:
         """Build an in-memory notes summary of captured documents."""

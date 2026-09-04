@@ -13,6 +13,7 @@ from typing import Any
 
 from mcp import ClientSession
 from mcp.client.sse import sse_client
+from mcp.client.streamable_http import streamablehttp_client
 
 from smart_ziw_skills.base import Skill
 
@@ -21,15 +22,71 @@ _MCP_SERVERS_DOC = {"_type": "smart_ziw_mcp_servers"}
 # Only remote transports are supported (no local processes in the container).
 SUPPORTED_TRANSPORTS = ("sse", "http")
 
+# Built-in hosted MCP servers. Endpoints/headers verified 2026-09:
+# - Brave Search MCP: hosted at https://api.search.brave.com/mcp (streamable
+#   HTTP); auth via the Brave Search API subscription token header
+#   (mcp.brave.com does not resolve — Brave hosts the MCP on their API domain).
+# - Firecrawl MCP: hosted at https://mcp.firecrawl.dev/v2/mcp (streamable
+#   HTTP); auth via `Authorization: Bearer <FIRECRAWL_API_KEY>`.
+# This tuple is the single place to correct preset url/header facts.
+BUILTIN_MCP_SERVERS: tuple[dict, ...] = (
+    {
+        "id": "brave-search",
+        "name": "Brave Search",
+        "transport": "http",
+        "url": "https://api.search.brave.com/mcp",
+        "api_key_header": "X-Subscription-Token",
+        "api_key_prefix": "",
+    },
+    {
+        "id": "firecrawl",
+        "name": "Firecrawl",
+        "transport": "http",
+        "url": "https://mcp.firecrawl.dev/v2/mcp",
+        "api_key_header": "Authorization",
+        "api_key_prefix": "Bearer ",
+    },
+)
+
+_BUILTIN_MCP_IDS = {p["id"] for p in BUILTIN_MCP_SERVERS}
+
 
 def load_mcp_servers() -> list[dict]:
-    """Load the list of configured MCP servers from the config document."""
+    """Load the configured MCP servers, with built-in presets always present.
+
+    Built-ins are merged on top of the stored doc: their ``url``/``transport``
+    come from the preset (not user-editable) while ``enabled``, ``timeout``,
+    ``tools`` and the API-key header persist in the stored entry.
+    """
     from database import get_db
 
     db = get_db()
     doc = db.config.find_one(_MCP_SERVERS_DOC) or {}
-    servers = doc.get("servers") or []
-    return [s for s in servers if isinstance(s, dict)]
+    stored = [s for s in (doc.get("servers") or []) if isinstance(s, dict)]
+
+    servers: list[dict] = []
+    for preset in BUILTIN_MCP_SERVERS:
+        entry = next((s for s in stored if s.get("id") == preset["id"]), {})
+        stored_headers = entry.get("headers") or {}
+        key_header = preset["api_key_header"]
+        key_value = str(stored_headers.get(key_header) or "").strip()
+        servers.append({
+            "id": preset["id"],
+            "name": preset["name"],
+            "transport": preset["transport"],
+            "url": preset["url"],
+            "headers": {key_header: key_value} if key_value else {},
+            "enabled": entry.get("enabled", True) is not False,
+            "timeout": int(entry.get("timeout") or 30),
+            "tools": list(entry.get("tools") or []),
+            "builtin": True,
+            "api_key_header": key_header,
+            "api_key_prefix": preset["api_key_prefix"],
+            "api_key_configured": bool(key_value),
+        })
+
+    servers.extend(s for s in stored if s.get("id") not in _BUILTIN_MCP_IDS)
+    return servers
 
 
 def save_mcp_servers(db, servers: list[dict]) -> None:
@@ -71,8 +128,23 @@ def _serialize_tools(tools: list[Any]) -> list[dict]:
     return out
 
 
+def _leaf_error(exc: Exception) -> str:
+    """Best-effort single-line message, unwrapping ExceptionGroup noise."""
+    seen = exc
+    while isinstance(seen, ExceptionGroup) and seen.exceptions:
+        seen = seen.exceptions[0]
+    return str(seen)[:300]
+
+
+def _client_for(transport: str, url: str, timeout: int, headers: dict | None):
+    """Pick the MCP client matching the transport (legacy SSE vs streamable HTTP)."""
+    if transport == "http":
+        return streamablehttp_client(url, headers=headers, timeout=timeout)
+    return sse_client(url, timeout=timeout, headers=headers)
+
+
 async def test_mcp_server(config: dict) -> dict:
-    """Connect to an SSE MCP server, initialize a session, and discover tools.
+    """Connect to an SSE/streamable-HTTP MCP server, initialize a session, and discover tools.
 
     Returns a dict with ``status`` ("ok" or "error"), ``tools``, and ``detail``.
     """
@@ -84,15 +156,15 @@ async def test_mcp_server(config: dict) -> dict:
             return {
                 "status": "error",
                 "tools": [],
-                "detail": f"Unsupported transport {transport!r}; expected 'sse'",
+                "detail": f"Unsupported transport {transport!r}; expected one of {SUPPORTED_TRANSPORTS}",
             }
         url = config.get("url") or ""
-        client_cm = sse_client(url, timeout=timeout, headers=_server_headers(config))
+        client_cm = _client_for(transport, url, timeout, _server_headers(config))
 
         tools: list[dict] = []
         async with asyncio.timeout(timeout):
-            async with client_cm as (read_stream, write_stream):
-                async with ClientSession(read_stream, write_stream) as session:
+            async with client_cm as streams:
+                async with ClientSession(streams[0], streams[1]) as session:
                     await session.initialize()
                     result = await session.list_tools()
                     tools = _serialize_tools(result.tools)
@@ -103,7 +175,7 @@ async def test_mcp_server(config: dict) -> dict:
             "detail": f"Discovered {len(tools)} tool(s)",
         }
     except Exception as exc:  # noqa: BLE001
-        return {"status": "error", "tools": [], "detail": str(exc)}
+        return {"status": "error", "tools": [], "detail": _leaf_error(exc)}
 
 
 def _make_mcp_handler(server_id: str, tool_name: str, parameters: dict) -> Any:
@@ -197,11 +269,11 @@ async def _call_tool_async(server_id: str, tool_name: str, arguments: dict) -> d
 
     if transport not in SUPPORTED_TRANSPORTS:
         raise ValueError(f"Unsupported transport {transport!r} for server {server_id!r}")
-    client_cm = sse_client(server.get("url") or "", timeout=timeout, headers=_server_headers(server))
+    client_cm = _client_for(transport, server.get("url") or "", timeout, _server_headers(server))
 
     async with asyncio.timeout(timeout):
-        async with client_cm as (read_stream, write_stream):
-            async with ClientSession(read_stream, write_stream) as session:
+        async with client_cm as streams:
+            async with ClientSession(streams[0], streams[1]) as session:
                 await session.initialize()
                 result = await session.call_tool(tool_name, arguments)
                 return _serialize_call_tool_result(result)
@@ -224,4 +296,4 @@ def call_tool_sync(server_id: str, tool_name: str, arguments: dict) -> dict:
     try:
         return _run_sync(_call_tool_async(server_id, tool_name, arguments))
     except Exception as exc:  # noqa: BLE001
-        return {"error": str(exc)}
+        return {"error": _leaf_error(exc)}

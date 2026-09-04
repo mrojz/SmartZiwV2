@@ -86,7 +86,8 @@ export default function TenderDetailPage({ dbId, apiFetch, authUser, availableUs
             const res = await apiFetch(`${API}/comments?entityType=project&entityId=${encodeURIComponent(entity?.id || dbId)}&mine=false`);
             if (!res.ok) throw new Error(`Failed to load comments (${res.status})`);
             const data = await res.json();
-            setComments(Array.isArray(data?.comments) ? data.comments : []);
+            // GET /api/comments returns a bare array; tolerate a wrapped payload too.
+            setComments(Array.isArray(data) ? data : (Array.isArray(data?.comments) ? data.comments : []));
         } catch (err) {
             setComments([]);
         } finally {
@@ -314,7 +315,7 @@ export default function TenderDetailPage({ dbId, apiFetch, authUser, availableUs
                 currentUser={authUser}
                 availableUsers={availableUsers}
                 apiFetch={apiFetch}
-                className="bg-background"
+                className="sticky bottom-0 z-10 bg-background"
             />
         </div>
     );

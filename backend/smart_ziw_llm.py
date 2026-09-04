@@ -112,10 +112,18 @@ _LLMM_PROVIDER_PRESETS: tuple[LlmProviderPreset, ...] = (
     ),
     LlmProviderPreset(
         id="kimi",
-        name="Kimi",
+        name="Kimi (Moonshot platform)",
         base_url="https://api.moonshot.ai/v1",
         format="openai",
         default_model="kimi-k3",
+        requires_api_key=True,
+    ),
+    LlmProviderPreset(
+        id="kimi_coding",
+        name="Kimi for Coding (Claude Code endpoint)",
+        base_url="https://api.kimi.com/coding",
+        format="anthropic",
+        default_model="kimi3",
         requires_api_key=True,
     ),
     LlmProviderPreset(
@@ -270,6 +278,18 @@ def _lightllm_call(
     return call
 
 
+def _anthropic_api_url(base_url: str, path: str) -> str:
+    """Build an Anthropic Messages API URL, ensuring the /v1 prefix.
+
+    Mirrors the Anthropic SDK convention ({base}/v1/messages) so endpoints
+    documented without the suffix (e.g. https://api.kimi.com/coding) work.
+    """
+    base = base_url.rstrip("/")
+    if not base.endswith("/v1"):
+        base += "/v1"
+    return f"{base}{path}"
+
+
 def _anthropic_call(
     base_url: str,
     api_key: str,
@@ -290,7 +310,7 @@ def _anthropic_call(
         if subscription_key:
             headers["X-Subscription-Key"] = subscription_key
         resp = requests.post(
-            f"{base_url.rstrip('/')}/messages",
+            _anthropic_api_url(base_url, "/messages"),
             headers=headers,
             json={
                 "model": model,
@@ -304,7 +324,10 @@ def _anthropic_call(
         if not (200 <= resp.status_code < 300):
             raise RuntimeError(f"Anthropic-compatible LLM request failed with HTTP {resp.status_code}")
         data = resp.json()
-        content = (data.get("content") or [{}])[0].get("text") or ""
+        content = ""
+        for block in data.get("content") or []:
+            if isinstance(block, dict) and block.get("type") == "text":
+                content += block.get("text") or ""
         if not json_mode:
             return content
         from smart_ziw_agent import _safe_json_loads
@@ -534,7 +557,7 @@ def get_llm_tool_call(config: dict | None = None) -> Callable[[list[dict], list[
         if tools:
             payload["tools"] = tools
         resp = requests.post(
-            f"{base_url.rstrip('/')}/messages",
+            _anthropic_api_url(base_url, "/messages"),
             headers=headers,
             json=payload,
             timeout=120.0,
@@ -617,7 +640,7 @@ def _discover_anthropic_models(base_url: str, api_key: str = "", subscription_ke
     if resolved_subscription_key:
         headers["X-Subscription-Key"] = resolved_subscription_key
     try:
-        resp = requests.get(f"{base_url.rstrip('/')}/models", headers=headers, timeout=_LIGHTLLM_DISCOVERY_TIMEOUT)
+        resp = requests.get(_anthropic_api_url(base_url, "/models"), headers=headers, timeout=_LIGHTLLM_DISCOVERY_TIMEOUT)
         if resp.status_code in (401, 403):
             return {"status": "auth_required", "models": []}
         if resp.status_code == 404:

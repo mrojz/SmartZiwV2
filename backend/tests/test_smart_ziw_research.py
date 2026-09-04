@@ -325,6 +325,86 @@ def test_download_rejects_unsafe_url(monkeypatch, tmp_path):
     assert error == "blocked (unsafe URL)"
 
 
+def test_download_dedupes_identical_content_across_titles(monkeypatch, tmp_path):
+    monkeypatch.setattr("smart_ziw_research.socket.getaddrinfo", _public_dns)
+    monkeypatch.setattr("smart_ziw_research.requests.get", lambda *a, **k: _fake_get())
+    store = DocumentStore(tmp_path)
+    first, error = store.download("https://example.com/dce.pdf", title="Tender document")
+    assert error is None
+    # Second run hits the same bytes under a different slug -> must reuse.
+    second, error = store.download("https://example.com/dce.pdf", title="Official notice DCE")
+    assert error is None
+    assert second == first
+    originals = sorted((tmp_path / "files" / "original").iterdir())
+    assert len(originals) == 1
+    listed = store.list_files()
+    assert listed == ["files/original/Tender-document.pdf"]
+    assert len(store.downloads) == 1
+
+
+def test_download_dedupes_against_files_from_previous_run(monkeypatch, tmp_path):
+    monkeypatch.setattr("smart_ziw_research.socket.getaddrinfo", _public_dns)
+    monkeypatch.setattr("smart_ziw_research.requests.get", lambda *a, **k: _fake_get())
+    first_store = DocumentStore(tmp_path)
+    first, error = first_store.download("https://example.com/dce.pdf", title="Tender document")
+    assert error is None
+
+    second_store = DocumentStore(tmp_path)  # fresh store = second agent run
+    second, error = second_store.download("https://example.com/dce.pdf", title="Buyer notice")
+    assert error is None
+    assert second == first
+    assert sorted(p.name for p in (tmp_path / "files" / "original").iterdir()) == ["Tender-document.pdf"]
+    assert second_store.list_files() == ["files/original/Tender-document.pdf"]
+
+
+def test_download_same_title_second_run_skips_network(monkeypatch, tmp_path):
+    # Realistic second run: same phase-1 title slug -> early return, no fetch.
+    monkeypatch.setattr("smart_ziw_research.socket.getaddrinfo", _public_dns)
+    monkeypatch.setattr("smart_ziw_research.requests.get", lambda *a, **k: _fake_get())
+    DocumentStore(tmp_path).download("https://example.com/dce.pdf", title="Tender document")
+
+    def _explode(*args, **kwargs):
+        raise AssertionError("network should not be used")
+
+    monkeypatch.setattr("smart_ziw_research.requests.get", _explode)
+    store = DocumentStore(tmp_path)
+    path, error = store.download("https://example.com/dce.pdf", title="Tender document")
+    assert error is None
+    assert path.name == "Tender-document.pdf"
+    assert store.list_files() == ["files/original/Tender-document.pdf"]
+
+
+def test_download_keeps_distinct_content_under_unique_names(monkeypatch, tmp_path):
+    monkeypatch.setattr("smart_ziw_research.socket.getaddrinfo", _public_dns)
+    payloads = iter([b"%PDF-1.4 first", b"%PDF-1.4 second version"])
+    monkeypatch.setattr(
+        "smart_ziw_research.requests.get", lambda *a, **k: _fake_get(content=next(payloads))
+    )
+    store = DocumentStore(tmp_path)
+    first, error = store.download("https://example.com/dce.pdf", title="Tender document")
+    assert error is None
+    second, error = store.download("https://example.com/dce.pdf", title="Buyer notice")
+    assert error is None
+    assert second != first
+    assert first.read_bytes() == b"%PDF-1.4 first"
+    assert second.read_bytes() == b"%PDF-1.4 second version"
+    assert sorted(store.list_files()) == [
+        "files/original/Buyer-notice.pdf",
+        "files/original/Tender-document.pdf",
+    ]
+
+
+def test_save_extraction_dedupes_identical_content(monkeypatch, tmp_path):
+    store = DocumentStore(tmp_path)
+    monkeypatch.setattr(DocumentStore, "extract", lambda self, path: "extracted text")
+    doc = store.documents_dir / "dce.pdf"
+    doc.write_bytes(b"x")
+    path1, ok1 = store.save_extraction(doc)
+    path2, ok2 = store.save_extraction(doc)
+    assert (path1, ok1) == (path2, ok2) == (store.extracted_dir / "dce.md", True)
+    assert store.list_files().count("files/extracted/dce.md") == 1
+
+
 def test_download_caps_file_size(monkeypatch, tmp_path):
     monkeypatch.setattr("smart_ziw_research.socket.getaddrinfo", _public_dns)
     monkeypatch.setattr("smart_ziw_research.requests.get", lambda *a, **k: _fake_get(content=b"x" * 100))
