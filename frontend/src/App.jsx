@@ -1959,9 +1959,17 @@ function AdminPage({ apiFetch, authUser, initialTab = 'users', projects = [] }) 
                 const data = await res.json().catch(() => ({}));
                 throw new Error(data.detail || `Save failed (HTTP ${res.status})`);
             }
+            const data = await res.json().catch(() => ({}));
             setBuiltinMcpKeys((prev) => ({ ...prev, [server.id]: '' }));
             await loadMcpServers();
-            toast.success(`${server.name} API key saved.`);
+            if (data.test && data.test.status === 'error') {
+                const extra = server.id === 'brave-search'
+                    ? ' The built-in web search tool will still use this key.'
+                    : '';
+                toast.warning(`${server.name} API key saved, but the connection test failed: ${data.test.detail || 'unknown error'}.${extra}`);
+            } else {
+                toast.success(`${server.name} API key saved.`);
+            }
         } catch (error) {
             toast.error(`Failed to save ${server.name} API key: ${error?.message || 'unknown error'}`);
         } finally {

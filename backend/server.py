@@ -2426,6 +2426,23 @@ def _normalize_mcp_server(body: dict, existing: dict | None = None) -> dict:
     return server
 
 
+def _discover_mcp_tools(server: dict) -> dict:
+    """Populate server["tools"] via a live connection test.
+
+    Never blocks saving: a failed test is reported in the returned dict so
+    the UI can warn while keeping the stored config — an API key can be
+    valid and useful to the built-in tools even when the hosted MCP endpoint
+    is temporarily unreachable (or blocked at the network level).
+    """
+    if server.get("tools"):
+        return {"status": "skipped", "detail": None}
+    result = asyncio.run(smart_ziw_mcp.test_mcp_server(server))
+    if result.get("status") == "ok":
+        server["tools"] = result.get("tools") or []
+        return {"status": "ok", "detail": result.get("detail")}
+    return {"status": "error", "detail": result.get("detail") or "Connection test failed"}
+
+
 @app.get("/api/admin/smart-ziw-mcp-servers")
 def admin_list_mcp_servers(request: Request):
     _require_admin(request)
@@ -2454,15 +2471,15 @@ def admin_create_mcp_server(body: McpServerConfig, request: Request):
         raise HTTPException(status_code=409, detail="MCP server id already exists")
 
     server = _normalize_mcp_server(data)
-    if not server.get("tools"):
-        result = asyncio.run(smart_ziw_mcp.test_mcp_server(server))
-        if result.get("status") != "ok":
-            raise HTTPException(status_code=400, detail=result.get("detail") or "Test failed")
-        server["tools"] = result.get("tools") or []
-
-    servers.append(server)
-    smart_ziw_mcp.save_mcp_servers(db, servers)
-    return [_redact_mcp_headers(s) for s in smart_ziw_mcp.load_mcp_servers()]
+    try:
+        test = _discover_mcp_tools(server)
+        servers.append(server)
+        smart_ziw_mcp.save_mcp_servers(db, servers)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Save failed: {exc}")
+    return {"servers": [_redact_mcp_headers(s) for s in smart_ziw_mcp.load_mcp_servers()], "test": test}
 
 
 @app.put("/api/admin/smart-ziw-mcp-servers/{server_id}")
@@ -2479,15 +2496,15 @@ def admin_update_mcp_server(server_id: str, body: McpServerConfig, request: Requ
     existing = servers[index]
     server = _normalize_mcp_server(data, existing)
 
-    if not server.get("tools"):
-        result = asyncio.run(smart_ziw_mcp.test_mcp_server(server))
-        if result.get("status") != "ok":
-            raise HTTPException(status_code=400, detail=result.get("detail") or "Test failed")
-        server["tools"] = result.get("tools") or []
-
-    servers[index] = server
-    smart_ziw_mcp.save_mcp_servers(db, servers)
-    return [_redact_mcp_headers(s) for s in smart_ziw_mcp.load_mcp_servers()]
+    try:
+        test = _discover_mcp_tools(server)
+        servers[index] = server
+        smart_ziw_mcp.save_mcp_servers(db, servers)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Save failed: {exc}")
+    return {"servers": [_redact_mcp_headers(s) for s in smart_ziw_mcp.load_mcp_servers()], "test": test}
 
 
 @app.delete("/api/admin/smart-ziw-mcp-servers/{server_id}")

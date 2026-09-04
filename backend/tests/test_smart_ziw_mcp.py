@@ -233,9 +233,10 @@ def test_admin_create_mcp_server_tests_and_caches_tools(monkeypatch):
     })
     assert r.status_code == 200
     data = r.json()
-    created = next(s for s in data if s["id"] == "test-server")
+    created = next(s for s in data["servers"] if s["id"] == "test-server")
     assert created["tools"][0]["name"] == "hello"
     assert created["headers"] == {"Authorization": "***"}
+    assert data["test"]["status"] == "ok"
 
     # persisted unredacted
     raw = next(s for s in fake_db.config._doc["servers"] if s["id"] == "test-server")
@@ -243,7 +244,7 @@ def test_admin_create_mcp_server_tests_and_caches_tools(monkeypatch):
     assert raw["tools"][0]["name"] == "hello"
 
 
-def test_admin_create_mcp_server_fails_when_test_fails(monkeypatch):
+def test_admin_create_mcp_server_saves_and_reports_test_failure(monkeypatch):
     fake_db = _FakeDB()
     app = _client_with_admin(monkeypatch, fake_db)
 
@@ -259,8 +260,48 @@ def test_admin_create_mcp_server_fails_when_test_fails(monkeypatch):
         "transport": "sse",
         "url": "http://localhost:9999",
     })
-    assert r.status_code == 400
-    assert "connection refused" in r.json()["detail"]
+    # The save must not be blocked by an unreachable endpoint: the config is
+    # persisted and the failed test is reported for the UI to warn about.
+    assert r.status_code == 200
+    body = r.json()
+    assert body["test"]["status"] == "error"
+    assert "connection refused" in body["test"]["detail"]
+    saved = next(s for s in body["servers"] if s["id"] == "bad-server")
+    assert saved["tools"] == []
+
+
+def test_admin_update_builtin_key_saves_even_when_hosted_mcp_unreachable(monkeypatch):
+    """Regression: saving the Brave/Firecrawl API key must persist even when
+    the hosted MCP endpoint is network-blocked — the built-in tools read the
+    key from this stored config regardless of endpoint reachability."""
+    fake_db = _FakeDB()
+    app = _client_with_admin(monkeypatch, fake_db)
+
+    async def fake_test(config):
+        return {"status": "error", "tools": [], "detail": "Client error '403 Forbidden' for url 'https://api.search.brave.com/mcp'"}
+
+    monkeypatch.setattr(server.smart_ziw_mcp, "test_mcp_server", fake_test)
+
+    from fastapi.testclient import TestClient
+    client = TestClient(app)
+    r = client.put("/api/admin/smart-ziw-mcp-servers/brave-search", json={
+        "id": "brave-search",
+        "name": "Brave Search",
+        "transport": "http",
+        "url": "https://api.search.brave.com/mcp",
+        "headers": {"X-Subscription-Token": "BSA-real-key"},
+        "enabled": True,
+        "timeout": 30,
+        "tools": [],
+    })
+    assert r.status_code == 200
+    body = r.json()
+    assert body["test"]["status"] == "error"
+    brave = next(s for s in body["servers"] if s["id"] == "brave-search")
+    assert brave["headers"] == {"X-Subscription-Token": "***"}
+    assert brave["api_key_configured"] is True
+    raw = next(s for s in fake_db.config._doc["servers"] if s["id"] == "brave-search")
+    assert raw["headers"] == {"X-Subscription-Token": "BSA-real-key"}
 
 
 def test_admin_update_preserves_redacted_headers(monkeypatch):
@@ -356,7 +397,7 @@ def test_admin_update_builtin_server_only_stores_api_key(monkeypatch):
     assert raw["url"] == "https://api.search.brave.com/mcp"
     assert raw["transport"] == "http"
     assert raw["headers"] == {"X-Subscription-Token": "BSA-new"}
-    returned = next(s for s in r.json() if s["id"] == "brave-search")
+    returned = next(s for s in r.json()["servers"] if s["id"] == "brave-search")
     assert returned["headers"] == {"X-Subscription-Token": "***"}
     assert returned["api_key_configured"] is True
 
