@@ -86,6 +86,7 @@ from smart_ziw_llm import (
     get_llm_call,
     get_llm_provider_presets,
 )
+from smart_ziw_tools import POST_COMMENT_SCHEMA, REGISTRY, Tool
 import smart_ziw_skill_store
 import smart_ziw_mcp
 from concurrent.futures import ThreadPoolExecutor
@@ -507,14 +508,22 @@ def _run_smart_ziw(project_db_id: str, actor_user: dict, thread_comments: list[d
             return
         thread = thread_comments if thread_comments is not None else list_comments("project", _project_entity_id(project))
         thread_text = _build_thread_text(thread)
-        result = run_smart_ziw_agent(project, config, thread_context=thread_text)
-        _post_smart_ziw_comment(project, result)
+        bound_tools = dict(REGISTRY)
+        bound_tools["post_smart_ziw_comment"] = Tool(
+            name="post_smart_ziw_comment",
+            description="Post the final Smart-Ziw analysis comment.",
+            input_schema=POST_COMMENT_SCHEMA,
+            handler=make_post_comment_handler(actor_user),
+        )
+        result = run_smart_ziw_agent(project, config, thread_context=thread_text, tools=bound_tools)
+        if not result.get("comment_posted"):
+            _post_smart_ziw_comment(project, result)
         enrichment_error = result.get("error")
         push_error = None
         if config.get("gitlab_push_enabled") and not result.get("gitlab_pushed"):
             push_error = result.get("gitlab_message") or "GitLab push failed"
         error = enrichment_error or push_error
-        ai_source = "Web research" if result.get("research") else "LLM enrichment"
+        ai_source = "Tool loop" if result.get("tool_loop") else ("Web research" if result.get("research") else "LLM enrichment")
         if result.get("research"):
             if result.get("research_timed_out") or (result.get("research_stats", {}).get("pages_scraped", 0) == 0):
                 confidence = "medium"
@@ -677,6 +686,81 @@ def _maybe_start_smart_ziw_chat(comment: dict, project: dict | None, requester: 
         threading.Thread(target=_run_smart_ziw, args=(project_db_id, requester, thread), daemon=True).start()
     else:
         threading.Thread(target=_answer_smart_ziw_mention, args=(project_db_id, project, requester, comment, thread), daemon=True).start()
+
+
+# Auto-analyze: after a successful sync, run Smart-Ziw on eligible tenders.
+
+def _auto_analyze_filter(projects: list[dict], config: dict) -> list[dict]:
+    """Eligible tenders for auto-analysis, soonest deadline first, capped.
+
+    Pure function over an in-memory project list (DB read happens in the
+    caller) so it can be unit-tested without a database.
+    """
+    if not config.get("auto_analyze_enabled"):
+        return []
+    raw_cap = config.get("auto_analyze_max_per_run")
+    try:
+        max_per_run = int(raw_cap) if raw_cap is not None else 10
+    except (TypeError, ValueError):
+        max_per_run = 10
+    if max_per_run <= 0:
+        return []
+    sources = {str(s).strip().lower() for s in (config.get("auto_analyze_sources") or []) if str(s).strip()}
+    countries = {str(c).strip().lower() for c in (config.get("auto_analyze_countries") or []) if str(c).strip()}
+
+    eligible = []
+    for p in projects:
+        if str(p.get("smart_ziw_status") or "").strip():
+            continue  # never re-run: completed/errored/running stay manual
+        if str(p.get("ai_verified") or "") != "Yes":
+            continue
+        if sources and str(p.get("source") or "").strip().lower() not in sources:
+            continue
+        country = str(p.get("country") or p.get("primary_country_name_en") or "").strip().lower()
+        if countries and country not in countries:
+            continue
+        eligible.append(p)
+
+    def _deadline(p: dict) -> str:
+        return str(
+            p.get("effective_deadline")
+            or p.get("manual_deadline")
+            or p.get("scraped_deadline")
+            or p.get("project_end_date")
+            or "9999-12-31"
+        )
+
+    eligible.sort(key=_deadline)
+    return eligible[:max_per_run]
+
+
+def _maybe_auto_analyze() -> int:
+    """Enqueue Smart-Ziw runs for tenders that became eligible after a sync.
+
+    Returns the number of runs started. Never raises — a failure here must
+    not break the sync that triggered it.
+    """
+    try:
+        config = get_smart_ziw_config()
+        if not config.get("smart_ziw_enabled", True):
+            return 0
+        candidates = _auto_analyze_filter(get_all_projects(), config)
+        started = 0
+        for project in candidates:
+            project_db_id = str(project.get("db_id") or "")
+            if not project_db_id:
+                continue
+            with _smart_ziw_lock:
+                if project_db_id in _smart_ziw_running:
+                    continue
+                _smart_ziw_running.add(project_db_id)
+            threading.Thread(target=_run_smart_ziw, args=(project_db_id, SMART_ZIW_BOT_USER), daemon=True).start()
+            started += 1
+        if started:
+            sync_state.add_line(f"[Smart-Ziw] Auto-analysis started for {started} tender(s).")
+        return started
+    except Exception:
+        return 0
 
 
 # Scheduler/sync
@@ -941,6 +1025,8 @@ def _run_sync_subprocess(cmd: list[str], trigger: str = "manual"):
         proc.wait()
         success = proc.returncode == 0
         sync_state.finish(success)
+        if success:
+            _maybe_auto_analyze()
     except Exception as e:
         msg = f"[!] Error: {e}"
         sync_state.add_line(msg)
@@ -1148,6 +1234,10 @@ class SmartZiwConfigUpdate(BaseModel):
     llm_temperature: float = 0.1
     llm_max_tokens: int = 4000
     tempmail_enabled: bool = False
+    auto_analyze_enabled: bool = False
+    auto_analyze_sources: list[str] = Field(default_factory=list)
+    auto_analyze_countries: list[str] = Field(default_factory=list)
+    auto_analyze_max_per_run: int = 10
     ai_verification_system_prompt: str = DEFAULT_SMART_ZIW_CONFIG["ai_verification_system_prompt"]
     ai_verification_expertise: str = DEFAULT_SMART_ZIW_CONFIG["ai_verification_expertise"]
     ai_verification_unwanted: str = DEFAULT_SMART_ZIW_CONFIG["ai_verification_unwanted"]

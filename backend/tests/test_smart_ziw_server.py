@@ -808,3 +808,104 @@ def test_make_post_comment_handler_forwards_args(monkeypatch):
     assert captured["downloaded_files"] == []
     assert captured["failed_files"] == []
     assert captured["user"] == {"id": "u1"}
+
+
+# ---------- Auto-analyze after sync ----------
+
+_AUTO_CFG = {
+    "auto_analyze_enabled": True,
+    "auto_analyze_sources": [],
+    "auto_analyze_countries": [],
+    "auto_analyze_max_per_run": 10,
+}
+
+
+def _auto_project(**over):
+    project = {
+        "db_id": "d1",
+        "smart_ziw_status": "",
+        "ai_verified": "Yes",
+        "source": "NigerMarchés",
+        "country": "Senegal",
+        "effective_deadline": "2026-10-01",
+    }
+    project.update(over)
+    return project
+
+
+def test_auto_analyze_filter_disabled_returns_empty():
+    assert server._auto_analyze_filter([_auto_project()], {**_AUTO_CFG, "auto_analyze_enabled": False}) == []
+
+
+def test_auto_analyze_filter_skips_non_yes_verification_and_started_tenders():
+    projects = [
+        _auto_project(db_id="done", smart_ziw_status="completed"),
+        _auto_project(db_id="err", smart_ziw_status="error"),
+        _auto_project(db_id="running", smart_ziw_status="running"),
+        _auto_project(db_id="no", ai_verified="No"),
+        _auto_project(db_id="pending", ai_verified=""),
+        _auto_project(db_id="ok"),
+    ]
+    out = server._auto_analyze_filter(projects, _AUTO_CFG)
+    assert [p["db_id"] for p in out] == ["ok"]
+
+
+def test_auto_analyze_filter_orders_by_deadline_and_caps():
+    projects = [
+        _auto_project(db_id="late", effective_deadline="2026-12-01"),
+        _auto_project(db_id="soon", effective_deadline="2026-09-15"),
+        _auto_project(db_id="none", effective_deadline=None, manual_deadline=None,
+                      scraped_deadline=None, project_end_date=None),  # no deadline sorts last
+        _auto_project(db_id="mid", effective_deadline="", project_end_date="2026-10-01"),
+    ]
+    out = server._auto_analyze_filter(projects, {**_AUTO_CFG, "auto_analyze_max_per_run": 2})
+    assert [p["db_id"] for p in out] == ["soon", "mid"]
+
+
+def test_auto_analyze_filter_source_and_country_allowlists():
+    projects = [
+        _auto_project(db_id="x", source="NigerMarchés", country="Niger"),
+        _auto_project(db_id="y", source="dgmarket", country="Niger"),
+        _auto_project(db_id="z", source="NigerMarchés", country="Senegal"),
+    ]
+    out = server._auto_analyze_filter(
+        projects,
+        {**_AUTO_CFG, "auto_analyze_sources": ["nigermarchés"], "auto_analyze_countries": ["NIGER"]},
+    )
+    assert [p["db_id"] for p in out] == ["x"]
+
+
+def test_auto_analyze_filter_empty_lists_mean_all():
+    projects = [_auto_project(db_id="a", source="anything", country="Nowhere")]
+    assert [p["db_id"] for p in server._auto_analyze_filter(projects, _AUTO_CFG)] == ["a"]
+
+
+def test_auto_analyze_filter_non_positive_cap_returns_empty():
+    assert server._auto_analyze_filter([_auto_project()], {**_AUTO_CFG, "auto_analyze_max_per_run": 0}) == []
+
+
+def test_maybe_auto_analyze_enqueues_and_skips_running(monkeypatch):
+    captured = []
+
+    class _FakeThread:
+        def __init__(self, target=None, args=(), daemon=None):
+            captured.append((target, args))
+
+        def start(self):
+            pass
+
+    monkeypatch.setattr("threading.Thread", _FakeThread)
+    monkeypatch.setattr(server, "get_smart_ziw_config", lambda: {**_AUTO_CFG, "smart_ziw_enabled": True})
+    monkeypatch.setattr(server, "get_all_projects", lambda: [_auto_project(db_id="d1")])
+    try:
+        assert server._maybe_auto_analyze() == 1
+        assert captured == [(server._run_smart_ziw, ("d1", server.SMART_ZIW_BOT_USER))]
+        assert server._maybe_auto_analyze() == 0  # already running → skipped
+    finally:
+        server._smart_ziw_running.discard("d1")
+
+
+def test_maybe_auto_analyze_disabled_globally_starts_nothing(monkeypatch):
+    monkeypatch.setattr(server, "get_smart_ziw_config", lambda: {**_AUTO_CFG, "smart_ziw_enabled": False})
+    monkeypatch.setattr(server, "get_all_projects", lambda: [_auto_project()])
+    assert server._maybe_auto_analyze() == 0

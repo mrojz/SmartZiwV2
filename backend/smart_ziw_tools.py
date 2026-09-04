@@ -93,7 +93,8 @@ POST_COMMENT_SCHEMA = {
 
 @register("fetch_aggregator_tender", "Fetch tender details from the aggregator site.", FETCH_AGGREGATOR_TENDER_SCHEMA)
 async def fetch_aggregator_tender(args: dict[str, Any]) -> dict[str, Any]:
-    raise NotImplementedError
+    from smart_ziw_research import handle_fetch_aggregator_tender
+    return await handle_fetch_aggregator_tender(args)
 
 
 @register("derive_buyer_site", "Guess the buyer's official site from tender emails.", DERIVE_BUYER_SITE_SCHEMA)

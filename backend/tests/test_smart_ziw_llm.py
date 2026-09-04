@@ -920,3 +920,64 @@ def test_discover_lightllm_sends_subscription_key(monkeypatch):
     result = sll.discover_lightllm_models("openai_compatible", "http://localhost:8000/v1", api_key="k", subscription_key="sub")
     assert result["status"] == "ok"
     assert _FakeOpenAI.instances[0].kwargs["default_headers"] == {"X-Subscription-Key": "sub"}
+
+
+# ---------- resolve_anthropic_client_config (tool-loop provider gate) ----------
+
+def test_resolve_anthropic_kimi_coding_preset():
+    out = sll.resolve_anthropic_client_config({
+        "smart_ziw_llm_provider": "kimi_coding",
+        "lightllm_api_key": "sk-kimi",
+    })
+    assert out == {
+        "base_url": "https://api.kimi.com/coding",
+        "api_key": "sk-kimi",
+        "subscription_key": "",
+        "model": "kimi3",
+    }
+
+
+def test_resolve_anthropic_openai_preset_is_none():
+    assert sll.resolve_anthropic_client_config({"smart_ziw_llm_provider": "openai"}) is None
+
+
+def test_resolve_anthropic_deepseek_is_none():
+    assert sll.resolve_anthropic_client_config({"smart_ziw_llm_provider": "deepseek"}) is None
+
+
+def test_resolve_anthropic_custom_anthropic_compatible():
+    out = sll.resolve_anthropic_client_config({
+        "smart_ziw_llm_provider": "custom",
+        "lightllm_provider": "anthropic_compatible",
+        "lightllm_base_url": "https://llm.example",
+        "lightllm_api_key": "k",
+        "lightllm_model": "m",
+    })
+    assert out == {
+        "base_url": "https://llm.example",
+        "api_key": "k",
+        "subscription_key": "",
+        "model": "m",
+    }
+
+
+def test_resolve_anthropic_custom_openai_compatible_is_none():
+    assert sll.resolve_anthropic_client_config({
+        "smart_ziw_llm_provider": "custom",
+        "lightllm_provider": "openai_compatible",
+        "lightllm_base_url": "https://llm.example",
+    }) is None
+
+
+def test_resolve_anthropic_auto_without_base_url_is_none():
+    assert sll.resolve_anthropic_client_config({}) is None
+
+
+def test_resolve_anthropic_lightllm_anthropic_compatible():
+    out = sll.resolve_anthropic_client_config({
+        "smart_ziw_llm_provider": "lightllm",
+        "lightllm_provider": "anthropic_compatible",
+        "lightllm_base_url": "https://proxy.example",
+        "lightllm_api_key": "k2",
+    })
+    assert out is not None and out["base_url"] == "https://proxy.example"

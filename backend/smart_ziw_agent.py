@@ -546,10 +546,135 @@ def run_with_skills(project: dict, config: dict | None = None, thread_context: s
     return result
 
 
+# ---------- LLM tool-loop path (Anthropic-compatible providers) ----------
+
+
+def _run_tool_loop(
+    project: dict,
+    config: dict,
+    thread_context: str = "",
+    tools: dict | None = None,
+) -> dict | None:
+    """Run the Smart-Ziw LLM tool-loop.
+
+    Returns the legacy result shape server.py expects, or None when the
+    configured provider is not Anthropic-compatible (caller falls back to
+    the legacy flows).
+    """
+    from smart_ziw_llm import LLMClient, resolve_anthropic_client_config
+    from smart_ziw_loop import SmartZiwToolLoop
+    from smart_ziw_tools import REGISTRY
+
+    client_cfg = resolve_anthropic_client_config(config)
+    if not client_cfg:
+        return None
+
+    folder = build_folder_name(project)
+    repo_path = Path(config.get("smart_ziw_repo_path", "/home/kali/Smart-Ziw"))
+    folder_path = repo_path / folder
+    folder_path.mkdir(parents=True, exist_ok=True)
+
+    llm = LLMClient(
+        base_url=client_cfg["base_url"],
+        api_key=client_cfg["api_key"],
+        model=client_cfg["model"],
+    )
+    loop_tools = tools if tools is not None else dict(REGISTRY)
+    from smart_ziw_config import load_smart_ziw_config
+    try:
+        loop_cfg = load_smart_ziw_config() or {}
+        max_iterations = int(loop_cfg.get("max_iterations") or 15)
+    except Exception:
+        max_iterations = 15
+    loop = SmartZiwToolLoop(llm=llm, tools=loop_tools, max_iterations=max_iterations)
+
+    tender = dict(project)
+    tender["_metadata"] = _metadata_block(project)
+    if thread_context:
+        tender["_thread_context"] = thread_context
+
+    import asyncio
+    try:
+        loop_result = asyncio.run(loop.run(tender=tender))
+    except Exception as exc:
+        return {
+            "tool_loop": True,
+            "folder": folder,
+            "files": [],
+            "recap_markdown": "",
+            "repo_path": str(repo_path),
+            "comment_posted": False,
+            "error": f"Tool loop failed: {exc}",
+        }
+
+    result = {
+        "tool_loop": True,
+        "run_id": loop_result.get("run_id"),
+        "comment_id": loop_result.get("comment_id"),
+        "audit": loop_result.get("audit") or [],
+        "folder": folder,
+        "files": ["recap.md"],
+        "repo_path": str(repo_path),
+    }
+
+    post_step = next(
+        (s for s in reversed(result["audit"]) if s.get("tool") == "post_smart_ziw_comment"),
+        None,
+    )
+    if post_step:
+        result["comment_posted"] = True
+        args = post_step.get("input") or {}
+        output = post_step.get("output") or {}
+        result["source_url"] = str(args.get("source_url") or "")
+        documents = []
+        for f in args.get("downloaded_files") or []:
+            try:
+                documents.append(str(Path(str(f)).relative_to(folder_path)))
+            except ValueError:
+                documents.append(str(f))
+        result["documents"] = documents
+        comment = output.get("comment") or {}
+        recap_markdown = str(comment.get("body") or "")
+    else:
+        result["comment_posted"] = False
+        recap_markdown = ""
+        # Recover the buyer source from the last successful lookup step.
+        for step in reversed(result["audit"]):
+            out = step.get("output")
+            if isinstance(out, dict) and out.get("status") == "ok" and out.get("url"):
+                result["source_url"] = str(out["url"])
+                break
+
+    if not recap_markdown:
+        recap_markdown = _render_recap_markdown(project, {})
+    (folder_path / "recap.md").write_text(recap_markdown, encoding="utf-8")
+    result["recap_markdown"] = recap_markdown
+
+    files_dir = folder_path / "files"
+    document_files = sorted(
+        str(p.relative_to(folder_path))
+        for p in (files_dir.rglob("*") if files_dir.exists() else [])
+        if p.is_file()
+    )
+    if document_files:
+        result["files"] = ["recap.md", *document_files]
+
+    git_result = push_to_gitlab(repo_path, folder, config)
+    result["gitlab_pushed"] = git_result["pushed"]
+    result["gitlab_message"] = git_result["message"]
+
+    if loop_result.get("final_status") != "success":
+        result["error"] = loop_result.get("error") or "Tool loop did not post a comment"
+    return result
+
+
 # ---------- GitLab mirror ----------
 
-def run(project: dict, config: dict | None = None, thread_context: str = "") -> dict:
+def run(project: dict, config: dict | None = None, thread_context: str = "", tools: dict | None = None) -> dict:
     config = config or {}
+    tool_loop_result = _run_tool_loop(project, config, thread_context, tools=tools)
+    if tool_loop_result is not None:
+        return tool_loop_result
     if config.get("smart_ziw_skills_enabled", True):
         try:
             from smart_ziw_llm import get_llm_tool_call

@@ -18,7 +18,7 @@ import { Command, CommandDialog, CommandEmpty, CommandGroup, CommandInput, Comma
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button as ShadcnButton } from '@/components/ui/button';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Toaster } from '@/components/ui/sonner';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
@@ -1270,7 +1270,7 @@ function ResetPasswordModal({ open, user, onClose, onReset, saving, result }) {
     );
 }
 
-function AdminPage({ apiFetch, authUser, initialTab = 'users' }) {
+function AdminPage({ apiFetch, authUser, initialTab = 'users', projects = [] }) {
     const [adminTab, setAdminTab] = useState(initialTab);
     const [users, setUsers] = useState([]);
     const [q, setQ] = useState('');
@@ -1319,7 +1319,13 @@ function AdminPage({ apiFetch, authUser, initialTab = 'users' }) {
         ai_verification_system_prompt: '',
         ai_verification_expertise: '',
         ai_verification_unwanted: '',
+        auto_analyze_enabled: false,
+        auto_analyze_sources: [],
+        auto_analyze_countries: [],
+        auto_analyze_max_per_run: 10,
     });
+    const autoAnalyzeSourceOptions = useMemo(() => [...new Set(projects.map((p) => p.source).filter(Boolean))].sort(), [projects]);
+    const autoAnalyzeCountryOptions = useMemo(() => [...new Set(projects.map((p) => p.country || p.primary_country_name_en).filter(Boolean))].sort(), [projects]);
     const [savingSmartZiwConfig, setSavingSmartZiwConfig] = useState(false);
     const [savingSystemPrompts, setSavingSystemPrompts] = useState(false);
     const [skills, setSkills] = useState([]);
@@ -2572,6 +2578,59 @@ function AdminPage({ apiFetch, authUser, initialTab = 'users' }) {
                             <ShadcnInput id="research-timeout" type="number" min={1} value={smartZiwConfig.smart_ziw_research_timeout_seconds} onChange={(e) => { const value = Number(e.target.value); setSmartZiwConfig({ ...smartZiwConfig, smart_ziw_research_timeout_seconds: Number.isFinite(value) && value >= 1 ? value : 900 }) }} />
                             {configErrors.smart_ziw_research_timeout_seconds ? <p className="text-xs text-destructive">{configErrors.smart_ziw_research_timeout_seconds}</p> : null}
                         </div>
+                        <h4 className="text-sm font-semibold text-foreground sm:col-span-2">Auto-analyze after sync</h4>
+                        <div className="flex flex-col gap-2 rounded-lg border px-4 py-3 sm:col-span-2">
+                            <div className="flex items-center justify-between">
+                                <Label htmlFor="auto-analyze-enabled" className="text-sm font-semibold">Run agent automatically after each sync</Label>
+                                <Switch id="auto-analyze-enabled" checked={smartZiwConfig.auto_analyze_enabled} onCheckedChange={(checked) => setSmartZiwConfig({ ...smartZiwConfig, auto_analyze_enabled: checked })} />
+                            </div>
+                            <p className="text-xs text-muted-foreground">
+                                Runs Smart-Ziw once per tender that passed AI verification, right after a successful sync, soonest deadline first. Tenders already analyzed or errored are never re-run.
+                            </p>
+                        </div>
+                        <div className="flex flex-col gap-1.5">
+                            <Label className="text-sm font-medium">Sources</Label>
+                            <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                    <ShadcnButton type="button" variant="outline" className="w-full justify-between font-normal">
+                                        <span className="truncate">{smartZiwConfig.auto_analyze_sources.length ? smartZiwConfig.auto_analyze_sources.join(', ') : 'All sources'}</span>
+                                        <ChevronDown className="h-4 w-4 shrink-0 opacity-50" />
+                                    </ShadcnButton>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="start" className="max-h-64 w-56 overflow-y-auto">
+                                    {autoAnalyzeSourceOptions.length === 0 ? <DropdownMenuItem disabled>No sources loaded yet</DropdownMenuItem> : autoAnalyzeSourceOptions.map((s) => (
+                                        <DropdownMenuCheckboxItem key={s} checked={smartZiwConfig.auto_analyze_sources.includes(s)} onCheckedChange={(checked) => setSmartZiwConfig({ ...smartZiwConfig, auto_analyze_sources: checked ? [...smartZiwConfig.auto_analyze_sources, s] : smartZiwConfig.auto_analyze_sources.filter((x) => x !== s) })}>
+                                            {s}
+                                        </DropdownMenuCheckboxItem>
+                                    ))}
+                                </DropdownMenuContent>
+                            </DropdownMenu>
+                            <p className="text-xs text-muted-foreground">Leave empty to include every source.</p>
+                        </div>
+                        <div className="flex flex-col gap-1.5">
+                            <Label className="text-sm font-medium">Countries</Label>
+                            <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                    <ShadcnButton type="button" variant="outline" className="w-full justify-between font-normal">
+                                        <span className="truncate">{smartZiwConfig.auto_analyze_countries.length ? smartZiwConfig.auto_analyze_countries.join(', ') : 'All countries'}</span>
+                                        <ChevronDown className="h-4 w-4 shrink-0 opacity-50" />
+                                    </ShadcnButton>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="start" className="max-h-64 w-56 overflow-y-auto">
+                                    {autoAnalyzeCountryOptions.length === 0 ? <DropdownMenuItem disabled>No countries loaded yet</DropdownMenuItem> : autoAnalyzeCountryOptions.map((c) => (
+                                        <DropdownMenuCheckboxItem key={c} checked={smartZiwConfig.auto_analyze_countries.includes(c)} onCheckedChange={(checked) => setSmartZiwConfig({ ...smartZiwConfig, auto_analyze_countries: checked ? [...smartZiwConfig.auto_analyze_countries, c] : smartZiwConfig.auto_analyze_countries.filter((x) => x !== c) })}>
+                                            {c}
+                                        </DropdownMenuCheckboxItem>
+                                    ))}
+                                </DropdownMenuContent>
+                            </DropdownMenu>
+                            <p className="text-xs text-muted-foreground">Leave empty to include every country.</p>
+                        </div>
+                        <div className="flex flex-col gap-1.5">
+                            <Label htmlFor="auto-analyze-max" className="text-sm font-medium">Max tenders per sync</Label>
+                            <ShadcnInput id="auto-analyze-max" type="number" min={0} value={smartZiwConfig.auto_analyze_max_per_run} onChange={(e) => { const value = Number(e.target.value); setSmartZiwConfig({ ...smartZiwConfig, auto_analyze_max_per_run: Number.isFinite(value) && value >= 0 ? value : 10 }) }} />
+                            <p className="text-xs text-muted-foreground">0 disables auto-analysis.</p>
+                        </div>
                     </div>
                     <div className="flex justify-end">
                         <ShadcnButton type="button" onClick={saveSmartZiwConfig} disabled={savingSmartZiwConfig}>
@@ -3810,6 +3869,7 @@ export default function App() {
                                 key={route}
                                 apiFetch={apiFetch}
                                 authUser={authUser}
+                                projects={projects}
                                 initialTab={route === 'llm-config' ? 'llm' : route === 'smart-ziw' ? 'smart-ziw' : route === 'skills' ? 'skills' : 'users'}
                             />
                         ) : null}

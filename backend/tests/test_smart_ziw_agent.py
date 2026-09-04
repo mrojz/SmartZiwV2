@@ -515,3 +515,135 @@ def test_run_with_skills_path(monkeypatch, tmp_path):
     folder = tmp_path / result["folder"]
     assert (folder / "recap.md").exists()
     assert "GO [1]" in (folder / "recap.md").read_text(encoding="utf-8")
+
+
+# ---------- LLM tool-loop path ----------
+
+def _tool_loop_project():
+    return {
+        "project_name": "IS Security Audit",
+        "project_sponsor": "CDC Benin",
+        "primary_country_name_en": "Benin",
+        "project_end_date": "2026-07-13",
+        "project_url": "https://example.com/tender",
+        "source": "Global Tenders",
+        "db_id": "db1",
+    }
+
+
+def test_run_tool_loop_maps_post_step_to_legacy_result(monkeypatch, tmp_path):
+    import smart_ziw_agent
+    import smart_ziw_config
+    import smart_ziw_llm
+    from smart_ziw_tools import Tool
+
+    project = _tool_loop_project()
+    folder = build_folder_name(project)
+
+    monkeypatch.setattr(
+        smart_ziw_llm,
+        "resolve_anthropic_client_config",
+        lambda config: {
+            "base_url": "https://api.kimi.com/coding",
+            "api_key": "sk-test",
+            "subscription_key": "",
+            "model": "kimi3",
+        },
+    )
+
+    class FakeLLM:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+
+        async def chat(self, messages, tools, system=None):
+            return {
+                "role": "assistant",
+                "tool_calls": [
+                    {
+                        "name": "post_smart_ziw_comment",
+                        "arguments": {
+                            "tender_id": "db1",
+                            "content": "# Recap\n\nGO — audit firm.",
+                            "source_url": "https://buyer.example/tender",
+                            "downloaded_files": [str(tmp_path / folder / "files" / "original" / "a.pdf")],
+                            "failed_files": ["https://buyer.example/missing.zip"],
+                        },
+                    }
+                ],
+            }
+
+    monkeypatch.setattr(smart_ziw_llm, "LLMClient", FakeLLM)
+    monkeypatch.setattr(smart_ziw_agent, "push_to_gitlab", lambda repo, f, cfg: {"pushed": False, "message": "disabled"})
+    monkeypatch.setattr(smart_ziw_config, "load_smart_ziw_config", lambda: {"max_iterations": 5})
+
+    posted = {}
+
+    async def fake_post(args):
+        posted.update(args)
+        return {"status": "ok", "comment_id": "c1", "comment": {"id": "c1", "body": args["content"]}}
+
+    tools = {
+        "post_smart_ziw_comment": Tool(
+            name="post_smart_ziw_comment",
+            description="post",
+            input_schema={"type": "object"},
+            handler=fake_post,
+        )
+    }
+
+    result = run(project, config={"smart_ziw_repo_path": str(tmp_path)}, tools=tools)
+
+    assert result["tool_loop"] is True
+    assert result["comment_posted"] is True
+    assert result["comment_id"] == "c1"
+    assert result["source_url"] == "https://buyer.example/tender"
+    assert result["documents"] == [str(Path("files") / "original" / "a.pdf")]
+    assert "GO" in result["recap_markdown"]
+    assert result["gitlab_pushed"] is False
+    assert (tmp_path / result["folder"] / "recap.md").exists()
+    assert posted["tender_id"] == "db1"
+
+
+def test_run_tool_loop_failure_reports_error(monkeypatch, tmp_path):
+    import smart_ziw_agent
+    import smart_ziw_config
+    import smart_ziw_llm
+
+    monkeypatch.setattr(smart_ziw_config, "load_smart_ziw_config", lambda: {"max_iterations": 5})
+    monkeypatch.setattr(
+        smart_ziw_llm,
+        "resolve_anthropic_client_config",
+        lambda config: {"base_url": "https://x", "api_key": "k", "subscription_key": "", "model": "m"},
+    )
+
+    class BoomLLM:
+        def __init__(self, **kwargs):
+            pass
+
+        async def chat(self, messages, tools, system=None):
+            raise RuntimeError("boom")
+
+    monkeypatch.setattr(smart_ziw_llm, "LLMClient", BoomLLM)
+    monkeypatch.setattr(smart_ziw_agent, "push_to_gitlab", lambda repo, f, cfg: {"pushed": False, "message": "disabled"})
+
+    result = run(_tool_loop_project(), config={"smart_ziw_repo_path": str(tmp_path)}, tools={})
+
+    assert result["tool_loop"] is True
+    assert result["comment_posted"] is False
+    assert "boom" in result["error"]
+
+
+def test_run_falls_back_to_legacy_when_provider_not_anthropic(monkeypatch, tmp_path):
+    import smart_ziw_agent
+    import smart_ziw_llm
+
+    monkeypatch.setattr(smart_ziw_llm, "resolve_anthropic_client_config", lambda config: None)
+    sentinel = {"legacy": True}
+    monkeypatch.setattr(smart_ziw_agent, "run_with_skills", lambda *args, **kwargs: sentinel)
+    monkeypatch.setattr("smart_ziw_llm.get_llm_tool_call", lambda config: (lambda messages, tools: None))
+
+    result = run(
+        _tool_loop_project(),
+        config={"smart_ziw_repo_path": str(tmp_path), "smart_ziw_skills_enabled": True},
+    )
+    assert result is sentinel

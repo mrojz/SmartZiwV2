@@ -26,6 +26,8 @@ from urllib.parse import unquote, urljoin, urlparse, urlunparse
 from dataclasses import dataclass, field
 
 import requests
+
+_EMAIL_RE = re.compile(r"[\w.+-]+@[\w-]+\.[\w.-]+")
 from bs4 import BeautifulSoup
 
 from smart_ziw_agent import _call_llm, _safe_slug, build_folder_name
@@ -1437,6 +1439,33 @@ def brave_search(query: str, api_key: str, count: int = 10) -> dict[str, Any]:
                 "snippet": str(item.get("description") or ""),
             })
     return {"status": "ok", "results": results}
+
+
+async def handle_fetch_aggregator_tender(args: dict[str, Any]) -> dict[str, Any]:
+    from database import get_project_by_db_id
+    from smart_ziw_config import load_smart_ziw_config
+
+    tender_id = str(args.get("tender_id") or "").strip()
+    if not tender_id:
+        return {"status": "error", "error": "tender_id is required"}
+    project = get_project_by_db_id(tender_id)
+    if not project:
+        return {"status": "error", "error": f"tender {tender_id} not found"}
+    url = str(project.get("project_url") or "").strip()
+    if not url:
+        return {"status": "error", "error": "tender has no aggregator URL"}
+    page = FirecrawlClient(load_smart_ziw_config()).scrape(url)
+    if not isinstance(page, dict) or page.get("_error"):
+        error = page.get("_error", "scrape failed") if isinstance(page, dict) else "scrape failed"
+        return {"status": "error", "error": str(error)}
+    markdown = page.get("markdown") or ""
+    return {
+        "status": "ok",
+        "title": page.get("title") or project.get("project_name") or "",
+        "description": markdown[:4000],
+        "buyer_emails": sorted(set(_EMAIL_RE.findall(markdown)))[:20],
+        "aggregator_url": url,
+    }
 
 
 async def handle_brave_web_search(args: dict[str, Any]) -> dict[str, Any]:

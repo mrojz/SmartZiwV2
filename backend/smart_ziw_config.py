@@ -1,6 +1,7 @@
 """Smart-Ziw configuration persistence."""
 from __future__ import annotations
 
+import os
 from copy import deepcopy
 from typing import Any
 
@@ -27,8 +28,38 @@ def load_smart_ziw_config() -> dict[str, Any]:
     db = get_db()
     doc = db.config.find_one(_SMART_ZIW_CONFIG_DOC) or {}
     config = deepcopy(_DEFAULT_CONFIG)
-    config.update(doc.get("config") or {})
+    # The same Mongo document carries the app-level Smart-Ziw config at
+    # top level (written by database.save_smart_ziw_config); accept those
+    # keys so tool handlers see e.g. smart_ziw_repo_path.
+    for key in config:
+        if key in doc:
+            config[key] = doc[key]
+    nested = doc.get("config")
+    if isinstance(nested, dict):
+        config.update(nested)
+    if not str(config.get("brave_api_key") or ""):
+        config["brave_api_key"] = _brave_key_from_mcp_servers() or os.environ.get("BRAVE_API_KEY", "")
     return config
+
+
+def _brave_key_from_mcp_servers() -> str:
+    """Brave API key saved on the built-in Brave Search MCP server, if any."""
+    try:
+        from smart_ziw_mcp import load_mcp_servers
+        for server in load_mcp_servers():
+            if "brave" not in str(server.get("id") or "").lower():
+                continue
+            headers = server.get("headers") or {}
+            for name in ("X-Subscription-Token", "Authorization", "x-api-key"):
+                value = str(headers.get(name) or "").strip()
+                if not value or value == "***":
+                    continue
+                if name.lower() == "authorization" and value.lower().startswith("bearer "):
+                    return value[7:].strip()
+                return value
+    except Exception:
+        pass
+    return ""
 
 
 def save_smart_ziw_config(db, config: dict[str, Any]) -> None:

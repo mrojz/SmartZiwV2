@@ -208,6 +208,43 @@ def _resolve_preset_config(config: dict) -> dict:
     }
 
 
+def resolve_anthropic_client_config(config: dict | None = None) -> dict | None:
+    """Resolve {base_url, api_key, model} when the configured provider speaks
+    the Anthropic Messages API (the tool-loop wire format).
+
+    Returns None for OpenAI-format providers (DeepSeek env, OpenAI preset,
+    etc.) so callers can fall back to the OpenAI-compatible paths.
+    Mirrors the resolution logic of get_llm_call/get_llm_tool_call.
+    """
+    config = config or {}
+    provider = str(config.get("smart_ziw_llm_provider") or AUTO)
+    if provider not in _PROVIDERS and provider not in _PRESET_IDS:
+        provider = AUTO
+    if provider in _PRESET_IDS and provider not in (AUTO, DEEPSEEK, LIGHTLLM, CUSTOM):
+        pc = _resolve_preset_config(config)
+        if pc["format"] != "anthropic":
+            return None
+        return {
+            "base_url": pc["base_url"],
+            "api_key": pc["api_key"],
+            "subscription_key": pc["subscription_key"],
+            "model": pc["model"],
+        }
+    if provider == DEEPSEEK:
+        return None
+    if str(config.get("lightllm_provider") or "openai_compatible") != ANTHROPIC_COMPATIBLE:
+        return None
+    base_url = str(config.get("lightllm_base_url") or "").strip()
+    if not base_url:
+        return None
+    return {
+        "base_url": base_url,
+        "api_key": str(config.get("lightllm_api_key") or ""),
+        "subscription_key": str(config.get("lightllm_subscription_key") or ""),
+        "model": str(config.get("lightllm_model") or "default"),
+    }
+
+
 def _coerce_llm_params(config: dict) -> tuple:
     """Read llm_temperature/llm_max_tokens from config with safe clamping.
 
