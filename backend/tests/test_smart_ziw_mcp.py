@@ -113,7 +113,7 @@ def test_load_and_save_mcp_servers(monkeypatch):
     brave = next(s for s in servers if s["id"] == "brave-search")
     assert brave["headers"] == {"X-Subscription-Token": "BSA-key"}
     assert brave["api_key_configured"] is True
-    assert brave["url"] == "https://api.search.brave.com/mcp"
+    assert brave["url"] == "https://api.search.brave.com/res/v1/llm/context"
     assert brave["transport"] == "http"
     assert brave["tools"][0]["name"] == "t"
     firecrawl = next(s for s in servers if s["id"] == "firecrawl")
@@ -123,7 +123,7 @@ def test_load_and_save_mcp_servers(monkeypatch):
 
 def test_builtin_servers_use_expected_headers():
     presets = {p["id"]: p for p in smart_ziw_mcp.BUILTIN_MCP_SERVERS}
-    assert presets["brave-search"]["url"] == "https://api.search.brave.com/mcp"
+    assert presets["brave-search"]["url"] == "https://api.search.brave.com/res/v1/llm/context"
     assert presets["brave-search"]["api_key_header"] == "X-Subscription-Token"
     assert presets["brave-search"]["api_key_prefix"] == ""
     assert presets["firecrawl"]["url"] == "https://mcp.firecrawl.dev/v2/mcp"
@@ -270,17 +270,17 @@ def test_admin_create_mcp_server_saves_and_reports_test_failure(monkeypatch):
     assert saved["tools"] == []
 
 
-def test_admin_update_builtin_key_saves_even_when_hosted_mcp_unreachable(monkeypatch):
-    """Regression: saving the Brave/Firecrawl API key must persist even when
-    the hosted MCP endpoint is network-blocked — the built-in tools read the
-    key from this stored config regardless of endpoint reachability."""
+def test_admin_update_builtin_key_saves_even_when_api_probe_fails(monkeypatch):
+    """Regression: saving the Brave API key must persist even when the
+    connection probe fails — the built-in brave_web_search tool reads the
+    key from this stored config regardless."""
     fake_db = _FakeDB()
     app = _client_with_admin(monkeypatch, fake_db)
 
-    async def fake_test(config):
-        return {"status": "error", "tools": [], "detail": "Client error '403 Forbidden' for url 'https://api.search.brave.com/mcp'"}
+    def fake_probe(api_key):
+        return {"status": "error", "detail": "Brave LLM Context API test failed: 401"}
 
-    monkeypatch.setattr(server.smart_ziw_mcp, "test_mcp_server", fake_test)
+    monkeypatch.setattr("smart_ziw_research.probe_brave_api", fake_probe)
 
     from fastapi.testclient import TestClient
     client = TestClient(app)
@@ -288,7 +288,7 @@ def test_admin_update_builtin_key_saves_even_when_hosted_mcp_unreachable(monkeyp
         "id": "brave-search",
         "name": "Brave Search",
         "transport": "http",
-        "url": "https://api.search.brave.com/mcp",
+        "url": "https://api.search.brave.com/res/v1/llm/context",
         "headers": {"X-Subscription-Token": "BSA-real-key"},
         "enabled": True,
         "timeout": 30,
@@ -302,6 +302,39 @@ def test_admin_update_builtin_key_saves_even_when_hosted_mcp_unreachable(monkeyp
     assert brave["api_key_configured"] is True
     raw = next(s for s in fake_db.config._doc["servers"] if s["id"] == "brave-search")
     assert raw["headers"] == {"X-Subscription-Token": "BSA-real-key"}
+
+
+def test_admin_update_builtin_brave_probes_llm_context_api(monkeypatch):
+    """Brave is a native REST integration: a key save runs a real LLM
+    Context probe, reports ok, and never caches MCP tools."""
+    fake_db = _FakeDB()
+    app = _client_with_admin(monkeypatch, fake_db)
+    probed = {}
+
+    def fake_probe(api_key):
+        probed["key"] = api_key
+        return {"status": "ok", "detail": "Brave LLM Context API reachable"}
+
+    monkeypatch.setattr("smart_ziw_research.probe_brave_api", fake_probe)
+
+    from fastapi.testclient import TestClient
+    client = TestClient(app)
+    r = client.put("/api/admin/smart-ziw-mcp-servers/brave-search", json={
+        "id": "brave-search",
+        "name": "Brave Search",
+        "transport": "http",
+        "url": "https://api.search.brave.com/res/v1/llm/context",
+        "headers": {"X-Subscription-Token": "BSA-real-key"},
+        "enabled": True,
+        "timeout": 30,
+        "tools": [],
+    })
+    assert r.status_code == 200
+    body = r.json()
+    assert probed["key"] == "BSA-real-key"
+    assert body["test"]["status"] == "ok"
+    brave = next(s for s in body["servers"] if s["id"] == "brave-search")
+    assert brave["tools"] == []
 
 
 def test_admin_update_preserves_redacted_headers(monkeypatch):
@@ -394,7 +427,7 @@ def test_admin_update_builtin_server_only_stores_api_key(monkeypatch):
     assert r.status_code == 200
     raw = fake_db.config._doc["servers"][0]
     # url/transport snap back to the preset; only the key is user-editable.
-    assert raw["url"] == "https://api.search.brave.com/mcp"
+    assert raw["url"] == "https://api.search.brave.com/res/v1/llm/context"
     assert raw["transport"] == "http"
     assert raw["headers"] == {"X-Subscription-Token": "BSA-new"}
     returned = next(s for s in r.json()["servers"] if s["id"] == "brave-search")

@@ -2436,6 +2436,15 @@ def _discover_mcp_tools(server: dict) -> dict:
     """
     if server.get("tools"):
         return {"status": "skipped", "detail": None}
+    # Brave is a native REST integration (LLM Context API), not a
+    # discoverable MCP server: test it with a real API call; there are no
+    # MCP tools to cache — the built-in brave_web_search tool uses the key
+    # directly. Headers are raw here (create/update normalize them first).
+    if server.get("id") == "brave-search":
+        from smart_ziw_research import probe_brave_api
+
+        key = str((server.get("headers") or {}).get("X-Subscription-Token") or "").strip()
+        return probe_brave_api(key)
     result = asyncio.run(smart_ziw_mcp.test_mcp_server(server))
     if result.get("status") == "ok":
         server["tools"] = result.get("tools") or []

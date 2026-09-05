@@ -1414,29 +1414,51 @@ def synthesize(
 
 # ---------- Tool-loop support ----------
 
-_BRAVE_SEARCH_URL = "https://api.search.brave.com/res/v1/web/search"
+_BRAVE_LLM_CONTEXT_URL = "https://api.search.brave.com/res/v1/llm/context"
+
+
+def _brave_headers(api_key: str) -> dict[str, str]:
+    return {"X-Subscription-Token": api_key, "Accept": "application/json"}
+
+
+def probe_brave_api(api_key: str) -> dict:
+    """Connection test for the built-in Brave integration: a minimal LLM
+    Context API call. Never raises; returns {"status", "detail"}."""
+    if not api_key:
+        return {"status": "error", "detail": "Brave API key not configured"}
+    try:
+        resp = requests.get(
+            _BRAVE_LLM_CONTEXT_URL,
+            headers=_brave_headers(api_key),
+            params={"q": "test", "count": 1},
+            timeout=15,
+        )
+        resp.raise_for_status()
+        return {"status": "ok", "detail": "Brave LLM Context API reachable"}
+    except Exception as exc:  # noqa: BLE001
+        return {"status": "error", "detail": f"Brave LLM Context API test failed: {exc}"}
 
 
 def brave_search(query: str, api_key: str, count: int = 10) -> dict[str, Any]:
-    """Brave Web Search API. Never raises; returns {"status": "ok", "results": [...]}
+    """Brave LLM Context API. Never raises; returns {"status": "ok", "results": [...]}
     or {"status": "error", "error": ..., "results": []}."""
     if not api_key:
         return {"status": "error", "error": "Brave API key not configured", "results": []}
-    headers = {"X-Subscription-Token": api_key, "Accept": "application/json"}
     params = {"q": query, "count": count}
     try:
-        resp = requests.get(_BRAVE_SEARCH_URL, headers=headers, params=params, timeout=30)
+        resp = requests.get(_BRAVE_LLM_CONTEXT_URL, headers=_brave_headers(api_key), params=params, timeout=30)
         resp.raise_for_status()
         data = resp.json()
     except Exception as exc:  # noqa: BLE001
         return {"status": "error", "error": f"brave search failed: {exc}", "results": []}
     results = []
-    for item in data.get("web", {}).get("results", []):
+    for item in data.get("grounding", {}).get("generic", []):
         if isinstance(item, dict):
+            snippets = "\n".join(str(s) for s in (item.get("snippets") or []) if s)
             results.append({
                 "title": str(item.get("title") or ""),
                 "url": str(item.get("url") or ""),
-                "snippet": str(item.get("description") or ""),
+                "snippet": snippets[:2000],
             })
     return {"status": "ok", "results": results}
 

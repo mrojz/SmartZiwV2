@@ -103,7 +103,7 @@ async def derive_buyer_site(args: dict[str, Any]) -> dict[str, Any]:
     return await handle_derive_buyer_site(args)
 
 
-@register("brave_web_search", "Search the web using Brave Search API.", BRAVE_WEB_SEARCH_SCHEMA)
+@register("brave_web_search", "Search the web using Brave's LLM Context API; returns grounded results with full snippets per source.", BRAVE_WEB_SEARCH_SCHEMA)
 async def brave_web_search(args: dict[str, Any]) -> dict[str, Any]:
     from smart_ziw_research import handle_brave_web_search
     return await handle_brave_web_search(args)

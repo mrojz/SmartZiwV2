@@ -1963,10 +1963,7 @@ function AdminPage({ apiFetch, authUser, initialTab = 'users', projects = [] }) 
             setBuiltinMcpKeys((prev) => ({ ...prev, [server.id]: '' }));
             await loadMcpServers();
             if (data.test && data.test.status === 'error') {
-                const extra = server.id === 'brave-search'
-                    ? ' The built-in web search tool will still use this key.'
-                    : '';
-                toast.warning(`${server.name} API key saved, but the connection test failed: ${data.test.detail || 'unknown error'}.${extra}`);
+                toast.warning(`${server.name} API key saved, but the connection test failed: ${data.test.detail || 'unknown error'}.`);
             } else {
                 toast.success(`${server.name} API key saved.`);
             }
@@ -2832,7 +2829,7 @@ function AdminPage({ apiFetch, authUser, initialTab = 'users', projects = [] }) 
                                                     {(server.tools || []).length === 0 ? (
                                                         <span className="text-sm text-muted-foreground">
                                                             {server.id === 'brave-search'
-                                                                ? 'The hosted Brave MCP endpoint is blocked from this network, so its tools can\'t be listed. The built-in web search tool uses this key directly via Brave\'s REST API.'
+                                                                ? 'Native API integration — the built-in web search tool calls Brave\'s LLM Context API directly with this key. No MCP tools to list.'
                                                                 : 'Tools are discovered when the API key is saved.'}
                                                         </span>
                                                     ) : null}

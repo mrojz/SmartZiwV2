@@ -23,9 +23,12 @@ _MCP_SERVERS_DOC = {"_type": "smart_ziw_mcp_servers"}
 SUPPORTED_TRANSPORTS = ("sse", "http")
 
 # Built-in hosted MCP servers. Endpoints/headers verified 2026-09:
-# - Brave Search MCP: hosted at https://api.search.brave.com/mcp (streamable
-#   HTTP); auth via the Brave Search API subscription token header
-#   (mcp.brave.com does not resolve — Brave hosts the MCP on their API domain).
+# - Brave Search: native REST integration against the LLM Context API
+#   (https://api.search.brave.com/res/v1/llm/context); auth via the Brave
+#   Search API subscription token header. The hosted Brave MCP endpoint
+#   (api.search.brave.com/mcp) is AWS-WAF-blocked from typical datacenter
+#   egress IPs, so the built-in brave_web_search tool calls this REST API
+#   directly and the admin connection test probes it — no MCP discovery.
 # - Firecrawl MCP: hosted at https://mcp.firecrawl.dev/v2/mcp (streamable
 #   HTTP); auth via `Authorization: Bearer <FIRECRAWL_API_KEY>`.
 # This tuple is the single place to correct preset url/header facts.
@@ -34,7 +37,7 @@ BUILTIN_MCP_SERVERS: tuple[dict, ...] = (
         "id": "brave-search",
         "name": "Brave Search",
         "transport": "http",
-        "url": "https://api.search.brave.com/mcp",
+        "url": "https://api.search.brave.com/res/v1/llm/context",
         "api_key_header": "X-Subscription-Token",
         "api_key_prefix": "",
     },

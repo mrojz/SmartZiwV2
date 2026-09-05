@@ -1030,7 +1030,7 @@ import requests
 
 
 def _brave_payload(results=None):
-    return {"web": {"results": results or []}}
+    return {"grounding": {"generic": results or []}}
 
 
 def test_brave_search_uses_api_key_and_params(monkeypatch):
@@ -1048,15 +1048,15 @@ def test_brave_search_uses_api_key_and_params(monkeypatch):
     result = brave_search("tender niger", "secret-key", count=5)
     assert result["status"] == "ok"
     assert result["results"] == []
-    assert captured["url"] == "https://api.search.brave.com/res/v1/web/search"
+    assert captured["url"] == "https://api.search.brave.com/res/v1/llm/context"
     assert captured["headers"]["X-Subscription-Token"] == "secret-key"
     assert captured["params"] == {"q": "tender niger", "count": 5}
 
 
 def test_brave_search_returns_results(monkeypatch):
     payload = _brave_payload([
-        {"title": "Tender notice", "url": "https://bhn.ne/ao/1", "description": "Appel d'offres"},
-        {"title": "No desc", "url": "https://example.com/x"},
+        {"title": "Tender notice", "url": "https://bhn.ne/ao/1", "snippets": ["Appel d'offres", "Deadline 2026-10"]},
+        {"title": "No snippets", "url": "https://example.com/x"},
     ])
 
     class FakeResp:
@@ -1074,9 +1074,27 @@ def test_brave_search_returns_results(monkeypatch):
     assert result["results"][0] == {
         "title": "Tender notice",
         "url": "https://bhn.ne/ao/1",
-        "snippet": "Appel d'offres",
+        "snippet": "Appel d'offres\nDeadline 2026-10",
     }
     assert result["results"][1]["snippet"] == ""
+
+
+def test_probe_brave_api_reports_ok_and_error(monkeypatch):
+    from smart_ziw_research import probe_brave_api
+
+    class FakeResp:
+        def raise_for_status(self):
+            return None
+
+    monkeypatch.setattr("smart_ziw_research.requests.get", lambda *a, **k: FakeResp())
+    assert probe_brave_api("k")["status"] == "ok"
+    assert probe_brave_api("")["status"] == "error"
+
+    def _explode(*a, **k):
+        raise RuntimeError("network down")
+
+    monkeypatch.setattr("smart_ziw_research.requests.get", _explode)
+    assert probe_brave_api("k")["status"] == "error"
 
 
 def test_brave_search_missing_key_returns_error_without_network(monkeypatch):
