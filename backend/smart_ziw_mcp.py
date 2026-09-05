@@ -106,6 +106,22 @@ def _server_headers(server: dict) -> dict[str, str] | None:
     return {str(key): str(value) for key, value in headers.items()}
 
 
+def _strip_dollar_keys(value: Any) -> Any:
+    """Recursively drop $-prefixed keys (e.g. JSON Schema's ``$schema``).
+
+    MongoDB ≤ 4.4 forbids dollar-prefixed field names in stored documents,
+    and hosted MCP servers (Firecrawl) ship tool schemas that include them.
+    The keys are dialect metadata the LLM never uses.
+    # ponytail: also drops $ref/$defs if a server ever uses them — none of
+    # the built-in presets do; reintroduce escaping here if that changes.
+    """
+    if isinstance(value, dict):
+        return {k: _strip_dollar_keys(v) for k, v in value.items() if not str(k).startswith("$")}
+    if isinstance(value, list):
+        return [_strip_dollar_keys(item) for item in value]
+    return value
+
+
 def _serialize_tools(tools: list[Any]) -> list[dict]:
     """Normalize a list of MCP Tool objects or dicts to plain dicts."""
     out: list[dict] = []
@@ -123,7 +139,7 @@ def _serialize_tools(tools: list[Any]) -> list[dict]:
         out.append({
             "name": data.get("name") or "",
             "description": data.get("description") or "",
-            "inputSchema": data.get("inputSchema") or {"type": "object", "properties": {}},
+            "inputSchema": _strip_dollar_keys(data.get("inputSchema") or {"type": "object", "properties": {}}),
         })
     return out
 

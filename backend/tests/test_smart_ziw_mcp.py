@@ -421,3 +421,37 @@ def test_admin_test_mcp_server_endpoint(monkeypatch):
     assert r.status_code == 200
     assert r.json()["status"] == "ok"
     assert r.json()["tools"][0]["name"] == "echo"
+
+
+def test_serialize_tools_strips_dollar_prefixed_keys():
+    """MongoDB 4.4 (pinned in docker-compose) rejects $-prefixed field names;
+    Firecrawl ships inputSchemas containing $schema. Serialization must strip
+    them at the choke point so saves never fail on storage."""
+    tools = [{
+        "name": "firecrawl_scrape",
+        "description": "Scrape",
+        "inputSchema": {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "type": "object",
+            "properties": {
+                "url": {"type": "string", "$comment": "nested too"},
+            },
+            "required": ["url"],
+        },
+    }]
+    out = smart_ziw_mcp._serialize_tools(tools)
+    schema = out[0]["inputSchema"]
+    assert "$schema" not in schema
+    assert schema["type"] == "object"
+    assert "$comment" not in schema["properties"]["url"]
+    assert schema["required"] == ["url"]
+
+
+def test_serialize_tools_handles_mcp_objects_with_dollar_schema():
+    class FakeTool:
+        name = "t"
+        description = "d"
+        inputSchema = {"$schema": "https://json-schema.org/draft/2020-12/schema", "type": "object"}
+
+    out = smart_ziw_mcp._serialize_tools([FakeTool()])
+    assert out[0]["inputSchema"] == {"type": "object"}
