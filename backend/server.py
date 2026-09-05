@@ -458,7 +458,6 @@ def _format_smart_ziw_comment(result: dict) -> str:
         "Smart-Ziw Agent",
         "",
         f"Generated mirror: `{result.get('folder')}/`",
-        f"Local path: `{result.get('repo_path')}/{result.get('folder')}/`",
     ]
     files = result.get("files") or []
     if files:
@@ -2111,6 +2110,20 @@ def _compute_llm_status(config: dict) -> dict:
         "missing_fields": missing,
         "source": "config",
     }
+
+
+@app.get("/api/admin/smart-ziw-source-options")
+def smart_ziw_source_options(request: Request):
+    """All scraper source labels, for the auto-analyze allowlist dropdown.
+
+    Options come from the scraper registry (the definitive list of sources a
+    sync can produce), not from whatever happens to be in the projects
+    collection.
+    """
+    _require_admin(request)
+    from main import SCRAPERS
+
+    return sorted({str(info.get("label") or key) for key, info in SCRAPERS.items()})
 
 
 @app.put("/api/admin/smart-ziw-config")

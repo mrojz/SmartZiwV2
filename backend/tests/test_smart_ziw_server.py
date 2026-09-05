@@ -361,6 +361,18 @@ def test_admin_update_defaults_lightllm_provider(monkeypatch):
     assert saved["lightllm_provider"] == "openai_compatible"
 
 
+def test_admin_source_options_lists_all_scraper_labels(monkeypatch):
+    monkeypatch.setattr(server, "_get_request_user", lambda req: _mk_admin())
+    client = TestClient(server.app)
+    r = client.get("/api/admin/smart-ziw-source-options")
+    assert r.status_code == 200
+    labels = r.json()
+    assert "World Bank" in labels
+    assert "IADB" in labels
+    assert len(labels) >= 12
+    assert labels == sorted(labels)
+
+
 def test_admin_update_stores_lightllm_provider(monkeypatch):
     saved = {}
     monkeypatch.setattr(server, "_get_request_user", lambda req: _mk_admin())

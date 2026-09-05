@@ -1295,6 +1295,7 @@ function AdminPage({ apiFetch, authUser, initialTab = 'users', projects = [] }) 
     const [selectedReleaseVersion, setSelectedReleaseVersion] = useState('');
     const [releaseForm, setReleaseForm] = useState({ version: '', title: '', summary: '', itemsText: '' });
     const [savingReleaseNotes, setSavingReleaseNotes] = useState(false);
+    const [scraperSources, setScraperSources] = useState([]);
     const [smartZiwConfig, setSmartZiwConfig] = useState({
         smart_ziw_enabled: true,
         smart_ziw_repo_path: '/home/kali/Smart-Ziw',
@@ -1317,7 +1318,7 @@ function AdminPage({ apiFetch, authUser, initialTab = 'users', projects = [] }) 
         auto_analyze_countries: [],
         auto_analyze_max_per_run: 10,
     });
-    const autoAnalyzeSourceOptions = useMemo(() => [...new Set(projects.flatMap((p) => String(p.source || '').split(',').map((s) => s.trim())).filter(Boolean))].sort(), [projects]);
+    const autoAnalyzeSourceOptions = useMemo(() => [...new Set([...scraperSources, ...projects.flatMap((p) => String(p.source || '').split(',').map((s) => s.trim()))])].filter(Boolean).sort(), [projects, scraperSources]);
     const autoAnalyzeCountryOptions = useMemo(() => [...new Set(projects.map((p) => p.country || p.primary_country_name_en).filter(Boolean))].sort(), [projects]);
     const [savingSmartZiwConfig, setSavingSmartZiwConfig] = useState(false);
     const [savingSystemPrompts, setSavingSystemPrompts] = useState(false);
@@ -1534,6 +1535,14 @@ function AdminPage({ apiFetch, authUser, initialTab = 'users', projects = [] }) 
     }, [adminTab, loadReleaseNotes]);
 
     useEffect(() => {
+        if (adminTab !== 'smart-ziw') return;
+        apiFetch('/api/admin/smart-ziw-source-options')
+            .then((res) => (res.ok ? res.json() : []))
+            .then((data) => setScraperSources(Array.isArray(data) ? data : []))
+            .catch(() => setScraperSources([]));
+    }, [adminTab, apiFetch]);
+
+    useEffect(() => {
         if (adminTab !== 'smart-ziw' && adminTab !== 'llm' && adminTab !== 'system-prompts') return;
         loadSmartZiwConfig();
     }, [adminTab, loadSmartZiwConfig]);
@@ -1545,10 +1554,6 @@ function AdminPage({ apiFetch, authUser, initialTab = 'users', projects = [] }) 
 
     const saveSmartZiwConfig = async () => {
         const nextErrors = {};
-        if (smartZiwConfig.smart_ziw_enabled) {
-            const repoError = isRequired(smartZiwConfig.smart_ziw_repo_path);
-            if (repoError) nextErrors.smart_ziw_repo_path = repoError;
-        }
         const timeoutError = isNumberInRange(smartZiwConfig.smart_ziw_research_timeout_seconds, 1, undefined);
         if (timeoutError) nextErrors.smart_ziw_research_timeout_seconds = timeoutError;
         if (Object.keys(nextErrors).length) {
@@ -2424,20 +2429,12 @@ function AdminPage({ apiFetch, authUser, initialTab = 'users', projects = [] }) 
                             <Label htmlFor="smart-ziw-enabled" className="text-sm font-semibold">Enable Smart-Ziw Agent</Label>
                             <Switch id="smart-ziw-enabled" checked={smartZiwConfig.smart_ziw_enabled} onCheckedChange={(checked) => setSmartZiwConfig({ ...smartZiwConfig, smart_ziw_enabled: checked })} />
                         </div>
-                        <div className="flex flex-col gap-1.5 sm:col-span-2">
-                            <Label htmlFor="smart-ziw-repo-path" className="text-sm font-medium">Local repo path</Label>
-                            <ShadcnInput id="smart-ziw-repo-path" value={smartZiwConfig.smart_ziw_repo_path} onChange={(e) => setSmartZiwConfig({ ...smartZiwConfig, smart_ziw_repo_path: e.target.value })} />
-                            {configErrors.smart_ziw_repo_path ? <p className="text-xs text-destructive">{configErrors.smart_ziw_repo_path}</p> : null}
-                        </div>
                         <h4 className="text-sm font-semibold text-foreground sm:col-span-2">Web research</h4>
                         <div className="flex flex-col gap-2 rounded-lg border px-4 py-3 sm:col-span-2">
                             <div className="flex items-center justify-between">
                                 <Label htmlFor="research-enabled" className="text-sm font-semibold">Enable web research</Label>
                                 <Switch id="research-enabled" checked={smartZiwConfig.smart_ziw_research_enabled} onCheckedChange={(checked) => setSmartZiwConfig({ ...smartZiwConfig, smart_ziw_research_enabled: checked })} />
                             </div>
-                            <p className="text-xs text-muted-foreground">
-                                Requires a Firecrawl MCP server in the <strong>Tools</strong> tab.
-                            </p>
                         </div>
                         <div className="flex flex-col gap-1.5">
                             <Label htmlFor="research-timeout" className="text-sm font-medium">Research timeout (seconds)</Label>
