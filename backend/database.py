@@ -102,7 +102,6 @@ def _normalize_project(doc: dict, geography: dict | None = None, geography_looku
     doc['smart_ziw_requested_by'] = doc.get('smart_ziw_requested_by') or ''
     doc['smart_ziw_error'] = doc.get('smart_ziw_error') or ''
     doc['smart_ziw_folder'] = str(doc.get('smart_ziw_folder') or '')
-    doc['smart_ziw_gitlab_pushed'] = bool(doc.get('smart_ziw_gitlab_pushed', False))
     doc['smart_ziw_analysis_markdown'] = str(doc.get('smart_ziw_analysis_markdown') or '')
     doc['smart_ziw_next_actions'] = doc.get('smart_ziw_next_actions') or []
     doc['smart_ziw_research_verdict'] = str(doc.get('smart_ziw_research_verdict') or '')
@@ -316,7 +315,6 @@ def update_project_smart_ziw_state_by_db_id(project_db_id: str, updates: dict) -
         'smart_ziw_requested_by',
         'smart_ziw_error',
         'smart_ziw_folder',
-        'smart_ziw_gitlab_pushed',
         'smart_ziw_analysis_markdown',
         'smart_ziw_next_actions',
         'smart_ziw_research_verdict',
@@ -447,13 +445,6 @@ def save_config(keywords: list[str], regions: dict[str, list[str]]):
 DEFAULT_SMART_ZIW_CONFIG = {
     'smart_ziw_enabled': True,
     'smart_ziw_repo_path': '/home/kali/Smart-Ziw',
-    'gitlab_push_enabled': False,
-    'gitlab_base_url': 'http://localhost:8080',
-    'gitlab_project_path': 'root/Smart-Ziw',
-    'gitlab_token': '',
-    'gitlab_branch': 'main',
-    'gitlab_author_name': 'Smart-Ziw Agent',
-    'gitlab_author_email': 'smart-ziw@localhost',
     'forvis_mazars_presence_countries': [
         'algeria', 'argentina', 'australia', 'austria', 'belgium', 'brazil', 'canada', 'china',
         'czech republic', 'denmark', 'egypt', 'finland', 'france', 'germany', 'hong kong',

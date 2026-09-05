@@ -9,9 +9,6 @@ from urllib.parse import urlparse, urlunparse
 from openai import OpenAI
 
 
-from smart_ziw_gitlab import push_to_gitlab
-
-
 def _safe_slug(text: str, max_len: int = 50) -> str:
     text = re.sub(r"[^\w\s-]", "", text or "")
     text = re.sub(r"[-\s]+", "-", text).strip("-")
@@ -514,16 +511,12 @@ def run_with_skills(project: dict, config: dict | None = None, thread_context: s
     recap_markdown = _render_recap_markdown(project, content)
     (folder_path / "recap.md").write_text(recap_markdown, encoding="utf-8")
 
-    git_result = push_to_gitlab(repo_path, folder, config)
-
     result = {
         "folder": folder,
         "files": ["recap.md"],
         "recap_markdown": recap_markdown,
         "references": content.get("references") if isinstance(content.get("references"), list) else [],
         "repo_path": str(repo_path),
-        "gitlab_pushed": git_result["pushed"],
-        "gitlab_message": git_result["message"],
     }
 
     files_dir = folder_path / "files"
@@ -665,16 +658,10 @@ def _run_tool_loop(
     if document_files:
         result["files"] = ["recap.md", *document_files]
 
-    git_result = push_to_gitlab(repo_path, folder, config)
-    result["gitlab_pushed"] = git_result["pushed"]
-    result["gitlab_message"] = git_result["message"]
-
     if loop_result.get("final_status") != "success":
         result["error"] = loop_result.get("error") or "Tool loop did not post a comment"
     return result
 
-
-# ---------- GitLab mirror ----------
 
 def run(project: dict, config: dict | None = None, thread_context: str = "", tools: dict | None = None) -> dict:
     config = config or {}
@@ -737,16 +724,12 @@ def run(project: dict, config: dict | None = None, thread_context: str = "", too
     recap_markdown = _render_recap_markdown(project, content)
     (folder_path / "recap.md").write_text(recap_markdown, encoding="utf-8")
 
-    git_result = push_to_gitlab(repo_path, folder, config)
-
     result = {
         "folder": folder,
         "files": ["recap.md"],
         "recap_markdown": recap_markdown,
         "references": content.get("references") if isinstance(content.get("references"), list) else [],
         "repo_path": str(repo_path),
-        "gitlab_pushed": git_result["pushed"],
-        "gitlab_message": git_result["message"],
     }
 
     files_dir = folder_path / "files"

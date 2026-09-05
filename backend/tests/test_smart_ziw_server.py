@@ -25,7 +25,6 @@ def _mk_admin():
 
 def _config_with_secrets():
     return {
-        "gitlab_token": "SECRET-GL-TOKEN",
         "lightllm_api_key": "SECRET-LL-KEY",
         "lightllm_subscription_key": "SECRET-SUB-KEY",
         "smart_ziw_research_enabled": True,
@@ -34,14 +33,13 @@ def _config_with_secrets():
     }
 
 
-def test_admin_get_redacts_gitlab_and_lightllm_keys(monkeypatch):
+def test_admin_get_redacts_lightllm_keys(monkeypatch):
     monkeypatch.setattr(server, "_get_request_user", lambda req: _mk_admin())
     monkeypatch.setattr(server, "get_smart_ziw_config", _config_with_secrets)
     client = TestClient(server.app)
     r = client.get("/api/admin/smart-ziw-config")
     assert r.status_code == 200
     data = r.json()
-    assert data["gitlab_token"] == ""
     assert data["lightllm_api_key"] == ""
     assert data["lightllm_subscription_key"] == ""
 
@@ -58,15 +56,12 @@ def test_admin_update_preserves_empty_tokens(monkeypatch):
     monkeypatch.setattr(server, "save_smart_ziw_config", fake_save)
     client = TestClient(server.app)
     r = client.put("/api/admin/smart-ziw-config", json={
-        "gitlab_token": "",
         "lightllm_api_key": "",
         "lightllm_subscription_key": "",
     })
     assert r.status_code == 200
-    assert saved["gitlab_token"] == "SECRET-GL-TOKEN"
     assert saved["lightllm_api_key"] == "SECRET-LL-KEY"
     assert saved["lightllm_subscription_key"] == "SECRET-SUB-KEY"
-    assert r.json()["gitlab_token"] == ""
     assert r.json()["lightllm_api_key"] == ""
     assert r.json()["lightllm_subscription_key"] == ""
 
@@ -98,9 +93,9 @@ def test_admin_update_preserves_presence_list_when_empty(monkeypatch):
 
     monkeypatch.setattr(server, "save_smart_ziw_config", fake_save)
     client = TestClient(server.app)
-    r = client.put("/api/admin/smart-ziw-config", json={"gitlab_token": "NEW-GL-TOKEN"})
+    r = client.put("/api/admin/smart-ziw-config", json={"lightllm_api_key": ""})
     assert r.status_code == 200
-    assert saved["gitlab_token"] == "NEW-GL-TOKEN"
+    assert saved["lightllm_api_key"] == "SECRET-LL-KEY"
     assert saved["forvis_mazars_presence_countries"] == ["tunisia", "france"]
 
 
@@ -166,8 +161,6 @@ def test_format_comment_includes_research_summary():
         "folder": "f",
         "repo_path": "/r",
         "files": ["tender.md"],
-        "gitlab_pushed": False,
-        "gitlab_message": "GitLab push disabled",
         "research": True,
         "research_stats": {"queries_run": 12, "pages_scraped": 9, "documents_captured": 3},
         "research_verdict": "GO-CONDITIONAL",
@@ -187,8 +180,6 @@ def test_format_comment_notes_research_timeout():
         "folder": "f",
         "repo_path": "/r",
         "files": [],
-        "gitlab_pushed": False,
-        "gitlab_message": "GitLab push disabled",
         "research": True,
         "research_stats": {"queries_run": 1, "pages_scraped": 0, "documents_captured": 0},
         "research_verdict": "GO-CONDITIONAL",
@@ -365,7 +356,7 @@ def test_admin_update_defaults_lightllm_provider(monkeypatch):
 
     monkeypatch.setattr(server, "save_smart_ziw_config", fake_save)
     client = TestClient(server.app)
-    r = client.put("/api/admin/smart-ziw-config", json={"gitlab_token": ""})
+    r = client.put("/api/admin/smart-ziw-config", json={})
     assert r.status_code == 200
     assert saved["lightllm_provider"] == "openai_compatible"
 
@@ -503,8 +494,6 @@ def test_run_smart_ziw_saves_structured_fields(monkeypatch):
             "folder": "f",
             "files": ["recap.md"],
             "repo_path": "/r",
-            "gitlab_pushed": False,
-            "gitlab_message": "disabled",
             "research": True,
             "research_verdict": "GO",
             "research_stats": {"queries_run": 5, "pages_scraped": 3},

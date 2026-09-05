@@ -1298,13 +1298,6 @@ function AdminPage({ apiFetch, authUser, initialTab = 'users', projects = [] }) 
     const [smartZiwConfig, setSmartZiwConfig] = useState({
         smart_ziw_enabled: true,
         smart_ziw_repo_path: '/home/kali/Smart-Ziw',
-        gitlab_push_enabled: false,
-        gitlab_base_url: 'http://localhost:8080',
-        gitlab_project_path: 'root/Smart-Ziw',
-        gitlab_token: '',
-        gitlab_branch: 'main',
-        gitlab_author_name: 'Smart-Ziw Agent',
-        gitlab_author_email: 'smart-ziw@localhost',
         smart_ziw_research_enabled: true,
         smart_ziw_research_timeout_seconds: 900,
         smart_ziw_llm_provider: 'auto',
@@ -1556,10 +1549,6 @@ function AdminPage({ apiFetch, authUser, initialTab = 'users', projects = [] }) 
             const repoError = isRequired(smartZiwConfig.smart_ziw_repo_path);
             if (repoError) nextErrors.smart_ziw_repo_path = repoError;
         }
-        if (smartZiwConfig.gitlab_push_enabled) {
-            const urlError = isUrl(smartZiwConfig.gitlab_base_url);
-            if (urlError) nextErrors.gitlab_base_url = urlError;
-        }
         const timeoutError = isNumberInRange(smartZiwConfig.smart_ziw_research_timeout_seconds, 1, undefined);
         if (timeoutError) nextErrors.smart_ziw_research_timeout_seconds = timeoutError;
         if (Object.keys(nextErrors).length) {
@@ -1578,7 +1567,7 @@ function AdminPage({ apiFetch, authUser, initialTab = 'users', projects = [] }) 
             const data = await res.json();
             const { llm_status, ...rest } = data || {};
             if (llm_status) setLlmStatus(llm_status);
-            setSmartZiwConfig((prev) => ({ ...prev, ...rest, gitlab_token: prev.gitlab_token, lightllm_api_key: '', forvis_mazars_presence_countries: data.forvis_mazars_presence_countries || prev.forvis_mazars_presence_countries }));
+            setSmartZiwConfig((prev) => ({ ...prev, ...rest, lightllm_api_key: '', forvis_mazars_presence_countries: data.forvis_mazars_presence_countries || prev.forvis_mazars_presence_countries }));
             toast.success('Smart-Ziw config saved.');
         } catch (error) {
             toast.error(`Failed to save Smart-Ziw config: ${error?.message || 'unknown error'}`);
@@ -1599,7 +1588,7 @@ function AdminPage({ apiFetch, authUser, initialTab = 'users', projects = [] }) 
             const data = await res.json();
             const { llm_status, ...rest } = data || {};
             if (llm_status) setLlmStatus(llm_status);
-            setSmartZiwConfig((prev) => ({ ...prev, ...rest, gitlab_token: prev.gitlab_token, lightllm_api_key: '', forvis_mazars_presence_countries: data.forvis_mazars_presence_countries || prev.forvis_mazars_presence_countries }));
+            setSmartZiwConfig((prev) => ({ ...prev, ...rest, lightllm_api_key: '', forvis_mazars_presence_countries: data.forvis_mazars_presence_countries || prev.forvis_mazars_presence_countries }));
             toast.success('Classifier saved.');
         } catch (error) {
             toast.error(`Failed to save classifier: ${error?.message || 'unknown error'}`);
@@ -2428,7 +2417,7 @@ function AdminPage({ apiFetch, authUser, initialTab = 'users', projects = [] }) 
                 <section className="flex flex-col gap-6">
                     <div className="flex flex-col gap-1">
                         <h3 className="text-lg font-semibold tracking-tight text-foreground">Smart-Ziw Agent</h3>
-                        <p className="text-sm text-muted-foreground">Configure local mirror path, web research, and optional GitLab push.</p>
+                        <p className="text-sm text-muted-foreground">Configure local mirror path and web research.</p>
                     </div>
                     <div className="grid gap-4 sm:grid-cols-2">
                         <div className="flex items-center justify-between rounded-lg border px-4 py-3 sm:col-span-2">
@@ -2439,35 +2428,6 @@ function AdminPage({ apiFetch, authUser, initialTab = 'users', projects = [] }) 
                             <Label htmlFor="smart-ziw-repo-path" className="text-sm font-medium">Local repo path</Label>
                             <ShadcnInput id="smart-ziw-repo-path" value={smartZiwConfig.smart_ziw_repo_path} onChange={(e) => setSmartZiwConfig({ ...smartZiwConfig, smart_ziw_repo_path: e.target.value })} />
                             {configErrors.smart_ziw_repo_path ? <p className="text-xs text-destructive">{configErrors.smart_ziw_repo_path}</p> : null}
-                        </div>
-                        <div className="flex items-center justify-between rounded-lg border px-4 py-3 sm:col-span-2">
-                            <Label htmlFor="gitlab-push-enabled" className="text-sm font-semibold">Enable GitLab push</Label>
-                            <Switch id="gitlab-push-enabled" checked={smartZiwConfig.gitlab_push_enabled} onCheckedChange={(checked) => setSmartZiwConfig({ ...smartZiwConfig, gitlab_push_enabled: checked })} />
-                        </div>
-                        <div className="flex flex-col gap-1.5 sm:col-span-2">
-                            <Label htmlFor="gitlab-base-url" className="text-sm font-medium">GitLab base URL</Label>
-                            <ShadcnInput id="gitlab-base-url" value={smartZiwConfig.gitlab_base_url} onChange={(e) => setSmartZiwConfig({ ...smartZiwConfig, gitlab_base_url: e.target.value })} />
-                            {configErrors.gitlab_base_url ? <p className="text-xs text-destructive">{configErrors.gitlab_base_url}</p> : null}
-                        </div>
-                        <div className="flex flex-col gap-1.5 sm:col-span-2">
-                            <Label htmlFor="gitlab-project-path" className="text-sm font-medium">GitLab project path</Label>
-                            <ShadcnInput id="gitlab-project-path" value={smartZiwConfig.gitlab_project_path} onChange={(e) => setSmartZiwConfig({ ...smartZiwConfig, gitlab_project_path: e.target.value })} />
-                        </div>
-                        <div className="flex flex-col gap-1.5 sm:col-span-2">
-                            <Label htmlFor="gitlab-token" className="text-sm font-medium">GitLab token</Label>
-                            <ShadcnInput id="gitlab-token" type="password" value={smartZiwConfig.gitlab_token} onChange={(e) => setSmartZiwConfig({ ...smartZiwConfig, gitlab_token: e.target.value })} />
-                        </div>
-                        <div className="flex flex-col gap-1.5">
-                            <Label htmlFor="gitlab-branch" className="text-sm font-medium">Branch</Label>
-                            <ShadcnInput id="gitlab-branch" value={smartZiwConfig.gitlab_branch} onChange={(e) => setSmartZiwConfig({ ...smartZiwConfig, gitlab_branch: e.target.value })} />
-                        </div>
-                        <div className="flex flex-col gap-1.5">
-                            <Label htmlFor="gitlab-author-name" className="text-sm font-medium">Author name</Label>
-                            <ShadcnInput id="gitlab-author-name" value={smartZiwConfig.gitlab_author_name} onChange={(e) => setSmartZiwConfig({ ...smartZiwConfig, gitlab_author_name: e.target.value })} />
-                        </div>
-                        <div className="flex flex-col gap-1.5 sm:col-span-2">
-                            <Label htmlFor="gitlab-author-email" className="text-sm font-medium">Author email</Label>
-                            <ShadcnInput id="gitlab-author-email" value={smartZiwConfig.gitlab_author_email} onChange={(e) => setSmartZiwConfig({ ...smartZiwConfig, gitlab_author_email: e.target.value })} />
                         </div>
                         <h4 className="text-sm font-semibold text-foreground sm:col-span-2">Web research</h4>
                         <div className="flex flex-col gap-2 rounded-lg border px-4 py-3 sm:col-span-2">

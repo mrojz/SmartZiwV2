@@ -1,4 +1,3 @@
-import subprocess
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -9,13 +8,11 @@ from smart_ziw_agent import (
     _enrich,
     _safe_json_loads,
     run,
-    push_to_gitlab,
     ENRICH_PROMPT,
     CHAT_PROMPT,
     _default_enrichment,
     _human_only_actions,
 )
-from smart_ziw_gitlab import push_to_gitlab
 from smart_ziw_research import ResearchResult
 
 
@@ -208,101 +205,6 @@ def test_run_metadata_path_writes_recap_only(monkeypatch, tmp_path):
     folder = tmp_path / result["folder"]
     assert (folder / "recap.md").exists()
     assert "Metadata recap." in (folder / "recap.md").read_text(encoding="utf-8")
-
-
-def test_push_to_gitlab_excludes_document_binaries(tmp_path, monkeypatch):
-    monkeypatch.setattr("smart_ziw_gitlab._preflight_gitlab_api", lambda *a, **k: (True, "ok"))
-    repo_path = tmp_path / "mirror-repo"
-    repo_path.mkdir()
-    folder = repo_path / "folder"
-    folder.mkdir()
-    (folder / "README.md").write_text("test", encoding="utf-8")
-    docs = folder / "files" / "original"
-    docs.mkdir(parents=True)
-    (docs / "dce.pdf").write_bytes(b"%PDF-1.4")
-    config = {
-        "gitlab_push_enabled": True,
-        "gitlab_base_url": "https://127.0.0.1:1",
-        "gitlab_project_path": "test/repo",
-        "gitlab_token": "t",
-        "gitlab_branch": "main",
-    }
-    result = push_to_gitlab(repo_path, "folder", config)
-    assert result["pushed"] is False  # unroutable host; commit still happens locally
-    tracked = subprocess.check_output(["git", "ls-files"], cwd=str(repo_path), text=True)
-    assert "folder/README.md" in tracked
-    assert "files/original" not in tracked
-
-
-def test_push_to_gitlab_config_missing_skips():
-    result = push_to_gitlab(Path("/tmp/fake"), "folder", {})
-    assert result["pushed"] is False
-    assert "disabled" in result["message"].lower()
-
-
-def test_push_to_gitlab_incomplete_config():
-    config = {
-        "gitlab_push_enabled": True,
-        "gitlab_base_url": "http://localhost:8080",
-        "gitlab_project_path": "root/repo",
-        "gitlab_token": "",
-        "gitlab_branch": "main",
-    }
-    result = push_to_gitlab(Path("/tmp/fake"), "folder", config)
-    assert result["pushed"] is False
-    assert result["message"] == "GitLab config incomplete"
-
-
-def test_push_to_gitlab_preflight_failure_returns_early(tmp_path, monkeypatch):
-    monkeypatch.setattr("smart_ziw_gitlab._preflight_gitlab_api", lambda *a, **k: (False, "Project not found"))
-    repo_path = tmp_path / "mirror-repo"
-    repo_path.mkdir()
-    (repo_path / "folder").mkdir()
-    (repo_path / "folder" / "README.md").write_text("test", encoding="utf-8")
-    config = {
-        "gitlab_push_enabled": True,
-        "gitlab_base_url": "https://127.0.0.1:1",
-        "gitlab_project_path": "test/repo",
-        "gitlab_token": "t",
-        "gitlab_branch": "main",
-    }
-    result = push_to_gitlab(repo_path, "folder", config)
-    assert result["pushed"] is False
-    assert "connection check failed" in result["message"].lower()
-    assert "Project not found" in result["message"]
-    assert not (repo_path / ".git").exists()
-
-
-def test_push_to_gitlab_token_never_persisted_or_leaked(tmp_path, monkeypatch):
-    monkeypatch.setattr("smart_ziw_gitlab._preflight_gitlab_api", lambda *a, **k: (True, "ok"))
-    repo_path = tmp_path / "mirror-repo"
-    repo_path.mkdir()
-    (repo_path / "folder").mkdir()
-    (repo_path / "folder" / "README.md").write_text("test", encoding="utf-8")
-    token = "super-secret-token-12345"
-    config = {
-        "gitlab_push_enabled": True,
-        "gitlab_base_url": "https://127.0.0.1:1",
-        "gitlab_project_path": "test/repo",
-        "gitlab_token": token,
-        "gitlab_branch": "main",
-    }
-    result = push_to_gitlab(repo_path, "folder", config)
-    assert result["pushed"] is False
-    assert token not in result["message"]
-    config_text = ""
-    if (repo_path / ".git" / "config").exists():
-        config_text = (repo_path / ".git" / "config").read_text(encoding="utf-8")
-    assert token not in config_text
-    assert (repo_path / ".git").exists()
-
-
-def test_push_to_gitlab_exposed_via_agent():
-    from smart_ziw_agent import push_to_gitlab as agent_push
-    assert callable(agent_push)
-    result = agent_push(Path("/tmp/fake"), "folder", {})
-    assert result["pushed"] is False
-    assert "disabled" in result["message"].lower()
 
 
 def test_enrich_uses_injected_llm_call():
@@ -573,7 +475,6 @@ def test_run_tool_loop_maps_post_step_to_legacy_result(monkeypatch, tmp_path):
             }
 
     monkeypatch.setattr(smart_ziw_llm, "LLMClient", FakeLLM)
-    monkeypatch.setattr(smart_ziw_agent, "push_to_gitlab", lambda repo, f, cfg: {"pushed": False, "message": "disabled"})
     monkeypatch.setattr(smart_ziw_config, "load_smart_ziw_config", lambda: {"max_iterations": 5})
 
     posted = {}
@@ -599,7 +500,6 @@ def test_run_tool_loop_maps_post_step_to_legacy_result(monkeypatch, tmp_path):
     assert result["source_url"] == "https://buyer.example/tender"
     assert result["documents"] == [str(Path("files") / "original" / "a.pdf")]
     assert "GO" in result["recap_markdown"]
-    assert result["gitlab_pushed"] is False
     assert (tmp_path / result["folder"] / "recap.md").exists()
     assert posted["tender_id"] == "db1"
 
@@ -624,7 +524,6 @@ def test_run_tool_loop_failure_reports_error(monkeypatch, tmp_path):
             raise RuntimeError("boom")
 
     monkeypatch.setattr(smart_ziw_llm, "LLMClient", BoomLLM)
-    monkeypatch.setattr(smart_ziw_agent, "push_to_gitlab", lambda repo, f, cfg: {"pushed": False, "message": "disabled"})
 
     result = run(_tool_loop_project(), config={"smart_ziw_repo_path": str(tmp_path)}, tools={})
 

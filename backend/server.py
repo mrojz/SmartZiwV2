@@ -460,15 +460,6 @@ def _format_smart_ziw_comment(result: dict) -> str:
         f"Generated mirror: `{result.get('folder')}/`",
         f"Local path: `{result.get('repo_path')}/{result.get('folder')}/`",
     ]
-    if result.get("gitlab_pushed"):
-        lines.append("GitLab push: pushed")
-    elif result.get("gitlab_message"):
-        message = result["gitlab_message"]
-        if message == "GitLab push disabled":
-            message = "disabled"
-        lines.append(f"GitLab push: {message}")
-    else:
-        lines.append("GitLab push: disabled")
     files = result.get("files") or []
     if files:
         lines.extend(["", "Files:", *[f"- {f}" for f in files]])
@@ -518,10 +509,7 @@ def _run_smart_ziw(project_db_id: str, actor_user: dict, thread_comments: list[d
         if not result.get("comment_posted"):
             _post_smart_ziw_comment(project, result)
         enrichment_error = result.get("error")
-        push_error = None
-        if config.get("gitlab_push_enabled") and not result.get("gitlab_pushed"):
-            push_error = result.get("gitlab_message") or "GitLab push failed"
-        error = enrichment_error or push_error
+        error = enrichment_error
         ai_source = "Tool loop" if result.get("tool_loop") else ("Web research" if result.get("research") else "LLM enrichment")
         if result.get("research"):
             if result.get("research_timed_out") or (result.get("research_stats", {}).get("pages_scraped", 0) == 0):
@@ -542,7 +530,6 @@ def _run_smart_ziw(project_db_id: str, actor_user: dict, thread_comments: list[d
             "smart_ziw_completed_at": now_iso(),
             "smart_ziw_error": (str(error)[:1000] if error else ""),
             "smart_ziw_folder": result.get("folder", ""),
-            "smart_ziw_gitlab_pushed": bool(result.get("gitlab_pushed")),
             "smart_ziw_analysis_markdown": str(result.get("recap_markdown") or ""),
             "smart_ziw_next_actions": [],
             "smart_ziw_research_verdict": str(result.get("research_verdict") or ""),
@@ -1218,13 +1205,6 @@ class SmartZiwTriggerRequest(BaseModel):
 class SmartZiwConfigUpdate(BaseModel):
     smart_ziw_enabled: bool = True
     smart_ziw_repo_path: str = "/home/kali/Smart-Ziw"
-    gitlab_push_enabled: bool = False
-    gitlab_base_url: str = "http://localhost:8080"
-    gitlab_project_path: str = "root/Smart-Ziw"
-    gitlab_token: str = ""
-    gitlab_branch: str = "main"
-    gitlab_author_name: str = "Smart-Ziw Agent"
-    gitlab_author_email: str = "smart-ziw@localhost"
     forvis_mazars_presence_countries: list[str] = Field(default_factory=list)
     smart_ziw_research_enabled: bool = True
     smart_ziw_research_timeout_seconds: int = 900
@@ -2085,7 +2065,6 @@ def admin_get_smart_ziw_config(request: Request):
     _require_admin(request)
     config = get_smart_ziw_config()
     llm_status = _compute_llm_status(config)
-    config["gitlab_token"] = ""
     config["github_token"] = ""
     config["lightllm_api_key"] = ""
     config["lightllm_subscription_key"] = ""
@@ -2139,8 +2118,6 @@ def admin_update_smart_ziw_config(body: SmartZiwConfigUpdate, request: Request):
     _require_admin(request)
     data = body.model_dump()
     existing = get_smart_ziw_config()
-    if not data.get("gitlab_token"):
-        data["gitlab_token"] = existing.get("gitlab_token", "")
     if not data.get("lightllm_api_key"):
         data["lightllm_api_key"] = existing.get("lightllm_api_key", "")
     if not data.get("lightllm_subscription_key"):
@@ -2149,7 +2126,6 @@ def admin_update_smart_ziw_config(body: SmartZiwConfigUpdate, request: Request):
         data["forvis_mazars_presence_countries"] = existing.get("forvis_mazars_presence_countries", [])
     saved = save_smart_ziw_config(data)
     llm_status = _compute_llm_status(saved)
-    saved["gitlab_token"] = ""
     saved["github_token"] = ""
     saved["lightllm_api_key"] = ""
     saved["lightllm_subscription_key"] = ""
