@@ -754,6 +754,12 @@ def test_auto_analyze_filter_empty_lists_mean_all():
     assert [p["db_id"] for p in server._auto_analyze_filter(projects, _AUTO_CFG)] == ["a"]
 
 
+def test_auto_analyze_filter_matches_any_part_of_merged_source():
+    projects = [_auto_project(db_id="merged", source="DGCL, UNGM", country="Niger")]
+    assert [p["db_id"] for p in server._auto_analyze_filter(projects, {**_AUTO_CFG, "auto_analyze_sources": ["ungm"]})] == ["merged"]
+    assert server._auto_analyze_filter(projects, {**_AUTO_CFG, "auto_analyze_sources": ["world bank"]}) == []
+
+
 def test_auto_analyze_filter_non_positive_cap_returns_empty():
     assert server._auto_analyze_filter([_auto_project()], {**_AUTO_CFG, "auto_analyze_max_per_run": 0}) == []
 

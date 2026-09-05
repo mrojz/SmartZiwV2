@@ -713,8 +713,12 @@ def _auto_analyze_filter(projects: list[dict], config: dict) -> list[dict]:
             continue  # never re-run: completed/errored/running stay manual
         if str(p.get("ai_verified") or "") != "Yes":
             continue
-        if sources and str(p.get("source") or "").strip().lower() not in sources:
-            continue
+        if sources:
+            # Source may be a comma-joined merge of several sources (see sync
+            # dedupe); match if ANY part is selected.
+            p_sources = {s.strip().lower() for s in str(p.get("source") or "").split(",") if s.strip()}
+            if not (p_sources & sources):
+                continue
         country = str(p.get("country") or p.get("primary_country_name_en") or "").strip().lower()
         if countries and country not in countries:
             continue

@@ -1324,7 +1324,7 @@ function AdminPage({ apiFetch, authUser, initialTab = 'users', projects = [] }) 
         auto_analyze_countries: [],
         auto_analyze_max_per_run: 10,
     });
-    const autoAnalyzeSourceOptions = useMemo(() => [...new Set(projects.map((p) => p.source).filter(Boolean))].sort(), [projects]);
+    const autoAnalyzeSourceOptions = useMemo(() => [...new Set(projects.flatMap((p) => String(p.source || '').split(',').map((s) => s.trim())).filter(Boolean))].sort(), [projects]);
     const autoAnalyzeCountryOptions = useMemo(() => [...new Set(projects.map((p) => p.country || p.primary_country_name_en).filter(Boolean))].sort(), [projects]);
     const [savingSmartZiwConfig, setSavingSmartZiwConfig] = useState(false);
     const [savingSystemPrompts, setSavingSystemPrompts] = useState(false);
@@ -2505,7 +2505,7 @@ function AdminPage({ apiFetch, authUser, initialTab = 'users', projects = [] }) 
                                 </DropdownMenuTrigger>
                                 <DropdownMenuContent align="start" className="max-h-64 w-56 overflow-y-auto">
                                     {autoAnalyzeSourceOptions.length === 0 ? <DropdownMenuItem disabled>No sources loaded yet</DropdownMenuItem> : autoAnalyzeSourceOptions.map((s) => (
-                                        <DropdownMenuCheckboxItem key={s} checked={smartZiwConfig.auto_analyze_sources.includes(s)} onCheckedChange={(checked) => setSmartZiwConfig({ ...smartZiwConfig, auto_analyze_sources: checked ? [...smartZiwConfig.auto_analyze_sources, s] : smartZiwConfig.auto_analyze_sources.filter((x) => x !== s) })}>
+                                        <DropdownMenuCheckboxItem key={s} checked={smartZiwConfig.auto_analyze_sources.includes(s)} onSelect={(e) => e.preventDefault()} onCheckedChange={(checked) => setSmartZiwConfig({ ...smartZiwConfig, auto_analyze_sources: checked ? [...smartZiwConfig.auto_analyze_sources, s] : smartZiwConfig.auto_analyze_sources.filter((x) => x !== s) })}>
                                             {s}
                                         </DropdownMenuCheckboxItem>
                                     ))}
@@ -2524,7 +2524,7 @@ function AdminPage({ apiFetch, authUser, initialTab = 'users', projects = [] }) 
                                 </DropdownMenuTrigger>
                                 <DropdownMenuContent align="start" className="max-h-64 w-56 overflow-y-auto">
                                     {autoAnalyzeCountryOptions.length === 0 ? <DropdownMenuItem disabled>No countries loaded yet</DropdownMenuItem> : autoAnalyzeCountryOptions.map((c) => (
-                                        <DropdownMenuCheckboxItem key={c} checked={smartZiwConfig.auto_analyze_countries.includes(c)} onCheckedChange={(checked) => setSmartZiwConfig({ ...smartZiwConfig, auto_analyze_countries: checked ? [...smartZiwConfig.auto_analyze_countries, c] : smartZiwConfig.auto_analyze_countries.filter((x) => x !== c) })}>
+                                        <DropdownMenuCheckboxItem key={c} checked={smartZiwConfig.auto_analyze_countries.includes(c)} onSelect={(e) => e.preventDefault()} onCheckedChange={(checked) => setSmartZiwConfig({ ...smartZiwConfig, auto_analyze_countries: checked ? [...smartZiwConfig.auto_analyze_countries, c] : smartZiwConfig.auto_analyze_countries.filter((x) => x !== c) })}>
                                             {c}
                                         </DropdownMenuCheckboxItem>
                                     ))}
