@@ -146,11 +146,11 @@ const DEFAULT_RELEASE_NOTES = [
     {
         version: '1.3',
         title: 'Smart-Ziw Agent replaces Deep Dive',
-        summary: 'Replaced Deep Dive research with Smart-Ziw project mirror generation and added configurable GitLab push.',
+        summary: 'Replaced Deep Dive research with Smart-Ziw project mirror generation.',
         items: [
             'Replaced Deep Dive Search with Smart-Ziw Agent in the project inspector.',
             'Smart-Ziw Agent generates dated tender folders with markdown mirrors.',
-            'Added admin settings for local repo path and optional GitLab push.',
+            'Added admin settings for the local mirror path.',
             'Removed the legacy Deep Dive feature and API.',
         ],
     },
@@ -1356,7 +1356,7 @@ function AdminPage({ apiFetch, authUser, initialTab = 'users', projects = [] }) 
     const adminSubtitles = {
         users: 'Create, edit, deactivate users, and reset passwords.',
         'release-notes': 'Create new release notes or update existing versions.',
-        'smart-ziw': 'Configure the Smart-Ziw agent and optional GitLab push.',
+        'smart-ziw': 'Configure the Smart-Ziw agent, web research, and auto-analysis.',
         'mcp-servers': 'API keys for the built-in tools, plus external MCP servers.',
         llm: 'Configure the LLM backend used by the Smart-Ziw agent.',
         'system-prompts': 'Tune the tender classifier that flags cybersecurity-relevant tenders.',
