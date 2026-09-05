@@ -87,7 +87,6 @@ from smart_ziw_llm import (
     get_llm_provider_presets,
 )
 from smart_ziw_tools import POST_COMMENT_SCHEMA, REGISTRY, Tool
-import smart_ziw_skill_store
 import smart_ziw_mcp
 from concurrent.futures import ThreadPoolExecutor
 
@@ -1263,19 +1262,6 @@ class SavedSearchesUpdate(BaseModel):
     searches: list[SavedSearchItem] = Field(default_factory=list)
 
 
-class SkillFetchRequest(BaseModel):
-    url: str
-
-
-class SkillStateItem(BaseModel):
-    id: str
-    enabled: bool
-
-
-class SkillStateUpdate(BaseModel):
-    skills: list[SkillStateItem]
-
-
 class McpServerConfig(BaseModel):
     id: str = ""
     name: str = ""
@@ -2165,62 +2151,6 @@ def admin_update_smart_ziw_config(body: SmartZiwConfigUpdate, request: Request):
     saved["lightllm_subscription_key"] = ""
     saved["llm_status"] = llm_status
     return saved
-
-
-def _serialize_skill(skill) -> dict:
-    return {
-        "id": skill.id,
-        "name": skill.name,
-        "description": skill.description,
-        "source_url": skill.source_url,
-        "built_in": skill.built_in,
-        "enabled": skill.enabled,
-    }
-
-
-@app.get("/api/admin/smart-ziw-skills")
-def admin_list_smart_ziw_skills(request: Request):
-    _require_admin(request)
-    registry = smart_ziw_skill_store.get_registry(get_smart_ziw_config())
-    return [_serialize_skill(skill) for skill in registry._skills]
-
-
-@app.put("/api/admin/smart-ziw-skills")
-def admin_update_smart_ziw_skills(body: SkillStateUpdate, request: Request):
-    _require_admin(request)
-    states = [{"id": item.id, "enabled": item.enabled} for item in body.skills]
-    smart_ziw_skill_store.save_skills_state(get_db(), states)
-    registry = smart_ziw_skill_store.get_registry(get_smart_ziw_config())
-    return [_serialize_skill(skill) for skill in registry._skills]
-
-
-@app.post("/api/admin/smart-ziw-skills/fetch")
-def admin_fetch_smart_ziw_skill(body: SkillFetchRequest, request: Request):
-    _require_admin(request)
-    try:
-        fetched = smart_ziw_skill_store.fetch_skill_from_url(body.url, config=get_smart_ziw_config())
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
-    states = [smart_ziw_skill_store._skill_to_full_state(skill) for skill in fetched]
-    smart_ziw_skill_store.save_skills_state(get_db(), states)
-    registry = smart_ziw_skill_store.get_registry(get_smart_ziw_config())
-    return [_serialize_skill(skill) for skill in registry._skills]
-
-
-@app.delete("/api/admin/smart-ziw-skills/{skill_id}")
-def admin_delete_smart_ziw_skill(skill_id: str, request: Request):
-    _require_admin(request)
-    # Prevent deletion of built-in skills.
-    registry = smart_ziw_skill_store.get_registry(get_smart_ziw_config())
-    target = registry.by_id(skill_id)
-    if target is None:
-        raise HTTPException(status_code=404, detail="Skill not found")
-    if target.built_in:
-        raise HTTPException(status_code=403, detail="Built-in skills cannot be deleted")
-    if not smart_ziw_skill_store.delete_custom_skill(skill_id):
-        raise HTTPException(status_code=404, detail="Skill not found")
-    registry = smart_ziw_skill_store.get_registry(get_smart_ziw_config())
-    return [_serialize_skill(skill) for skill in registry._skills]
 
 
 @app.post("/api/admin/llm-models")

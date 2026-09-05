@@ -207,7 +207,7 @@ function buildNotificationStreamUrl() {
     return query ? `${API}/notifications/stream?${query}` : `${API}/notifications/stream`;
 }
 
-const ADMIN_ROUTES = ['admin', 'users', 'smart-ziw', 'llm-config', 'skills'];
+const ADMIN_ROUTES = ['admin', 'users', 'smart-ziw', 'llm-config', 'skills', 'mcp-servers', 'system-prompts'];
 
 const DEMO_STEPS = [
     { target: '.app-top-header', title: 'Page title and actions', body: 'The current page title, context, and primary action live in the compact top bar next to notifications, sync, and your account.' },
@@ -217,7 +217,7 @@ const DEMO_STEPS = [
     { target: '.tender-decision-buttons', title: 'Decision buttons', body: 'Managers can set the formal Go / No Go / Undecided verdict for a tender.' },
     { target: '.tender-comment-composer', title: 'Discussion', body: 'Post comments, attach files, and mention teammates with @. Use @SmartZiw to ask the agent follow-up questions.' },
     { target: '.project-inspector-actions button', title: 'Smart-Ziw agent', body: 'Run a full AI analysis on a tender. The agent researches the project and writes a structured recommendation.' },
-    { target: '.admin-sidebar', title: 'Admin settings', body: 'Admins can manage users, release notes, skills, MCP servers, LLM providers, and system prompts from the sidebar.' },
+    { target: '.admin-sidebar', title: 'Admin settings', body: 'Admins can manage users, release notes, agent configuration, tool API keys, LLM providers, and the tender classifier from the sidebar.' },
 ];
 
 function normalizeRoute(rawRoute = '') {
@@ -1328,10 +1328,6 @@ function AdminPage({ apiFetch, authUser, initialTab = 'users', projects = [] }) 
     const autoAnalyzeCountryOptions = useMemo(() => [...new Set(projects.map((p) => p.country || p.primary_country_name_en).filter(Boolean))].sort(), [projects]);
     const [savingSmartZiwConfig, setSavingSmartZiwConfig] = useState(false);
     const [savingSystemPrompts, setSavingSystemPrompts] = useState(false);
-    const [skills, setSkills] = useState([]);
-    const [skillsLoading, setSkillsLoading] = useState(false);
-    const [skillUrl, setSkillUrl] = useState('');
-    const [fetchingSkill, setFetchingSkill] = useState(false);
     const [mcpServers, setMcpServers] = useState([]);
     const [mcpServersLoading, setMcpServersLoading] = useState(false);
     const [editingMcpId, setEditingMcpId] = useState('');
@@ -1353,7 +1349,6 @@ function AdminPage({ apiFetch, authUser, initialTab = 'users', projects = [] }) 
     const [testingLlm, setTestingLlm] = useState(false);
     const [configErrors, setConfigErrors] = useState({});
     const [releaseErrors, setReleaseErrors] = useState({});
-    const [skillUrlError, setSkillUrlError] = useState('');
     const [mcpErrors, setMcpErrors] = useState({});
     const llmEnvProvider = smartZiwConfig.smart_ziw_llm_provider === 'deepseek';
     const llmDiscoverySeq = useRef(0);
@@ -1364,16 +1359,14 @@ function AdminPage({ apiFetch, authUser, initialTab = 'users', projects = [] }) 
     const [llmEnvStatus, setLlmEnvStatus] = useState({ model: '', api_key_set: false });
     const [llmStatus, setLlmStatus] = useState(null);
     const { setPageHeader, clearPageHeader } = usePageHeader();
-    const skillUrlInputRef = useRef(null);
 
     const adminSubtitles = {
         users: 'Create, edit, deactivate users, and reset passwords.',
         'release-notes': 'Create new release notes or update existing versions.',
         'smart-ziw': 'Configure the Smart-Ziw agent and optional GitLab push.',
-        skills: 'Enable, disable, and manage Smart-Ziw skills.',
-        'mcp-servers': 'Connect external MCP servers and expose their tools as Smart-Ziw skills.',
+        'mcp-servers': 'API keys for the built-in tools, plus external MCP servers.',
         llm: 'Configure the LLM backend used by the Smart-Ziw agent.',
-        'system-prompts': 'Edit the system prompts that guide the AI verification filter.',
+        'system-prompts': 'Tune the tender classifier that flags cybersecurity-relevant tenders.',
     };
 
     useEffect(() => {
@@ -1397,20 +1390,6 @@ function AdminPage({ apiFetch, authUser, initialTab = 'users', projects = [] }) 
                         onClick={startNewReleaseNote}
                     >
                         New release note
-                    </ShadcnButton>
-                );
-            }
-            if (adminTab === 'skills') {
-                return (
-                    <ShadcnButton
-                        type="button"
-                        onClick={() => {
-                            setSkillUrlError('');
-                            setSkillUrl('');
-                            skillUrlInputRef.current?.focus();
-                        }}
-                    >
-                        Add skill
                     </ShadcnButton>
                 );
             }
@@ -1471,20 +1450,6 @@ function AdminPage({ apiFetch, authUser, initialTab = 'users', projects = [] }) 
             const { llm_status, ...rest } = data || {};
             setSmartZiwConfig((prev) => ({ ...prev, ...rest }));
             if (llm_status) setLlmStatus(llm_status);
-        }
-    }, [apiFetch]);
-
-    const loadSkills = useCallback(async () => {
-        setSkillsLoading(true);
-        try {
-            const res = await apiFetch('/api/admin/smart-ziw-skills');
-            if (!res.ok) throw new Error('Failed to load skills');
-            const data = await res.json();
-            setSkills(Array.isArray(data) ? data : []);
-        } catch (error) {
-            toast.error(`Failed to load skills: ${error?.message || 'unknown error'}`);
-        } finally {
-            setSkillsLoading(false);
         }
     }, [apiFetch]);
 
@@ -1581,11 +1546,6 @@ function AdminPage({ apiFetch, authUser, initialTab = 'users', projects = [] }) 
     }, [adminTab, loadSmartZiwConfig]);
 
     useEffect(() => {
-        if (adminTab !== 'skills') return;
-        loadSkills();
-    }, [adminTab, loadSkills]);
-
-    useEffect(() => {
         if (adminTab !== 'mcp-servers') return;
         loadMcpServers();
     }, [adminTab, loadMcpServers]);
@@ -1640,9 +1600,9 @@ function AdminPage({ apiFetch, authUser, initialTab = 'users', projects = [] }) 
             const { llm_status, ...rest } = data || {};
             if (llm_status) setLlmStatus(llm_status);
             setSmartZiwConfig((prev) => ({ ...prev, ...rest, gitlab_token: prev.gitlab_token, lightllm_api_key: '', forvis_mazars_presence_countries: data.forvis_mazars_presence_countries || prev.forvis_mazars_presence_countries }));
-            toast.success('System prompts saved.');
+            toast.success('Classifier saved.');
         } catch (error) {
-            toast.error(`Failed to save system prompts: ${error?.message || 'unknown error'}`);
+            toast.error(`Failed to save classifier: ${error?.message || 'unknown error'}`);
         } finally {
             setSavingSystemPrompts(false);
         }
@@ -1699,64 +1659,6 @@ function AdminPage({ apiFetch, authUser, initialTab = 'users', projects = [] }) 
         } finally {
             setTestingLlm(false);
             setSavingSmartZiwConfig(false);
-        }
-    };
-
-    const toggleSkill = async (id, enabled) => {
-        const nextSkills = skills.map((skill) => (skill.id === id ? { ...skill, enabled } : skill));
-        try {
-            const res = await apiFetch('/api/admin/smart-ziw-skills', {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ skills: nextSkills.map((skill) => ({ id: skill.id, enabled: skill.enabled })) }),
-            });
-            if (!res.ok) throw new Error('Failed to update skill');
-            await loadSkills();
-            toast.success(enabled ? 'Skill enabled' : 'Skill disabled');
-        } catch (error) {
-            toast.error(`Failed to update skill: ${error?.message || 'unknown error'}`);
-            await loadSkills();
-        }
-    };
-
-    const deleteSkill = async (id) => {
-        try {
-            const res = await apiFetch(`/api/admin/smart-ziw-skills/${encodeURIComponent(id)}`, {
-                method: 'DELETE',
-            });
-            if (!res.ok) throw new Error('Failed to delete skill');
-            await loadSkills();
-            toast.success('Skill deleted');
-        } catch (error) {
-            toast.error(`Failed to delete skill: ${error?.message || 'unknown error'}`);
-        }
-    };
-
-    const fetchSkill = async () => {
-        const urlError = isUrl(skillUrl.trim());
-        if (urlError) {
-            setSkillUrlError(urlError);
-            return;
-        }
-        setSkillUrlError('');
-        setFetchingSkill(true);
-        try {
-            const res = await apiFetch('/api/admin/smart-ziw-skills/fetch', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ url: skillUrl.trim() }),
-            });
-            if (!res.ok) {
-                const data = await res.json().catch(() => ({}));
-                throw new Error(data.detail || `Fetch failed (HTTP ${res.status})`);
-            }
-            await loadSkills();
-            setSkillUrl('');
-            toast.success('Skill fetched and added');
-        } catch (error) {
-            toast.error(`Failed to fetch skill: ${error?.message || 'unknown error'}`);
-        } finally {
-            setFetchingSkill(false);
         }
     };
 
@@ -2246,10 +2148,9 @@ function AdminPage({ apiFetch, authUser, initialTab = 'users', projects = [] }) 
                             { id: 'users', label: 'Users' },
                             { id: 'release-notes', label: 'Release Notes' },
                             { id: 'smart-ziw', label: 'Agent' },
-                            { id: 'skills', label: 'Skills' },
-                            { id: 'mcp-servers', label: 'MCP Servers' },
+                            { id: 'mcp-servers', label: 'Tools' },
                             { id: 'llm', label: 'LLM Provider' },
-                            { id: 'system-prompts', label: 'System Prompts' },
+                            { id: 'system-prompts', label: 'Classifier' },
                         ].map((tab) => {
                             const active = adminTab === tab.id;
                             return (
@@ -2575,7 +2476,7 @@ function AdminPage({ apiFetch, authUser, initialTab = 'users', projects = [] }) 
                                 <Switch id="research-enabled" checked={smartZiwConfig.smart_ziw_research_enabled} onCheckedChange={(checked) => setSmartZiwConfig({ ...smartZiwConfig, smart_ziw_research_enabled: checked })} />
                             </div>
                             <p className="text-xs text-muted-foreground">
-                                Requires a Firecrawl MCP server in the <strong>MCP Servers</strong> tab.
+                                Requires a Firecrawl MCP server in the <strong>Tools</strong> tab.
                             </p>
                         </div>
                         <div className="flex flex-col gap-1.5">
@@ -2645,96 +2546,11 @@ function AdminPage({ apiFetch, authUser, initialTab = 'users', projects = [] }) 
                 </section>
             ) : null}
 
-            {adminTab === 'skills' ? (
-                <section className="flex flex-col gap-6">
-                    <div className="flex flex-col gap-1">
-                        <h3 className="text-lg font-semibold tracking-tight text-foreground">Smart-Ziw Skills</h3>
-                        <p className="text-sm text-muted-foreground">Manage the skills that extend what the Smart-Ziw agent can do.</p>
-                    </div>
-                    <div className="flex flex-col gap-6">
-                        <div className="flex flex-col gap-2">
-                            <Label htmlFor="skill-url" className="text-sm font-medium">Add skill from URL</Label>
-                            <div className="flex gap-2">
-                                <ShadcnInput
-                                    id="skill-url"
-                                    ref={skillUrlInputRef}
-                                    type="url"
-                                    placeholder="https://example.com/skill.py | skill.json | skill.md"
-                                    value={skillUrl}
-                                    onChange={(e) => { setSkillUrlError(''); setSkillUrl(e.target.value); }}
-                                    disabled={fetchingSkill}
-                                    className="flex-1"
-                                />
-                                <ShadcnButton onClick={fetchSkill} disabled={fetchingSkill || !skillUrl.trim()}>
-                                    {fetchingSkill ? 'Fetching...' : 'Fetch skill'}
-                                </ShadcnButton>
-                            </div>
-                            <p className="text-xs text-muted-foreground">Accepts .py (module with register_skills()), .json (skill definition), and .md (markdown skill) files.</p>
-                            {skillUrlError ? <p className="text-xs text-destructive">{skillUrlError}</p> : null}
-                        </div>
-
-                        {skillsLoading ? (
-                            <p className="text-sm text-muted-foreground">Loading skills...</p>
-                        ) : skills.length === 0 ? (
-                            <p className="text-sm text-muted-foreground">No skills configured.</p>
-                        ) : (
-                            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                                {skills.map((skill) => (
-                                    <Card key={skill.id} className="flex flex-col">
-                                        <CardHeader className="pb-3">
-                                            <div className="flex items-start justify-between gap-3">
-                                                <CardTitle className="text-base">{skill.name}</CardTitle>
-                                                <Badge variant="outline">{skill.built_in ? 'Built-in' : 'Custom'}</Badge>
-                                            </div>
-                                            <p className="text-sm text-muted-foreground">{skill.description || 'No description'}</p>
-                                        </CardHeader>
-                                        <CardContent className="flex flex-1 flex-col gap-3 pt-0">
-                                            {skill.source_url ? (
-                                                <a
-                                                    href={skill.source_url}
-                                                    target="_blank"
-                                                    rel="noreferrer"
-                                                    className="inline-flex items-center gap-1.5 text-sm font-medium text-primary hover:underline"
-                                                >
-                                                    <Link className="h-3.5 w-3.5" />
-                                                    Source
-                                                </a>
-                                            ) : null}
-                                            <div className="mt-auto flex items-center justify-between gap-3">
-                                                <div className="flex items-center gap-2">
-                                                    <Switch
-                                                        id={`skill-enabled-${skill.id}`}
-                                                        checked={skill.enabled}
-                                                        onCheckedChange={(checked) => toggleSkill(skill.id, checked)}
-                                                    />
-                                                    <Label htmlFor={`skill-enabled-${skill.id}`} className="text-sm">{skill.enabled ? 'Enabled' : 'Disabled'}</Label>
-                                                </div>
-                                                {!skill.built_in ? (
-                                                    <ShadcnButton
-                                                        type="button"
-                                                        variant="ghost"
-                                                        size="icon-sm"
-                                                        aria-label={`Delete ${skill.name}`}
-                                                        onClick={() => deleteSkill(skill.id)}
-                                                    >
-                                                        <Trash2 className="h-4 w-4 text-destructive" />
-                                                    </ShadcnButton>
-                                                ) : null}
-                                            </div>
-                                        </CardContent>
-                                    </Card>
-                                ))}
-                            </div>
-                        )}
-                    </div>
-                </section>
-            ) : null}
-
             {adminTab === 'mcp-servers' ? (
                 <section className="flex flex-col gap-6">
                     <div className="flex flex-col gap-1">
-                        <h3 className="text-lg font-semibold tracking-tight text-foreground">MCP Servers</h3>
-                        <p className="text-sm text-muted-foreground">Connect external MCP servers over SSE / HTTP. Each server's tools become Smart-Ziw skills when enabled.</p>
+                        <h3 className="text-lg font-semibold tracking-tight text-foreground">Tools</h3>
+                        <p className="text-sm text-muted-foreground">API keys for the built-in tool backends, plus external MCP servers over SSE / HTTP. Each MCP server's tools become Smart-Ziw skills when enabled.</p>
                     </div>
                     <div className="flex flex-col gap-6">
                         <div className="rounded-xl border bg-card/50 p-6">
@@ -3142,19 +2958,23 @@ function AdminPage({ apiFetch, authUser, initialTab = 'users', projects = [] }) 
             {adminTab === 'system-prompts' ? (
                 <section className="flex flex-col gap-6">
                     <div className="flex flex-col gap-1">
-                        <h3 className="text-lg font-semibold tracking-tight text-foreground">AI Verification Prompts</h3>
-                        <p className="text-sm text-muted-foreground">These prompts guide the AI filter when deciding whether a scraped tender is relevant.</p>
+                        <h3 className="text-lg font-semibold tracking-tight text-foreground">Tender Classifier</h3>
+                        <p className="text-sm text-muted-foreground">
+                            The classifier decides whether a scraped tender is cybersecurity-relevant (the <strong>AI verified</strong> flag).
+                            Only verified tenders are eligible for auto-analysis, so these prompts gate what the agent works on.
+                            They do not affect the agent's own analysis style.
+                        </p>
                     </div>
                     <div className="grid gap-6">
                         <div className="flex flex-col gap-1.5">
-                            <Label htmlFor="ai-verification-system-prompt" className="text-sm font-medium">AI verification system prompt</Label>
+                            <Label htmlFor="ai-verification-system-prompt" className="text-sm font-medium">Classifier prompt</Label>
                             <Textarea
                                 id="ai-verification-system-prompt"
                                 rows={8}
                                 className="w-full"
                                 value={smartZiwConfig.ai_verification_system_prompt}
                                 onChange={(e) => setSmartZiwConfig({ ...smartZiwConfig, ai_verification_system_prompt: e.target.value })}
-                                placeholder="Describe the overall role and instructions for the AI verifier..."
+                                placeholder="Define what counts as cybersecurity-relevant and the exact output format..."
                             />
                         </div>
                         <div className="flex flex-col gap-1.5">
@@ -3182,7 +3002,7 @@ function AdminPage({ apiFetch, authUser, initialTab = 'users', projects = [] }) 
                     </div>
                     <div className="flex justify-end">
                         <ShadcnButton type="button" onClick={saveSystemPrompts} disabled={savingSystemPrompts}>
-                            {savingSystemPrompts ? 'Saving...' : 'Save System Prompts'}
+                            {savingSystemPrompts ? 'Saving...' : 'Save classifier'}
                         </ShadcnButton>
                     </div>
                 </section>
@@ -3879,7 +3699,7 @@ export default function App() {
                                 apiFetch={apiFetch}
                                 authUser={authUser}
                                 projects={projects}
-                                initialTab={route === 'llm-config' ? 'llm' : route === 'smart-ziw' ? 'smart-ziw' : route === 'skills' ? 'skills' : 'users'}
+                                initialTab={route === 'llm-config' ? 'llm' : route === 'smart-ziw' ? 'smart-ziw' : route === 'mcp-servers' ? 'mcp-servers' : route === 'system-prompts' ? 'system-prompts' : 'users'}
                             />
                         ) : null}
                         {route === 'analytics' ? <AnalyticsPage /> : null}

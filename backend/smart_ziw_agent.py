@@ -452,7 +452,13 @@ def _has_required_markdown_keys(content: dict) -> bool:
 
 
 def run_with_skills(project: dict, config: dict | None = None, thread_context: str = "") -> dict:
-    """Run the Smart-Ziw agent using the tool-calling skill loop."""
+    """Run the Smart-Ziw agent using the tool-calling skill loop.
+
+    Deprecated legacy engine: only reached when the configured LLM provider
+    is not Anthropic-compatible (the tool loop is the primary path). The
+    skills admin tab and custom-skill fetching were removed; the skill
+    registry still provides built-in and MCP-server skills for this fallback.
+    """
     from smart_ziw_llm import get_llm_call, get_llm_tool_call
     from smart_ziw_tool_loop import run_tool_loop
 

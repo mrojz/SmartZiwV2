@@ -1,7 +1,7 @@
 """Web research for the Smart-Ziw agent.
 
 Research is now performed through a configured Firecrawl MCP server instead of a
-dedicated REST API key. Admins add the server in the MCP Servers tab; its
+dedicated REST API key. Admins add the server in the Tools tab; its
 `firecrawl_search` and `firecrawl_scrape` tools are used to gather evidence.
 Tender documents are downloaded directly and converted to markdown with
 markitdown. DeepSeek only reads the evidence corpus — scraped content is
@@ -104,7 +104,7 @@ _HTTP_HEADERS = {
 }
 RETRIES = 3
 
-_MISSING_MCP_ERROR = "No Firecrawl MCP server configured. Add one in the MCP Servers tab."
+_MISSING_MCP_ERROR = "No Firecrawl MCP server configured. Add one in the Tools tab."
 
 
 def _find_firecrawl_mcp_server() -> tuple[str, str] | None:
