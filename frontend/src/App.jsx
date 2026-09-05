@@ -2830,7 +2830,11 @@ function AdminPage({ apiFetch, authUser, initialTab = 'users', projects = [] }) 
                                                         <Badge key={tool.name} variant="secondary">{tool.name}</Badge>
                                                     ))}
                                                     {(server.tools || []).length === 0 ? (
-                                                        <span className="text-sm text-muted-foreground">Tools are discovered when the API key is saved.</span>
+                                                        <span className="text-sm text-muted-foreground">
+                                                            {server.id === 'brave-search'
+                                                                ? 'The hosted Brave MCP endpoint is blocked from this network, so its tools can\'t be listed. The built-in web search tool uses this key directly via Brave\'s REST API.'
+                                                                : 'Tools are discovered when the API key is saved.'}
+                                                        </span>
                                                     ) : null}
                                                 </div>
                                                 <div className="mt-auto flex flex-col gap-2">
