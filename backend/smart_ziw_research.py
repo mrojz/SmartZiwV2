@@ -13,6 +13,7 @@ from __future__ import annotations
 import hashlib
 import ipaddress
 import json
+import logging
 import re
 import shutil
 import socket
@@ -26,6 +27,8 @@ from urllib.parse import unquote, urljoin, urlparse, urlunparse
 from dataclasses import dataclass, field
 
 import requests
+
+logger = logging.getLogger(__name__)
 
 _EMAIL_RE = re.compile(r"[\w.+-]+@[\w-]+\.[\w.-]+")
 from bs4 import BeautifulSoup
@@ -184,8 +187,10 @@ class FirecrawlClient:
 
     def search(self, query: str, limit: int = 10) -> list[dict]:
         if firecrawl_mcp_available():
+            logger.info("firecrawl_search via MCP: %s", query[:80])
             result = _call_firecrawl_tool("firecrawl_search", {"query": query, "limit": limit})
             if isinstance(result, dict) and result.get("_error"):
+                logger.info("firecrawl_search MCP error: %s", str(result["_error"])[:150])
                 return [result]
             payload = _extract_content(result)
             if isinstance(payload, list):
@@ -194,23 +199,29 @@ class FirecrawlClient:
                 data = payload.get("data")
                 if isinstance(data, list):
                     return data
+        else:
+            logger.info("firecrawl_search via HTTP fallback (no Firecrawl MCP configured)")
         return self._http_search(query, limit)
 
     def scrape(self, url: str) -> dict:
         if not url_is_safe(url):
             return {"_error": "blocked (unsafe URL)"}
         if firecrawl_mcp_available():
+            logger.info("firecrawl_scrape via MCP: %s", url[:120])
             result = _call_firecrawl_tool(
                 "firecrawl_scrape",
                 {"url": url, "formats": ["markdown"], "onlyMainContent": True},
             )
             if isinstance(result, dict) and result.get("_error"):
+                logger.info("firecrawl_scrape MCP error: %s", str(result["_error"])[:150])
                 return result
             payload = _extract_content(result)
             if isinstance(payload, dict):
                 if "data" in payload and isinstance(payload["data"], dict):
                     return payload["data"]
                 return payload
+        else:
+            logger.info("firecrawl_scrape via HTTP fallback (no Firecrawl MCP configured): %s", url[:120])
         return self._http_scrape(url)
 
     def _http_scrape(self, url: str) -> dict:

@@ -1,12 +1,15 @@
 """Smart-Ziw LLM tool-loop runner with audit trail."""
 from __future__ import annotations
 
+import logging
 import time
 import uuid
 from typing import Any
 
 from smart_ziw_llm import LLMClient
 from smart_ziw_tools import Tool
+
+logger = logging.getLogger(__name__)
 
 
 _SYSTEM_PROMPT = """You are Smart-Ziw, an assistant that analyzes public procurement tenders.
@@ -91,6 +94,14 @@ class SmartZiwToolLoop:
                 step["output"] = output
                 step["duration_ms"] = int((time.time() - step["started_at"]) * 1000)
                 audit.append(step)
+                err = str(output.get("error") or "")[:120] if isinstance(output, dict) else ""
+                logger.info(
+                    "smart-ziw tool=%s status=%s duration_ms=%d%s",
+                    tool_name,
+                    output.get("status") if isinstance(output, dict) else "?",
+                    step["duration_ms"],
+                    f" error={err}" if err else "",
+                )
 
                 messages.append({
                     "role": "assistant",
