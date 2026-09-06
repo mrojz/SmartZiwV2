@@ -25,6 +25,7 @@ import {
     isTenderSheetHash,
     isTenderFullPageHash,
 } from '../utils/tenderRouting';
+import { filterProjects, parseFilterDate } from '../utils/savedSearchMatch';
 
 const API = '/api';
 
@@ -136,96 +137,37 @@ export default function TendersPage({
         return '';
     }, [regions]);
 
-    const filtered = useMemo(() => {
-        const ft = freeText.toLowerCase();
-        const parseFilterDate = (value) => {
-            if (!value) return null;
-            const direct = new Date(value);
-            if (!Number.isNaN(direct.getTime())) return direct;
-            const parts = String(value).split('/');
-            if (parts.length === 3) {
-                const parsed = new Date(parts[2], parts[0] - 1, parts[1]);
-                if (!Number.isNaN(parsed.getTime())) return parsed;
-            }
-            return null;
-        };
-        const chipGroups = chips.reduce((acc, chip) => {
-            const field = String(chip.field || '').toLowerCase();
-            if (!['source', 'region', 'continent', 'country'].includes(field)) return acc;
-            if (!acc[field]) acc[field] = [];
-            acc[field].push(String(chip.value || '').toLowerCase());
-            return acc;
-        }, {});
-        const deadlineFromDate = endDateFrom ? new Date(endDateFrom) : null;
-        const deadlineToDate = endDateTo ? new Date(endDateTo) : null;
-        const scrapedFromDate = scrapedFrom ? new Date(scrapedFrom) : null;
-        const scrapedToDate = scrapedTo ? new Date(scrapedTo) : null;
-        const expiringWindowStart = new Date();
-        expiringWindowStart.setHours(0, 0, 0, 0);
-        const expiringWindowEnd = new Date(expiringWindowStart);
-        expiringWindowEnd.setDate(expiringWindowEnd.getDate() + expiringSoonDays);
-        expiringWindowEnd.setHours(23, 59, 59, 999);
-        if (deadlineToDate) deadlineToDate.setHours(23, 59, 59, 999);
-        if (scrapedToDate) scrapedToDate.setHours(23, 59, 59, 999);
-        return projects.filter((p) => {
-            if (ft && ![p.project_id, p.project_name, p.project_description, p.project_sponsor].join(' ').toLowerCase().includes(ft)) return false;
-            if (source && p.source !== source) return false;
-            if (verified && p.ai_verified !== verified) return false;
-            const projectRegions = (p.region_names || []).map((name) => String(name).toLowerCase());
-            if (region) {
-                const regionValue = String(region).toLowerCase();
-                const sponsor = (p.project_sponsor || '').toLowerCase();
-                const fallbackCountries = (regions[region] || []).map((c) => c.toLowerCase());
-                const regionMatch = projectRegions.includes(regionValue) || (fallbackCountries.length > 0 && fallbackCountries.some((c) => sponsor.includes(c)));
-                if (!regionMatch) return false;
-            }
-            if (continent) {
-                const continentValue = String(continent).toLowerCase();
-                const projectContinents = [
-                    ...(p.continent_codes || []).map((code) => String(code).toLowerCase()),
-                    ...(p.continent_names_en || []).map((name) => String(name).toLowerCase()),
-                    ...(p.continent_names_fr || []).map((name) => String(name).toLowerCase()),
-                ];
-                if (!projectContinents.includes(continentValue)) return false;
-            }
-            if (chipGroups.source?.length) {
-                const projectSource = String(p.source || '').toLowerCase();
-                if (!chipGroups.source.some((value) => projectSource.includes(value))) return false;
-            }
-            if (chipGroups.region?.length) {
-                if (!chipGroups.region.some((value) => projectRegions.includes(value))) return false;
-            }
-            if (chipGroups.continent?.length) {
-                const projectContinents = [
-                    ...(p.continent_codes || []).map((code) => String(code).toLowerCase()),
-                    ...(p.continent_names_en || []).map((name) => String(name).toLowerCase()),
-                    ...(p.continent_names_fr || []).map((name) => String(name).toLowerCase()),
-                ];
-                if (!chipGroups.continent.some((value) => projectContinents.includes(value))) return false;
-            }
-            if (chipGroups.country?.length) {
-                const projectCountries = [
-                    ...(p.country_names_en || []).map((name) => String(name).toLowerCase()),
-                    ...(p.country_names_fr || []).map((name) => String(name).toLowerCase()),
-                    String(p.project_sponsor || '').toLowerCase(),
-                ];
-                if (!chipGroups.country.some((value) => projectCountries.some((countryValue) => countryValue.includes(value)))) return false;
-            }
-            if (decision === 'Undecided' && p.decision) return false;
-            if (decision && decision !== 'Undecided' && p.decision !== decision) return false;
-            const projectDeadline = parseFilterDate(p.effective_deadline || p.manual_deadline || p.scraped_deadline || p.project_end_date);
-            if (deadlineFromDate && (!projectDeadline || projectDeadline < deadlineFromDate)) return false;
-            if (deadlineToDate && (!projectDeadline || projectDeadline > deadlineToDate)) return false;
-            if (expiringSoonOnly) {
-                if (p.ai_verified !== 'Yes') return false;
-                if (!projectDeadline || projectDeadline < expiringWindowStart || projectDeadline > expiringWindowEnd) return false;
-            }
-            const scrapedAt = parseFilterDate(p.scraped_at);
-            if (scrapedFromDate && (!scrapedAt || scrapedAt < scrapedFromDate)) return false;
-            if (scrapedToDate && (!scrapedAt || scrapedAt > scrapedToDate)) return false;
-            return true;
-        });
-    }, [projects, chips, freeText, source, verified, region, continent, regions, decision, endDateFrom, endDateTo, scrapedFrom, scrapedTo, getRegion, expiringSoonOnly, expiringSoonDays]);
+    const filtered = useMemo(() => filterProjects(projects, {
+        chips,
+        freeText,
+        source,
+        verified,
+        region,
+        continent,
+        decision,
+        endDateFrom,
+        endDateTo,
+        scrapedFrom,
+        scrapedTo,
+        expiringSoonOnly,
+        expiringSoonDays,
+    }, regions), [projects, chips, freeText, source, verified, region, continent, regions, decision, endDateFrom, endDateTo, scrapedFrom, scrapedTo, expiringSoonOnly, expiringSoonDays]);
+
+    // Watchlist: how many tenders matching each saved search arrived since it was last seen.
+    const savedSearchNewCounts = useMemo(() => {
+        const counts = {};
+        for (const search of savedSearches) {
+            const baseline = search.lastSeenAt || search.updatedAt || search.createdAt;
+            if (!baseline) continue;
+            const since = new Date(baseline);
+            if (Number.isNaN(since.getTime())) continue;
+            counts[search.id] = filterProjects(projects, search.filters || {}, regions).filter((p) => {
+                const scrapedAt = parseFilterDate(p.scraped_at);
+                return scrapedAt && scrapedAt > since;
+            }).length;
+        }
+        return counts;
+    }, [savedSearches, projects, regions]);
 
     const clearFilters = () => {
         setChips([]);
@@ -308,8 +250,8 @@ export default function TendersPage({
         setSavedSearches(Array.isArray(data?.searches) ? data.searches : []);
     }, [apiFetch]);
 
-    const handleSaveCurrentSearch = useCallback(async () => {
-        const name = window.prompt('Saved search name');
+    const handleSaveCurrentSearch = useCallback(async (nameArg) => {
+        const name = (nameArg && nameArg.trim()) || window.prompt('Saved search name');
         if (!name || !name.trim()) return;
         const now = new Date().toISOString();
         const next = [
@@ -319,17 +261,26 @@ export default function TendersPage({
                 filters: buildCurrentFilterState(),
                 createdAt: now,
                 updatedAt: now,
+                lastSeenAt: now,
             },
             ...savedSearches.filter((item) => item.name.trim().toLowerCase() !== name.trim().toLowerCase()),
         ];
         await persistSavedSearches(next);
     }, [buildCurrentFilterState, savedSearches, persistSavedSearches]);
 
-    const handleApplySavedSearch = useCallback((searchId) => {
+    const handleApplySavedSearch = useCallback(async (searchId) => {
         const match = savedSearches.find((item) => item.id === searchId);
         if (!match) return;
         applySavedFilterState(match.filters || {});
-    }, [savedSearches, applySavedFilterState]);
+        // Opening the search marks its current matches as seen.
+        const seenAt = new Date().toISOString();
+        setSavedSearches((prev) => prev.map((item) => (item.id === searchId ? { ...item, lastSeenAt: seenAt } : item)));
+        try {
+            await persistSavedSearches(savedSearches.map((item) => (item.id === searchId ? { ...item, lastSeenAt: seenAt } : item)));
+        } catch {
+            // Badge will recompute from the un-persisted state on next load — not critical.
+        }
+    }, [savedSearches, applySavedFilterState, persistSavedSearches]);
 
     const handleDeleteSavedSearch = useCallback(async (searchId) => {
         const next = savedSearches.filter((item) => item.id !== searchId);
@@ -990,6 +941,7 @@ export default function TendersPage({
                     onToggleExpiringSoon={() => setExpiringSoonOnly((prev) => !prev)}
                     onExpiringSoonDaysChange={(value) => setExpiringSoonDays(Math.max(1, Math.min(365, Number(value) || 1)))}
                     savedSearches={savedSearches}
+                    savedSearchNewCounts={savedSearchNewCounts}
                     onSaveCurrentSearch={handleSaveCurrentSearch}
                     onApplySavedSearch={handleApplySavedSearch}
                     onDeleteSavedSearch={handleDeleteSavedSearch}

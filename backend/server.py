@@ -1296,6 +1296,7 @@ class SavedSearchItem(BaseModel):
     filters: dict = Field(default_factory=dict)
     createdAt: str | None = None
     updatedAt: str | None = None
+    lastSeenAt: str | None = None
 
 
 class SavedSearchesUpdate(BaseModel):
@@ -1500,6 +1501,7 @@ def save_saved_searches(body: SavedSearchesUpdate, request: Request):
             "filters": item.get("filters") or {},
             "createdAt": item.get("createdAt") or now_iso(),
             "updatedAt": now_iso(),
+            "lastSeenAt": item.get("lastSeenAt") or None,
         })
     return {"searches": db_save_saved_searches(request.state.user.get("id"), sanitized)}
 

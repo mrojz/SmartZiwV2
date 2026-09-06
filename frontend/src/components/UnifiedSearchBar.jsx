@@ -194,9 +194,14 @@ function DateRangePopover({ label, from, to, onFromChange, onToChange }) {
 }
 
 /* ─── Saved searches popover ─────────────────────────────────────── */
-function SavedSearchesPopover({ savedSearches, onSave, onApply, onDelete }) {
+function SavedSearchesPopover({ savedSearches, newCounts = {}, onSave, onApply, onDelete }) {
     const [open, setOpen] = useState(false);
     const [newName, setNewName] = useState('');
+    const totalNew = savedSearches.reduce((sum, item) => sum + (newCounts[item.id] || 0), 0);
+    const sorted = [...savedSearches].sort((a, b) => {
+        const diff = (newCounts[b.id] || 0) - (newCounts[a.id] || 0);
+        return diff !== 0 ? diff : String(a.name).localeCompare(String(b.name));
+    });
 
     return (
         <Popover open={open} onOpenChange={setOpen}>
@@ -206,28 +211,37 @@ function SavedSearchesPopover({ savedSearches, onSave, onApply, onDelete }) {
                     {savedSearches.length > 0 && (
                         <span className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-semibold text-primary-foreground">{savedSearches.length}</span>
                     )}
+                    {totalNew > 0 && (
+                        <span className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-amber-500 px-1 text-[10px] font-semibold text-white" title={`${totalNew} new matching tender(s) across saved searches`}>{totalNew}</span>
+                    )}
                 </Button>
             </PopoverTrigger>
             <PopoverContent align="end" className="w-64">
                 <div className="text-sm font-medium">Saved searches</div>
                 {savedSearches.length === 0 && <div className="py-4 text-center text-sm text-muted-foreground">No saved searches yet</div>}
-                {savedSearches.map((item) => (
-                    <div key={item.id} className="flex items-center justify-between gap-2 text-sm">
-                        <button
-                            type="button"
-                            className="flex-1 truncate rounded-md px-2 py-1.5 text-left hover:bg-accent hover:text-accent-foreground"
-                            onClick={() => { onApply(item.id); setOpen(false); }}
-                        >
-                            {item.name}
-                        </button>
-                        <button
-                            type="button"
-                            className="rounded-md px-1.5 py-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
-                            onClick={() => onDelete(item.id)}
-                            aria-label={`Delete saved search ${item.name}`}
-                        >×</button>
-                    </div>
-                ))}
+                {sorted.map((item) => {
+                    const fresh = newCounts[item.id] || 0;
+                    return (
+                        <div key={item.id} className="flex items-center justify-between gap-2 text-sm">
+                            <button
+                                type="button"
+                                className="flex flex-1 items-center justify-between gap-2 truncate rounded-md px-2 py-1.5 text-left hover:bg-accent hover:text-accent-foreground"
+                                onClick={() => { onApply(item.id); setOpen(false); }}
+                            >
+                                <span className="truncate">{item.name}</span>
+                                {fresh > 0 && (
+                                    <span className="inline-flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full bg-amber-500 px-1 text-[10px] font-semibold text-white">{fresh} new</span>
+                                )}
+                            </button>
+                            <button
+                                type="button"
+                                className="rounded-md px-1.5 py-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                                onClick={() => onDelete(item.id)}
+                                aria-label={`Delete saved search ${item.name}`}
+                            >×</button>
+                        </div>
+                    );
+                })}
                 <div className="mt-2 flex gap-2 border-t pt-2">
                     <Input
                         className="h-9"
@@ -280,7 +294,7 @@ export default function UnifiedSearchBar({
     // expiring soon
     expiringSoonOnly, expiringSoonDays, onToggleExpiringSoon, onExpiringSoonDaysChange,
     // saved searches
-    savedSearches, onSaveCurrentSearch, onApplySavedSearch, onDeleteSavedSearch,
+    savedSearches, savedSearchNewCounts, onSaveCurrentSearch, onApplySavedSearch, onDeleteSavedSearch,
     // meta
     resultCount,
     onClearAll,
@@ -601,6 +615,7 @@ export default function UnifiedSearchBar({
                     {/* Saved searches */}
                     <SavedSearchesPopover
                         savedSearches={savedSearches || []}
+                        newCounts={savedSearchNewCounts || {}}
                         onSave={onSaveCurrentSearch}
                         onApply={onApplySavedSearch}
                         onDelete={onDeleteSavedSearch}
