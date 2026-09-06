@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { usePageHeader } from '../components/PageHeaderContext';
 import ProjectTable from '../components/ProjectTable';
 import ProjectInspector from '../components/ProjectInspector';
+import DeadlineRadar from '../components/DeadlineRadar';
 import SectionCard from '../components/SectionCard';
 import CommentComposer from '../components/CommentComposer';
 import TenderSheetPanel from '../components/TenderSheetPanel';
@@ -943,6 +944,12 @@ export default function TendersPage({
                         </div>
                     </div>
                 </div>
+
+                <DeadlineRadar
+                    projects={projects}
+                    onOpenTender={(dbId) => openProjectByDbId(dbId).catch(() => {})}
+                    onViewAll={() => setExpiringSoonOnly(true)}
+                />
                 <ProjectTable
                     projects={filtered}
                     allProjects={projects}
