@@ -3,6 +3,7 @@ import TenderTabs from './TenderTabs';
 import { Button as ShadcnButton } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
 import { Avatar as ShadcnAvatar, AvatarFallback } from '@/components/ui/avatar';
 import { Sparkles } from 'lucide-react';
 import {
@@ -24,6 +25,7 @@ export default function ProjectInspector({
     availableUsers,
     canManageDecision,
     onDecisionChange,
+    onBidOutcomeChange,
     onOpenFullPage,
     onRunSmartZiw,
     compact = false,
@@ -72,6 +74,7 @@ export default function ProjectInspector({
                             project={project}
                             canManageDecision={canManageDecision}
                             onDecisionChange={onDecisionChange}
+                            onBidOutcomeChange={onBidOutcomeChange}
                             compact={compact}
                         />
                     </div>
@@ -147,7 +150,7 @@ function SmartZiwRunButton({ project, onRun, compact }) {
 
 
 
-function OverviewTab({ project, canManageDecision, onDecisionChange, compact }) {
+function OverviewTab({ project, canManageDecision, onDecisionChange, onBidOutcomeChange, compact }) {
     const projectDecision = project?.decision || '';
     const projectRegion = project?.primary_region_name || project?.region || project?.region_name || '-';
     const effectiveDeadline = project?.effective_deadline || project?.manual_deadline || project?.scraped_deadline || project?.project_end_date || '';
@@ -222,6 +225,35 @@ function OverviewTab({ project, canManageDecision, onDecisionChange, compact }) 
                         </div>
                     </>
                 ) : null}
+
+                <div className="flex flex-col gap-2">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div>
+                            <h3 className="text-sm font-semibold text-foreground">Bid outcome</h3>
+                            <p className="mt-0.5 text-xs text-muted-foreground">Record what happened after the decision — feeds the dashboard win-rate stats.</p>
+                        </div>
+                        {project?.bid_outcome_by ? (
+                            <span className="text-xs text-muted-foreground">
+                                by {project.bid_outcome_by}{project.bid_outcome_at ? ` · ${formatDisplayDate(project.bid_outcome_at)}` : ''}
+                            </span>
+                        ) : null}
+                    </div>
+                    <Select
+                        value={project?.bid_outcome || 'pending'}
+                        onValueChange={(value) => onBidOutcomeChange?.(value === 'pending' ? '' : value)}
+                    >
+                        <SelectTrigger className="w-full sm:w-56">
+                            <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="pending">Pending</SelectItem>
+                            <SelectItem value="no_bid">No bid</SelectItem>
+                            <SelectItem value="won">Won</SelectItem>
+                            <SelectItem value="lost">Lost</SelectItem>
+                            <SelectItem value="cancelled">Cancelled</SelectItem>
+                        </SelectContent>
+                    </Select>
+                </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div className="flex flex-col gap-1 rounded-lg bg-muted p-3"><span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Project ID</span><strong className="text-sm font-medium text-foreground">{project?.project_id || '-'}</strong></div>

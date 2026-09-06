@@ -123,6 +123,21 @@ export default function TenderDetailPage({ dbId, apiFetch, authUser, availableUs
         }
     };
 
+    const handleBidOutcomeChange = async (outcome) => {
+        if (!project) return;
+        try {
+            const res = await apiFetch(`${API}/projects/by-db-id/${encodeURIComponent(project.db_id)}/bid-outcome`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ outcome }),
+            });
+            if (!res.ok) throw new Error(`Failed to update bid outcome (${res.status})`);
+            loadProject();
+        } catch (err) {
+            toast.error(err?.message || 'Failed to update bid outcome');
+        }
+    };
+
     const handleRunSmartZiw = async () => {
         if (!project) return;
         try {
@@ -302,6 +317,7 @@ export default function TenderDetailPage({ dbId, apiFetch, authUser, availableUs
                 availableUsers={availableUsers}
                 canManageDecision={canManageDecision}
                 onDecisionChange={handleDecisionChange}
+                onBidOutcomeChange={handleBidOutcomeChange}
                 onOpenFullPage={null}
                 onRunSmartZiw={handleRunSmartZiw}
                 compact={false}

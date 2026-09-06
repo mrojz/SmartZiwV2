@@ -3439,12 +3439,20 @@ export default function App() {
             const daysLeft = Math.ceil((end - now) / (1000 * 60 * 60 * 24));
             return daysLeft > 0 && daysLeft <= 30;
         }).length;
+        const bidSubmitted = projects.filter((p) => p.bid_outcome === 'won' || p.bid_outcome === 'lost');
+        const bidWon = bidSubmitted.filter((p) => p.bid_outcome === 'won').length;
+        const goSubmitted = bidSubmitted.filter((p) => String(p.smart_ziw_research_verdict || '').startsWith('GO'));
+        const goWon = goSubmitted.filter((p) => p.bid_outcome === 'won').length;
         return {
             total: projects.length,
             newThisWeek,
             pendingReview,
             sourcesCount: sources.length,
             expiringSoon,
+            bidDecided: projects.filter((p) => p.bid_outcome).length,
+            bidWinRate: bidSubmitted.length ? Math.round((bidWon / bidSubmitted.length) * 100) : null,
+            goBidCount: goSubmitted.length,
+            goWinRate: goSubmitted.length ? Math.round((goWon / goSubmitted.length) * 100) : null,
         };
     }, [projects, sources]);
 

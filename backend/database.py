@@ -102,6 +102,9 @@ def _normalize_project(doc: dict, geography: dict | None = None, geography_looku
     doc['smart_ziw_requested_by'] = doc.get('smart_ziw_requested_by') or ''
     doc['smart_ziw_error'] = doc.get('smart_ziw_error') or ''
     doc['smart_ziw_folder'] = str(doc.get('smart_ziw_folder') or '')
+    doc['bid_outcome'] = doc.get('bid_outcome') or ''
+    doc['bid_outcome_by'] = doc.get('bid_outcome_by') or ''
+    doc['bid_outcome_at'] = doc.get('bid_outcome_at') or ''
     doc['smart_ziw_analysis_markdown'] = str(doc.get('smart_ziw_analysis_markdown') or '')
     doc['smart_ziw_next_actions'] = doc.get('smart_ziw_next_actions') or []
     doc['smart_ziw_research_verdict'] = str(doc.get('smart_ziw_research_verdict') or '')
@@ -315,6 +318,9 @@ def update_project_smart_ziw_state_by_db_id(project_db_id: str, updates: dict) -
         'smart_ziw_requested_by',
         'smart_ziw_error',
         'smart_ziw_folder',
+        'bid_outcome',
+        'bid_outcome_by',
+        'bid_outcome_at',
         'smart_ziw_analysis_markdown',
         'smart_ziw_next_actions',
         'smart_ziw_research_verdict',
@@ -332,6 +338,32 @@ def update_project_smart_ziw_state_by_db_id(project_db_id: str, updates: dict) -
         return_document=ReturnDocument.AFTER,
     )
     return _normalize_project(_strip_id(result)) if result else None
+
+
+BID_OUTCOMES = ('', 'no_bid', 'won', 'lost', 'cancelled')
+
+
+def update_project_bid_outcome_by_db_id(project_db_id: str, outcome: str, actor_name: str) -> dict | None:
+    """Set the human bid decision/outcome on a project.
+
+    Empty outcome resets the record (back to pending) and clears who/when.
+    """
+    if outcome not in BID_OUTCOMES:
+        return None
+    db = get_db()
+    object_id = _parse_object_id(project_db_id)
+    if not object_id:
+        return None
+    updated = db.projects.find_one_and_update(
+        {'_id': object_id},
+        {'$set': {
+            'bid_outcome': outcome,
+            'bid_outcome_by': actor_name if outcome else '',
+            'bid_outcome_at': now_iso() if outcome else '',
+        }},
+        return_document=ReturnDocument.AFTER,
+    )
+    return updated
 
 
 def update_project_vote_by_db_id(project_db_id: str, user_id: str, value: str) -> dict | None:

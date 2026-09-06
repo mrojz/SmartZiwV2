@@ -479,6 +479,35 @@ export default function TendersPage({
         setSelectedProject((prev) => (prev?.db_id === updated.db_id ? { ...prev, ...updated, __rowId: prev.__rowId } : prev));
     };
 
+    const handleBidOutcomeChange = async (projectDbId, nextOutcome) => {
+        if (!projectDbId) return;
+        const previousOutcome = projects.find((item) => item.db_id === projectDbId)?.bid_outcome || '';
+        setProjects((prev) => prev.map((item) => (
+            item.db_id === projectDbId ? { ...item, bid_outcome: nextOutcome } : item
+        )));
+        setSelectedProject((prev) => (
+            prev?.db_id === projectDbId ? { ...prev, bid_outcome: nextOutcome } : prev
+        ));
+        const res = await apiFetch(`${API}/projects/by-db-id/${encodeURIComponent(projectDbId)}/bid-outcome`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ outcome: nextOutcome }),
+        });
+        if (!res.ok) {
+            setProjects((prev) => prev.map((item) => (
+                item.db_id === projectDbId ? { ...item, bid_outcome: previousOutcome } : item
+            )));
+            setSelectedProject((prev) => (
+                prev?.db_id === projectDbId ? { ...prev, bid_outcome: previousOutcome } : prev
+            ));
+            window.alert('Failed to update bid outcome');
+            throw new Error('Failed to update bid outcome');
+        }
+        const updated = await res.json();
+        setProjects((prev) => prev.map((item) => (item.db_id === updated.db_id ? { ...item, ...updated, __rowId: item.__rowId } : item)));
+        setSelectedProject((prev) => (prev?.db_id === updated.db_id ? { ...prev, ...updated, __rowId: prev.__rowId } : prev));
+    };
+
     const refreshSelectedProject = useCallback(async () => {
         if (!selectedProject?.db_id) return null;
         const res = await apiFetch(`${API}/projects/by-db-id/${encodeURIComponent(selectedProject.db_id)}`);
@@ -873,7 +902,7 @@ export default function TendersPage({
     return (
         <div className="flex flex-col gap-6">
             <div className="flex min-w-0 flex-1 flex-col gap-6">
-                <div className="tender-stats-cards grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                <div className="tender-stats-cards grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
                     <div className="rounded-lg bg-muted/40 p-4">
                         <div className="flex flex-col gap-1.5">
                             <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Total Tenders</span>
@@ -900,6 +929,17 @@ export default function TendersPage({
                             <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Expiring Soon</span>
                             <span className="text-2xl font-semibold tracking-tight text-foreground">{dashboardStats.expiringSoon}</span>
                             <span className="text-xs text-muted-foreground"><strong className="font-semibold text-primary">30</strong> day window</span>
+                        </div>
+                    </div>
+                    <div className="rounded-lg bg-muted/40 p-4">
+                        <div className="flex flex-col gap-1.5">
+                            <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Win Rate</span>
+                            <span className="text-2xl font-semibold tracking-tight text-foreground">{dashboardStats.bidWinRate === null ? '—' : `${dashboardStats.bidWinRate}%`}</span>
+                            <span className="text-xs text-muted-foreground">
+                                {dashboardStats.goBidCount
+                                    ? `${dashboardStats.goWinRate}% when Smart-Ziw said GO (${dashboardStats.goBidCount} bid${dashboardStats.goBidCount === 1 ? '' : 's'})`
+                                    : `${dashboardStats.bidDecided} outcome${dashboardStats.bidDecided === 1 ? '' : 's'} recorded`}
+                            </span>
                         </div>
                     </div>
                 </div>
@@ -1026,6 +1066,7 @@ export default function TendersPage({
                                     availableUsers={availableUsers}
                                     canManageDecision={canManageDecision}
                                     onDecisionChange={(nextDecision) => handleDecisionChange(selectedProjectIndex, nextDecision)}
+                                    onBidOutcomeChange={(nextOutcome) => handleBidOutcomeChange(selectedProject.db_id, nextOutcome)}
                                     onOpenFullPage={() => { window.location.hash = buildFullPageHash(selectedProject.db_id); }}
                                     onRunSmartZiw={() => handleSmartZiwSearch(selectedProject.db_id)}
                                     compact

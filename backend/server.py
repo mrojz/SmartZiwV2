@@ -40,6 +40,7 @@ from database import (
     update_project_assignments_by_db_id,
     subscribe_project_commenters_by_db_id,
     update_project_vote_by_db_id,
+    update_project_bid_outcome_by_db_id,
     update_project_smart_ziw_state_by_db_id,
     get_smart_ziw_config,
     save_smart_ziw_config,
@@ -1197,6 +1198,10 @@ class ProjectVoteUpdate(BaseModel):
     value: str = ""
 
 
+class ProjectBidOutcomeUpdate(BaseModel):
+    outcome: str = ""
+
+
 class SmartZiwTriggerRequest(BaseModel):
     force: bool = False
 
@@ -2017,6 +2022,17 @@ def update_project_vote(project_db_id: str, body: ProjectVoteUpdate, request: Re
     if body.value not in ("up", "down", ""):
         raise HTTPException(status_code=400, detail="Vote must be 'up', 'down', or ''")
     result = update_project_vote_by_db_id(project_db_id, request.state.user.get("id"), body.value)
+    if result is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+    return _enrich_project_payload(result, current_user_id=request.state.user.get("id"))
+
+
+@app.put("/api/projects/by-db-id/{project_db_id}/bid-outcome")
+def update_project_bid_outcome(project_db_id: str, body: ProjectBidOutcomeUpdate, request: Request):
+    if body.outcome not in ("", "no_bid", "won", "lost", "cancelled"):
+        raise HTTPException(status_code=400, detail="Outcome must be one of: no_bid, won, lost, cancelled, or empty")
+    actor_name = request.state.user.get("name") or request.state.user.get("email") or ""
+    result = update_project_bid_outcome_by_db_id(project_db_id, body.outcome, actor_name)
     if result is None:
         raise HTTPException(status_code=404, detail="Project not found")
     return _enrich_project_payload(result, current_user_id=request.state.user.get("id"))

@@ -361,6 +361,65 @@ def test_admin_update_defaults_lightllm_provider(monkeypatch):
     assert saved["lightllm_provider"] == "openai_compatible"
 
 
+def test_bid_outcome_endpoint_sets_and_validates(monkeypatch):
+    calls = []
+
+    def fake_update(project_db_id, outcome, actor_name):
+        if outcome not in ("", "no_bid", "won", "lost", "cancelled"):
+            return None
+        calls.append((project_db_id, outcome, actor_name))
+        return {"db_id": project_db_id, "bid_outcome": outcome, "bid_outcome_by": actor_name}
+
+    monkeypatch.setattr(server, "_get_request_user", lambda req: _mk_admin())
+    monkeypatch.setattr(server, "update_project_bid_outcome_by_db_id", fake_update)
+    monkeypatch.setattr(server, "_enrich_project_payload", lambda payload, **kwargs: payload)
+    client = TestClient(server.app)
+    r = client.put("/api/projects/by-db-id/p1/bid-outcome", json={"outcome": "won"})
+    assert r.status_code == 200
+    assert calls == [("p1", "won", "Admin")]
+    r = client.put("/api/projects/by-db-id/p1/bid-outcome", json={"outcome": "bogus"})
+    assert r.status_code == 400
+    assert len(calls) == 1
+    r = client.put("/api/projects/by-db-id/p1/bid-outcome", json={"outcome": "no_bid"})
+    assert r.status_code == 200
+    assert calls[-1] == ("p1", "no_bid", "Admin")
+
+
+def test_update_project_bid_outcome_by_db_id(monkeypatch):
+    from bson import ObjectId
+
+    import database as database_mod
+
+    object_id = ObjectId()
+    docs = {object_id: {"_id": object_id, "project_name": "X"}}
+
+    class FakeProjects:
+        def find_one_and_update(self, filter_, update, return_document=None):
+            doc = docs.get(filter_["_id"])
+            if doc is None:
+                return None
+            doc.update(update["$set"])
+            return dict(doc)
+
+    class FakeDB:
+        projects = FakeProjects()
+
+    monkeypatch.setattr(database_mod, "get_db", lambda: FakeDB())
+
+    out = database_mod.update_project_bid_outcome_by_db_id(str(object_id), "won", "Admin")
+    assert out["bid_outcome"] == "won"
+    assert out["bid_outcome_by"] == "Admin"
+    assert out["bid_outcome_at"]
+
+    assert database_mod.update_project_bid_outcome_by_db_id(str(object_id), "bogus", "A") is None
+    assert database_mod.update_project_bid_outcome_by_db_id("not-an-object-id", "won", "A") is None
+
+    out = database_mod.update_project_bid_outcome_by_db_id(str(object_id), "", "Admin")
+    assert out["bid_outcome"] == ""
+    assert out["bid_outcome_by"] == ""
+    assert out["bid_outcome_at"] == ""
+
+
 def test_admin_source_options_lists_all_scraper_labels(monkeypatch):
     monkeypatch.setattr(server, "_get_request_user", lambda req: _mk_admin())
     client = TestClient(server.app)
