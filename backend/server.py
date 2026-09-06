@@ -2195,6 +2195,86 @@ def smart_ziw_source_options(request: Request):
     return sorted({str(info.get("label") or key) for key, info in SCRAPERS.items()})
 
 
+HEALTH_TREND_RUNS = 10
+
+
+def _compute_scraper_health(logs: list[dict], registry: dict) -> list[dict]:
+    """Per-scraper health derived from recent sync logs (newest first).
+
+    A scraper that returns 0 tenders without error is tracked separately
+    (zero_runs) — silent breakage is the most common scraper failure mode.
+    """
+    labels = {key: str(info.get("label") or key) for key, info in registry.items()}
+    for log in logs:
+        for key, block in ((log.get("summary") or {}).get("scrapers") or {}).items():
+            labels.setdefault(key, str(block.get("label") or key))
+
+    trend_logs = list(logs)[:HEALTH_TREND_RUNS][::-1]  # oldest → newest
+    health = []
+    for key in sorted(labels, key=lambda k: labels[k].lower()):
+        entries = []  # (log, block), newest first — runs this scraper joined
+        for log in logs:
+            block = ((log.get("summary") or {}).get("scrapers") or {}).get(key)
+            if block is not None:
+                entries.append((log, block))
+        recent = []
+        for log in trend_logs:
+            block = ((log.get("summary") or {}).get("scrapers") or {}).get(key)
+            status = "miss" if block is None else ("error" if block.get("error") else "ok")
+            recent.append({"at": log.get("started_at", ""), "status": status})
+        if not entries:
+            health.append({"key": key, "label": labels[key], "status": "never", "recent": recent})
+            continue
+        last_log, last_block = entries[0]
+        consecutive_failures = 0
+        last_success_at = ""
+        for log, block in entries:  # newest first
+            if block.get("error"):
+                consecutive_failures += 1
+            else:
+                last_success_at = log.get("started_at", "")
+                break
+        zero_runs = sum(
+            1
+            for _, block in entries[:HEALTH_TREND_RUNS]
+            if not block.get("error") and not block.get("count")
+        )
+        health.append({
+            "key": key,
+            "label": labels[key],
+            "status": "error" if last_block.get("error") else "ok",
+            "last_run_at": last_log.get("started_at", ""),
+            "last_count": last_block.get("count", 0),
+            "last_duration": last_block.get("duration", 0),
+            "consecutive_failures": consecutive_failures,
+            "last_success_at": last_success_at,
+            "zero_runs": zero_runs,
+            "error": last_block.get("error") or "",
+            "recent": recent,
+        })
+    return health
+
+
+@app.get("/api/admin/scraper-health")
+def scraper_health(request: Request):
+    """Per-scraper health across recent sync runs, for the admin health panel."""
+    _require_admin(request)
+    from main import SCRAPERS
+
+    logs = get_sync_logs(limit=HEALTH_TREND_RUNS)
+    last = logs[0] if logs else None
+    return {
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "running": sync_state.running,
+        "last_sync": {
+            "started_at": last.get("started_at", ""),
+            "success": last.get("success"),
+            "trigger": last.get("trigger", ""),
+        } if last else None,
+        "scrapers": _compute_scraper_health(logs, SCRAPERS),
+    }
+
+
 @app.put("/api/admin/smart-ziw-config")
 def admin_update_smart_ziw_config(body: SmartZiwConfigUpdate, request: Request):
     _require_admin(request)

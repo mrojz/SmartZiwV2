@@ -8,6 +8,7 @@ import { usePageHeader } from './components/PageHeaderContext';
 import SectionCard from './components/SectionCard';
 import DemoWalkthrough from './components/DemoWalkthrough';
 import SyncPanel from './components/SyncPanel';
+import ScraperHealthPanel from './components/ScraperHealthPanel';
 import SettingsPage from './components/SettingsPage';
 import SchedulePage from './components/SchedulePage';
 import Sidebar, { Avatar, NAV_GROUPS } from './components/Sidebar';
@@ -207,7 +208,7 @@ function buildNotificationStreamUrl() {
     return query ? `${API}/notifications/stream?${query}` : `${API}/notifications/stream`;
 }
 
-const ADMIN_ROUTES = ['admin', 'users', 'smart-ziw', 'llm-config', 'skills', 'mcp-servers', 'system-prompts'];
+const ADMIN_ROUTES = ['admin', 'users', 'smart-ziw', 'scrapers', 'llm-config', 'skills', 'mcp-servers', 'system-prompts'];
 
 const DEMO_STEPS = [
     { target: '.app-top-header', title: 'Page title and actions', body: 'The current page title, context, and primary action live in the compact top bar next to notifications, sync, and your account.' },
@@ -1369,6 +1370,7 @@ function AdminPage({ apiFetch, authUser, initialTab = 'users', projects = [] }) 
         'mcp-servers': 'API keys for the built-in tools, plus external MCP servers.',
         llm: 'Configure the LLM backend used by the Smart-Ziw agent.',
         'system-prompts': 'Tune the tender classifier that flags cybersecurity-relevant tenders.',
+        scrapers: 'Per-source health across recent sync runs.',
     };
 
     useEffect(() => {
@@ -2150,6 +2152,7 @@ function AdminPage({ apiFetch, authUser, initialTab = 'users', projects = [] }) 
                             { id: 'users', label: 'Users' },
                             { id: 'release-notes', label: 'Release Notes' },
                             { id: 'smart-ziw', label: 'Agent' },
+                            { id: 'scrapers', label: 'Scrapers' },
                             { id: 'mcp-servers', label: 'Tools' },
                             { id: 'llm', label: 'LLM Provider' },
                             { id: 'system-prompts', label: 'Classifier' },
@@ -2549,6 +2552,16 @@ function AdminPage({ apiFetch, authUser, initialTab = 'users', projects = [] }) 
                             {savingSmartZiwConfig ? 'Saving...' : 'Save config'}
                         </ShadcnButton>
                     </div>
+                </section>
+            ) : null}
+
+            {adminTab === 'scrapers' ? (
+                <section className="flex flex-col gap-6">
+                    <div className="flex flex-col gap-1">
+                        <h3 className="text-lg font-semibold tracking-tight text-foreground">Scraper health</h3>
+                        <p className="text-sm text-muted-foreground">How each source behaved across the last 10 sync runs. Failing sources are red; sources returning zero tenders repeatedly are flagged amber.</p>
+                    </div>
+                    <ScraperHealthPanel apiFetch={apiFetch} />
                 </section>
             ) : null}
 
@@ -3713,7 +3726,7 @@ export default function App() {
                                 apiFetch={apiFetch}
                                 authUser={authUser}
                                 projects={projects}
-                                initialTab={route === 'llm-config' ? 'llm' : route === 'smart-ziw' ? 'smart-ziw' : route === 'mcp-servers' ? 'mcp-servers' : route === 'system-prompts' ? 'system-prompts' : 'users'}
+                                initialTab={route === 'llm-config' ? 'llm' : route === 'smart-ziw' ? 'smart-ziw' : route === 'scrapers' ? 'scrapers' : route === 'mcp-servers' ? 'mcp-servers' : route === 'system-prompts' ? 'system-prompts' : 'users'}
                             />
                         ) : null}
                         {route === 'analytics' ? <AnalyticsPage /> : null}
