@@ -477,6 +477,14 @@ def save_config(keywords: list[str], regions: dict[str, list[str]]):
 DEFAULT_SMART_ZIW_CONFIG = {
     'smart_ziw_enabled': True,
     'smart_ziw_repo_path': '/home/kali/Smart-Ziw',
+    'digest_enabled': False,
+    'digest_recipients': [],
+    'smtp_host': '',
+    'smtp_port': 587,
+    'smtp_user': '',
+    'smtp_password': '',
+    'smtp_from': '',
+    'app_base_url': '',
     'forvis_mazars_presence_countries': [
         'algeria', 'argentina', 'australia', 'austria', 'belgium', 'brazil', 'canada', 'china',
         'czech republic', 'denmark', 'egypt', 'finland', 'france', 'germany', 'hong kong',

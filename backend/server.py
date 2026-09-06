@@ -5,6 +5,7 @@ load_dotenv(override=False)
 
 import asyncio
 import json
+import logging
 import mimetypes
 import os
 import re
@@ -81,6 +82,7 @@ from database import (
     mark_all_notifications_viewed,
 )
 from smart_ziw_agent import run as run_smart_ziw_agent, CHAT_PROMPT
+from smart_ziw_digest import send_digest
 from smart_ziw_llm import (
     discover_lightllm_models,
     discover_models_for_preset,
@@ -92,6 +94,8 @@ import smart_ziw_mcp
 from concurrent.futures import ThreadPoolExecutor
 
 BASE_DIR = Path(__file__).resolve().parent
+
+logger = logging.getLogger(__name__)
 PROJECTS_XLSX = BASE_DIR / "projects.xlsx"
 DOWNLOADS_DIR = BASE_DIR / "downloads"
 SYNC_SECRET = os.getenv("SYNC_SECRET", str(uuid.uuid4()))
@@ -674,6 +678,45 @@ def _maybe_start_smart_ziw_chat(comment: dict, project: dict | None, requester: 
         threading.Thread(target=_answer_smart_ziw_mention, args=(project_db_id, project, requester, comment, thread), daemon=True).start()
 
 
+def _maybe_send_digest() -> None:
+    """Email the configured recipients the tenders that are new since the last sync.
+
+    Runs after a successful sync + auto-analysis so Smart-Ziw verdicts in the
+    email are fresh. Failures are logged, never raised: email must not break
+    the sync pipeline.
+    """
+    try:
+        config = get_smart_ziw_config()
+        if not config.get("digest_enabled"):
+            return
+        summary = sync_state.summary if isinstance(sync_state.summary, dict) else {}
+        new_tenders = summary.get("new_tenders") or []
+        if not new_tenders:
+            return
+        projects_by_pid = {}
+        for project in get_all_projects():
+            pid = project.get("project_id")
+            if pid:
+                projects_by_pid.setdefault(str(pid), project)
+        enriched = []
+        for tender in new_tenders:
+            merged = dict(tender)
+            full = projects_by_pid.get(str(tender.get("project_id") or ""))
+            if full:
+                merged["db_id"] = full.get("db_id")
+                merged["smart_ziw_verdict"] = full.get("smart_ziw_research_verdict") or ""
+                merged["smart_ziw_status"] = full.get("smart_ziw_status") or ""
+                if not merged.get("deadline"):
+                    merged["deadline"] = full.get("effective_deadline") or ""
+                if not merged.get("country"):
+                    merged["country"] = full.get("country") or full.get("primary_country_name_en") or ""
+            enriched.append(merged)
+        result = send_digest(config, enriched)
+        logger.info("smart-ziw digest: %s", result["detail"])
+    except Exception as exc:
+        logger.exception("smart-ziw digest failed: %s", exc)
+
+
 # Auto-analyze: after a successful sync, run Smart-Ziw on eligible tenders.
 
 def _auto_analyze_filter(projects: list[dict], config: dict) -> list[dict]:
@@ -1017,6 +1060,7 @@ def _run_sync_subprocess(cmd: list[str], trigger: str = "manual"):
         sync_state.finish(success)
         if success:
             _maybe_auto_analyze()
+            _maybe_send_digest()
     except Exception as e:
         msg = f"[!] Error: {e}"
         sync_state.add_line(msg)
@@ -1228,6 +1272,14 @@ class SmartZiwConfigUpdate(BaseModel):
     ai_verification_system_prompt: str = DEFAULT_SMART_ZIW_CONFIG["ai_verification_system_prompt"]
     ai_verification_expertise: str = DEFAULT_SMART_ZIW_CONFIG["ai_verification_expertise"]
     ai_verification_unwanted: str = DEFAULT_SMART_ZIW_CONFIG["ai_verification_unwanted"]
+    digest_enabled: bool = False
+    digest_recipients: list[str] = Field(default_factory=list)
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_user: str = ""
+    smtp_password: str = ""
+    smtp_from: str = ""
+    app_base_url: str = ""
 
 
 class LlmModelsRequest(BaseModel):
@@ -2081,6 +2133,7 @@ def admin_get_smart_ziw_config(request: Request):
     config = get_smart_ziw_config()
     llm_status = _compute_llm_status(config)
     config["github_token"] = ""
+    config["smtp_password"] = ""
     config["lightllm_api_key"] = ""
     config["lightllm_subscription_key"] = ""
     config["llm_status"] = llm_status
@@ -2147,6 +2200,8 @@ def admin_update_smart_ziw_config(body: SmartZiwConfigUpdate, request: Request):
     _require_admin(request)
     data = body.model_dump()
     existing = get_smart_ziw_config()
+    if not data.get("smtp_password"):
+        data["smtp_password"] = existing.get("smtp_password", "")
     if not data.get("lightllm_api_key"):
         data["lightllm_api_key"] = existing.get("lightllm_api_key", "")
     if not data.get("lightllm_subscription_key"):
@@ -2156,6 +2211,7 @@ def admin_update_smart_ziw_config(body: SmartZiwConfigUpdate, request: Request):
     saved = save_smart_ziw_config(data)
     llm_status = _compute_llm_status(saved)
     saved["github_token"] = ""
+    saved["smtp_password"] = ""
     saved["lightllm_api_key"] = ""
     saved["lightllm_subscription_key"] = ""
     saved["llm_status"] = llm_status

@@ -1317,6 +1317,14 @@ function AdminPage({ apiFetch, authUser, initialTab = 'users', projects = [] }) 
         auto_analyze_sources: [],
         auto_analyze_countries: [],
         auto_analyze_max_per_run: 10,
+        digest_enabled: false,
+        digest_recipients: [],
+        smtp_host: '',
+        smtp_port: 587,
+        smtp_user: '',
+        smtp_password: '',
+        smtp_from: '',
+        app_base_url: '',
     });
     const autoAnalyzeSourceOptions = useMemo(() => [...new Set([...scraperSources, ...projects.flatMap((p) => String(p.source || '').split(',').map((s) => s.trim()))])].filter(Boolean).sort(), [projects, scraperSources]);
     const autoAnalyzeCountryOptions = useMemo(() => [...new Set(projects.map((p) => p.country || p.primary_country_name_en).filter(Boolean))].sort(), [projects]);
@@ -2493,6 +2501,47 @@ function AdminPage({ apiFetch, authUser, initialTab = 'users', projects = [] }) 
                             <Label htmlFor="auto-analyze-max" className="text-sm font-medium">Max tenders per sync</Label>
                             <ShadcnInput id="auto-analyze-max" type="number" min={0} value={smartZiwConfig.auto_analyze_max_per_run} onChange={(e) => { const value = Number(e.target.value); setSmartZiwConfig({ ...smartZiwConfig, auto_analyze_max_per_run: Number.isFinite(value) && value >= 0 ? value : 10 }) }} />
                             <p className="text-xs text-muted-foreground">0 disables auto-analysis.</p>
+                        </div>
+                    </div>
+                    <div className="flex flex-col gap-4 rounded-lg border p-4 sm:col-span-2">
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <h4 className="text-sm font-semibold text-foreground">Email digest</h4>
+                                <p className="text-xs text-muted-foreground">After each successful sync, email the new tenders (with fresh Smart-Ziw verdicts) to the recipients below.</p>
+                            </div>
+                            <Switch id="digest-enabled" checked={smartZiwConfig.digest_enabled} onCheckedChange={(checked) => setSmartZiwConfig({ ...smartZiwConfig, digest_enabled: checked })} />
+                        </div>
+                        <div className="flex flex-col gap-1.5">
+                            <Label htmlFor="digest-recipients" className="text-sm font-medium">Recipients</Label>
+                            <ShadcnInput id="digest-recipients" placeholder="bid-team@example.com, boss@example.com" value={Array.isArray(smartZiwConfig.digest_recipients) ? smartZiwConfig.digest_recipients.join(', ') : ''} onChange={(e) => setSmartZiwConfig({ ...smartZiwConfig, digest_recipients: e.target.value.split(',').map((s) => s.trim()).filter(Boolean) })} />
+                        </div>
+                        <div className="grid gap-4 sm:grid-cols-2">
+                            <div className="flex flex-col gap-1.5">
+                                <Label htmlFor="smtp-host" className="text-sm font-medium">SMTP host</Label>
+                                <ShadcnInput id="smtp-host" placeholder="smtp.gmail.com" value={smartZiwConfig.smtp_host} onChange={(e) => setSmartZiwConfig({ ...smartZiwConfig, smtp_host: e.target.value })} />
+                            </div>
+                            <div className="flex flex-col gap-1.5">
+                                <Label htmlFor="smtp-port" className="text-sm font-medium">Port</Label>
+                                <ShadcnInput id="smtp-port" type="number" min={1} max={65535} value={smartZiwConfig.smtp_port} onChange={(e) => { const value = Number(e.target.value); setSmartZiwConfig({ ...smartZiwConfig, smtp_port: Number.isFinite(value) && value > 0 ? value : 587 }) }} />
+                                <p className="text-xs text-muted-foreground">587 = STARTTLS, 465 = SSL.</p>
+                            </div>
+                            <div className="flex flex-col gap-1.5">
+                                <Label htmlFor="smtp-user" className="text-sm font-medium">SMTP username</Label>
+                                <ShadcnInput id="smtp-user" value={smartZiwConfig.smtp_user} onChange={(e) => setSmartZiwConfig({ ...smartZiwConfig, smtp_user: e.target.value })} />
+                            </div>
+                            <div className="flex flex-col gap-1.5">
+                                <Label htmlFor="smtp-password" className="text-sm font-medium">SMTP password</Label>
+                                <ShadcnInput id="smtp-password" type="password" value={smartZiwConfig.smtp_password} onChange={(e) => setSmartZiwConfig({ ...smartZiwConfig, smtp_password: e.target.value })} />
+                            </div>
+                            <div className="flex flex-col gap-1.5">
+                                <Label htmlFor="smtp-from" className="text-sm font-medium">From address</Label>
+                                <ShadcnInput id="smtp-from" placeholder={smartZiwConfig.smtp_user || 'smartziw@example.com'} value={smartZiwConfig.smtp_from} onChange={(e) => setSmartZiwConfig({ ...smartZiwConfig, smtp_from: e.target.value })} />
+                            </div>
+                            <div className="flex flex-col gap-1.5">
+                                <Label htmlFor="app-base-url" className="text-sm font-medium">App base URL</Label>
+                                <ShadcnInput id="app-base-url" placeholder="http://server:8080" value={smartZiwConfig.app_base_url} onChange={(e) => setSmartZiwConfig({ ...smartZiwConfig, app_base_url: e.target.value })} />
+                                <p className="text-xs text-muted-foreground">Used for tender links in the email.</p>
+                            </div>
                         </div>
                     </div>
                     <div className="flex justify-end">

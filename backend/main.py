@@ -402,6 +402,17 @@ def main():
         "ai_verified": ai_verified_count,
         "ai_rejected": ai_rejected_count,
         "enrichment": enrichment_stats,
+        "new_tenders": [
+            {
+                "project_id": p.get("project_id", ""),
+                "name": p.get("project_name") or p.get("project_description", ""),
+                "source": p.get("source", ""),
+                "country": p.get("country") or p.get("primary_country_name_en", ""),
+                "deadline": p.get("effective_deadline") or p.get("scraped_deadline") or p.get("project_end_date", ""),
+                "ai_verified": p.get("ai_verified", ""),
+            }
+            for p in new_projects
+        ],
         "scrapers": {},
     }
     for key, result in results.items():

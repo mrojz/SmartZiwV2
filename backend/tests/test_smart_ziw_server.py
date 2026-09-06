@@ -27,6 +27,7 @@ def _config_with_secrets():
     return {
         "lightllm_api_key": "SECRET-LL-KEY",
         "lightllm_subscription_key": "SECRET-SUB-KEY",
+        "smtp_password": "SECRET-SMTP-PASS",
         "smart_ziw_research_enabled": True,
         "smart_ziw_research_timeout_seconds": 900,
         "forvis_mazars_presence_countries": ["tunisia", "france"],
@@ -42,6 +43,7 @@ def test_admin_get_redacts_lightllm_keys(monkeypatch):
     data = r.json()
     assert data["lightllm_api_key"] == ""
     assert data["lightllm_subscription_key"] == ""
+    assert data["smtp_password"] == ""
 
 
 def test_admin_update_preserves_empty_tokens(monkeypatch):
@@ -62,8 +64,10 @@ def test_admin_update_preserves_empty_tokens(monkeypatch):
     assert r.status_code == 200
     assert saved["lightllm_api_key"] == "SECRET-LL-KEY"
     assert saved["lightllm_subscription_key"] == "SECRET-SUB-KEY"
+    assert saved["smtp_password"] == "SECRET-SMTP-PASS"
     assert r.json()["lightllm_api_key"] == ""
     assert r.json()["lightllm_subscription_key"] == ""
+    assert r.json()["smtp_password"] == ""
 
 
 def test_admin_update_llm_status_uses_unredacted_key(monkeypatch):
